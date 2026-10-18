@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
-using System.Windows.Animation;
+using System.Windows.Media.Animation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
