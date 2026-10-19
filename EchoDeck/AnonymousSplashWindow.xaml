@@ -1,0 +1,43 @@
+<Window x:Class="EchoDeck.AnonymousSplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="EchoDeck"
+        FontFamily="{StaticResource UiFont}"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False"
+        ResizeMode="NoResize" WindowStartupLocation="Manual">
+
+    <Grid x:Name="Stage" ClipToBounds="True">
+        <!-- The black screen. Its clip is a rectangle with a round hole: the hole closing is the "going dark" iris. -->
+        <Border x:Name="Cover" Background="#FF050508"/>
+
+        <Grid x:Name="Emblem" Opacity="0" Width="420" Height="360"
+              HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+            <Ellipse x:Name="Ring1" Width="220" Height="220" Stroke="#A78BFA" StrokeThickness="1.5" Opacity="0"
+                     RenderTransformOrigin="0.5,0.5" Margin="0,0,0,60">
+                <Ellipse.RenderTransform><ScaleTransform x:Name="Ring1Scale" ScaleX="0.3" ScaleY="0.3"/></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="Ring2" Width="220" Height="220" Stroke="#A78BFA" StrokeThickness="1.5" Opacity="0"
+                     RenderTransformOrigin="0.5,0.5" Margin="0,0,0,60">
+                <Ellipse.RenderTransform><ScaleTransform x:Name="Ring2Scale" ScaleX="0.3" ScaleY="0.3"/></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="Ring3" Width="220" Height="220" Stroke="#A78BFA" StrokeThickness="1.5" Opacity="0"
+                     RenderTransformOrigin="0.5,0.5" Margin="0,0,0,60">
+                <Ellipse.RenderTransform><ScaleTransform x:Name="Ring3Scale" ScaleX="0.3" ScaleY="0.3"/></Ellipse.RenderTransform>
+            </Ellipse>
+
+            <Path Data="{StaticResource IcoMask}" Width="24" Height="24" Stretch="None" Stroke="#E9E3FF"
+                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  RenderTransformOrigin="0.5,0.5" Margin="0,0,0,60">
+                <Path.RenderTransform><ScaleTransform ScaleX="2.4" ScaleY="2.4"/></Path.RenderTransform>
+            </Path>
+
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center">
+                <TextBlock x:Name="SplashTitle" Text="A N O N Y M O U S   M O D E" FontSize="19" FontWeight="SemiBold"
+                           Foreground="#F1EDFF" HorizontalAlignment="Center"/>
+                <TextBlock Text="Nothing here is saved. Press Esc to leave instantly." FontSize="12" Margin="0,10,0,0"
+                           Foreground="#8B84A8" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
