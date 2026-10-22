@@ -6,6 +6,8 @@ A modern Windows media player for video and music, built on LibVLC (WPF, .NET 8)
 Push to GitHub: the **Build EchoDeck** workflow publishes a self-contained x64 app and compiles the Inno Setup installer. Download `EchoDeck-Setup-<version>.exe` from the run's **Artifacts**. Tag a commit `v2.0.1` to also attach a portable zip to a GitHub Release.
 
 ## Features
+- Recent page (first page by default), Home / Videos / Music browsing with four-per-row thumbnail tiles, hover play and ··· menus, playlists (create, rename, cover, shuffle, repeat, sort, search) and a queue panel (Q / P)
+- Video mini-player while browsing, floating auto-hiding control bar in fullscreen, volume popup + on-screen indicators, rounded video corners
 - Library-first layout from the Figma file: labelled nav, thumbnail grid / list, mini player, docked quick-settings panel (Video / Audio / Subtitles)
 - Waveform seek bar for music, VLC-style wedge volume bar, shuffle + repeat, right-click menu
 - Control bar with blue action bundles, blue seek and volume bars, audio/subtitle/settings buttons, play pill
@@ -24,7 +26,7 @@ Push to GitHub: the **Build EchoDeck** workflow publishes a self-contained x64 a
 - Data from the older "Deefxult Media Player" build (`.SecureVideoVault`, `DeefxultMediaPlayer\vault.key`) is migrated automatically on first launch.
 
 ## Size
-The publish step produces one compressed `EchoDeck.exe` plus a trimmed `libvlc\win-x64` folder (Qt GUI, Lua, stream-out, locales and encoders removed, see `TrimLibVlc` in `EchoDeck.csproj`). Opt out with `-p:TrimLibVlc=false`.
+The publish step produces a ReadyToRun (fast-starting) self-contained app plus a trimmed `libvlc\win-x64` folder (Qt GUI, Lua, stream-out, locales and encoders removed, see `TrimLibVlc` in `EchoDeck.csproj`). Opt out with `-p:TrimLibVlc=false`.
 
 ## LibVLC native architecture
 The project is pinned to `win-x64`. The workflow verifies `libvlc\win-x64\libvlc.dll` exists and is an x64 binary, and at runtime `App.xaml.cs` locates the natives explicitly and shows a clear message if they are missing.
