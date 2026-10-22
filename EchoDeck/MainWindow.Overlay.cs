@@ -179,14 +179,22 @@ public partial class MainWindow
     }
 
     private void FillEqualizerCombo()
+{
+    if (QEqCombo.Items.Count > 0) return;
+    try
     {
-        if (QEqCombo.Items.Count > 0) return;
-        try
+        // Create a temporary instance to read static preset data safely
+        using (var tempEq = new LibVLCSharp.Shared.Equalizer())
         {
-            for (uint i = 0; i < Equalizer.PresetCount; i++) QEqCombo.Items.Add(Equalizer.PresetName(i));
+            for (uint i = 0; i < tempEq.PresetCount; i++)
+            {
+                QEqCombo.Items.Add(tempEq.PresetName(i));
+            }
         }
-        catch { /* equaliser unavailable */ }
     }
+    catch { /* equaliser unavailable */ }
+}
+
 
     private void ApplyEqualizer(int preset)
     {
