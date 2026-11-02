@@ -5,7 +5,7 @@ namespace EchoDeck;
 
 /// <summary>
 /// Holds the vault's 256-bit master key, wrapped with Windows DPAPI (current user) and stored OUTSIDE the
-/// vault folder, in %LOCALAPPDATA%\EchoDeck\vault.key. Only this Windows account on this
+/// vault folder, in %LOCALAPPDATA%\Tempo\vault.key. Only this Windows account on this
 /// machine can unwrap it, so copying the vault folder (or the disk) elsewhere yields nothing readable.
 /// </summary>
 internal static class KeyStore

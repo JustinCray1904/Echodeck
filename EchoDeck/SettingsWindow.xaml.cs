@@ -309,7 +309,7 @@ public partial class SettingsWindow : Window
     {
         var dir = !string.IsNullOrWhiteSpace(_cfg.SnapshotFolder)
             ? _cfg.SnapshotFolder
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "EchoDeck");
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Tempo");
         try
         {
             Directory.CreateDirectory(dir);

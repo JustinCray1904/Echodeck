@@ -72,10 +72,10 @@
             <StackPanel x:Name="Page0" HorizontalAlignment="Center" VerticalAlignment="Center" Width="560">
                 <Image Source="Assets/app.ico" Width="104" Height="104" HorizontalAlignment="Center"
                        RenderOptions.BitmapScalingMode="HighQuality"/>
-                <TextBlock Text="Welcome to EchoDeck!" FontSize="32" FontWeight="Light" HorizontalAlignment="Center"
+                <TextBlock Text="Welcome to Tempo!" FontSize="32" FontWeight="Light" HorizontalAlignment="Center"
                            Margin="0,26,0,0" Foreground="{DynamicResource TextBrush}"/>
                 <TextBlock Style="{StaticResource HintText}" FontSize="14" LineHeight="22" Margin="0,22,0,0"
-                           Text="EchoDeck is a modern media player for video and music, with a private encrypted space called Anonymous Mode. Let's take a minute to set it up the way you like."/>
+                           Text="Tempo is a modern media player for video and music, with a private encrypted space called Anonymous Mode. Let's take a minute to set it up the way you like."/>
                 <TextBlock Style="{StaticResource HintText}" Margin="0,34,0,8" Text="Choose a media folder to get started with"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -120,7 +120,7 @@
                         </Grid.RowDefinitions>
                         <Grid Grid.Row="0">
                             <Ellipse Width="10" Height="10" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Left" Margin="14,0,0,0"/>
-                            <TextBlock Text="EchoDeck" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                            <TextBlock Text="Tempo" FontSize="11" Foreground="{DynamicResource MutedBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
                         <Grid Grid.Row="1">
@@ -362,7 +362,7 @@
                     <TextBlock Text="Anonymous Mode" FontSize="28" FontWeight="Light" Margin="0,26,0,0"
                                Foreground="{DynamicResource TextBrush}"/>
                     <TextBlock Style="{StaticResource HintText}" FontSize="14" LineHeight="22" Margin="0,14,0,0"
-                               Text="A private space inside EchoDeck. Files you import are encrypted with AES-256 and can only be played from here. Nothing you watch in it is remembered."/>
+                               Text="A private space inside Tempo. Files you import are encrypted with AES-256 and can only be played from here. Nothing you watch in it is remembered."/>
                     <TextBlock Style="{StaticResource HintText}" FontSize="14" LineHeight="22" Margin="0,12,0,0"
                                Text="Switch to it any time by holding Ctrl and typing your passcode, or from the menu. The screen goes dark, the interface changes colour, and Esc brings you straight back."/>
                 </StackPanel>

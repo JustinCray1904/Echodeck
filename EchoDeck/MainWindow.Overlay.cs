@@ -47,7 +47,7 @@ public partial class MainWindow
     /// </summary>
     private void ApplyPlayerLayout()
     {
-        bool mini = _libraryVisible && _hasMedia && !_currentIsAudio && _vault == null;
+        bool mini = _libraryVisible && _hasMedia && !_currentIsAudio;
 
         if (mini)
         {

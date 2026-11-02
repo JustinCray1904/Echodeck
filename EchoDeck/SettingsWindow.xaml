@@ -79,7 +79,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Show the welcome tour again"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="It will appear the next time EchoDeck starts."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="It will appear the next time Tempo starts."/>
                             </StackPanel>
                             <Button Grid.Column="1" Content="Show next launch" Style="{StaticResource FlatButton}" Click="ShowTour_Click"/>
                         </Grid>
@@ -103,7 +103,7 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel Margin="0,0,24,0">
                 <TextBlock Style="{StaticResource RowLabel}" Text="Start page"/>
-                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="What opens first when EchoDeck starts."/>
+                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="What opens first when Tempo starts."/>
             </StackPanel>
             <ComboBox x:Name="StartPageCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Recent"/><ComboBoxItem Content="Home"/><ComboBoxItem Content="Blank page"/></ComboBox>
         </Grid>
@@ -126,7 +126,7 @@
                         <TextBlock Text="Anonymous Mode" Style="{StaticResource SectionTitle}"/>
                         <StackPanel x:Name="PrivSetupBlock">
                             <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,14"
-                                       Text="Create a passcode (4 to 8 digits). Then hold Ctrl and type it anywhere in EchoDeck to switch to Anonymous Mode."/>
+                                       Text="Create a passcode (4 to 8 digits). Then hold Ctrl and type it anywhere in Tempo to switch to Anonymous Mode."/>
                             <StackPanel Width="400" HorizontalAlignment="Left">
                                 <TextBlock Text="Passcode" Style="{StaticResource HintText}" Margin="0,0,0,4"/>
                                 <PasswordBox x:Name="PrivNewBox" Style="{StaticResource DarkPassword}" MaxLength="8" PreviewTextInput="Digits_PreviewTextInput"/>
@@ -383,7 +383,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Text size"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Applies the next time EchoDeck starts."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Applies the next time Tempo starts."/>
                             </StackPanel>
                             <ComboBox x:Name="SubSizeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Small"/><ComboBoxItem Content="Normal"/><ComboBoxItem Content="Large"/><ComboBoxItem Content="Larger"/></ComboBox>
                         </Grid>
@@ -444,7 +444,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Network caching"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="How much of a stream or network file is buffered before playing. Applies the next time EchoDeck starts."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="How much of a stream or network file is buffered before playing. Applies the next time Tempo starts."/>
                             </StackPanel>
                             <ComboBox x:Name="NetCacheCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Low (300 ms)"/><ComboBoxItem Content="Normal (1000 ms)"/><ComboBoxItem Content="High (3000 ms)"/><ComboBoxItem Content="Very high (6000 ms)"/></ComboBox>
                         </Grid>
@@ -459,7 +459,7 @@
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                     <StackPanel Margin="0,0,24,0">
                                                         <TextBlock Style="{StaticResource RowLabel}" Text="Hardware decoding"/>
-                                                        <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Uses your GPU where possible. Applies the next time EchoDeck starts."/>
+                                                        <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Uses your GPU where possible. Applies the next time Tempo starts."/>
                                                     </StackPanel>
                                                     <CheckBox x:Name="HwSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                                                 </Grid>
@@ -488,7 +488,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <Image Source="Assets/app.ico" Width="84" Height="84" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 <StackPanel Margin="22,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="EchoDeck" FontSize="28" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Tempo" FontSize="28" FontWeight="SemiBold"/>
                                     <TextBlock x:Name="VersionText" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
                                     <TextBlock Margin="0,12,0,0" FontSize="14">
                                         <Run Text="Created by "/><Run Text="Defxult" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>

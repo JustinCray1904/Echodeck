@@ -10,7 +10,7 @@ public enum ThemeMode { Dark, Light, System }
 public enum LoopMode { Off, One, All }
 
 /// <summary>
-/// User preferences, stored as JSON in %LOCALAPPDATA%\EchoDeck\settings.json.
+/// User preferences, stored as JSON in %LOCALAPPDATA%\Tempo\settings.json.
 /// Nothing about what was watched or played is ever stored here (no history, no resume positions).
 /// </summary>
 public sealed class AppSettings

@@ -26,6 +26,7 @@ public partial class MainWindow
     private int _musicTabBeforeScope;
     private BrowserEntry? _musicScope;
     private List<Track> _musicTracks = new();
+    private bool _musicFromCache;   // _musicTracks came from the on-disk cache and a fresh scan is still due
     private bool _suppressTab;
     private int _pageToken;      // guards against a slow scan finishing after the user has moved on
 
@@ -34,6 +35,7 @@ public partial class MainWindow
         SelectionState.Instance.PropertyChanged += (_, _) => UpdateSelectionBar();
         SmoothScroll.Attach(LibraryList);
         SmoothScroll.Attach(SideList);
+        LibraryScanner.Progress += p => Dispatcher.InvokeAsync(() => OnScanProgress(p));
     }
 
     // ------------------------------------------------------------------ roots
@@ -60,6 +62,7 @@ public partial class MainWindow
         _currentDir = null;
         _musicScope = null;
         _loadingText = null;
+        HideLoading();
         if (SearchBox.Text.Length > 0) SearchBox.Text = "";
 
         switch (mode)
@@ -76,6 +79,7 @@ public partial class MainWindow
 
     private void GoRoot()
     {
+        if (_anon) { GoRootAnon(); return; }
         var roots = HomeRoots();
         _currentDir = null;
         if (roots.Count == 1) { NavigateTo(roots[0], record: false); return; }
@@ -104,7 +108,7 @@ public partial class MainWindow
             LibMode.PlaylistDetail => _openPlaylist?.Name ?? "Playlist",
             LibMode.Videos => "Videos",
             LibMode.Music => _musicScope != null ? _musicScope.Name : "Music",
-            LibMode.Blank => "EchoDeck",
+            LibMode.Blank => "Tempo",
             _ => _currentDir != null ? BuildBreadcrumb(_currentDir) : "Home"
         };
 
@@ -140,7 +144,7 @@ public partial class MainWindow
 
     private void Nav_Click(object sender, RoutedEventArgs e)
     {
-        if (!IsLoaded || _vault != null) return;
+        if (!IsLoaded) return;
 
         var mode = ReferenceEquals(sender, NavRecent) ? LibMode.Recent
                  : ReferenceEquals(sender, NavVideos) ? LibMode.Videos
@@ -171,33 +175,71 @@ public partial class MainWindow
 
     private void BuildRecent()
     {
-        var list = new List<BrowserEntry>();
-        foreach (var path in RecentStore.Items.Where(File.Exists))
-        {
-            var kind = MediaTypes.IsAudio(path) ? EntryKind.Audio : EntryKind.Video;
-            list.Add(new BrowserEntry(Path.GetFileNameWithoutExtension(path), path, kind,
-                Path.GetFileName(Path.GetDirectoryName(path) ?? "")));
-        }
-        _allEntries = list;
+        // Anonymous Mode keeps its own list in memory only (never written to disk, wiped on exit).
+        IEnumerable<string> source = _anon ? _anonRecent : RecentStore.Items;
+        _allEntries = source.Where(PathExists).Select(EntryForPath).ToList();
+    }
+
+    /// <summary>A file / vault item exists: real file normally, a known vault item in Anonymous Mode.</summary>
+    private bool PathExists(string path) => _anon ? _anonItems.ContainsKey(path) : File.Exists(path);
+
+    private bool IsSupportedPath(string path) => _anon ? _anonItems.ContainsKey(path) : MediaTypes.IsSupportedFile(path);
+
+    /// <summary>Tile / row for a file path (real name in normal mode; the encrypted header's details in Anonymous Mode).</summary>
+    private BrowserEntry EntryForPath(string path)
+    {
+        if (_anon && _anonItems.TryGetValue(path, out var item)) return VaultEntry(item);
+        return new BrowserEntry(Path.GetFileNameWithoutExtension(path), path,
+            MediaTypes.IsAudio(path) ? EntryKind.Audio : EntryKind.Video,
+            Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
+    }
+
+    private List<BrowserEntry> VideoEntries(List<string> files)
+    {
+        var list = files.Select(p => new BrowserEntry(Path.GetFileNameWithoutExtension(p), p, EntryKind.Video,
+            Path.GetFileName(Path.GetDirectoryName(p) ?? ""))).ToList();
+        if (_sortDesc) list.Reverse();
+        return list;
     }
 
     private async void BuildVideos()
     {
         int token = _pageToken;
-        _allEntries = new List<BrowserEntry>();
-        _loadingText = "Looking for videos…";
-        FinishPage();
 
+        if (_anon)
+        {
+            var vids = _anonList.Where(x => !x.IsAudio)
+                .OrderBy(x => DisplayTitle(x), StringComparer.CurrentCultureIgnoreCase).Select(x => VaultEntry(x)).ToList();
+            if (_sortDesc) vids.Reverse();
+            _allEntries = vids;
+            FinishPage();
+            return;
+        }
+
+        _allEntries = new List<BrowserEntry>();
+        var folders = _cfg.VideoFolders;
+
+        // 1) what was found last time appears at once ...
+        var cached = await LibraryScanner.CachedVideosAsync(folders);
+        if (token != _pageToken || _mode != LibMode.Videos) return;
+        if (cached.Count > 0) _allEntries = VideoEntries(cached);
+        else _loadingText = "Looking for videos…";
+        FinishPage();
+        ShowLoading(cached.Count > 0 ? "Checking for new videos…" : "Looking for videos…");
+
+        // 2) ... while the folders are checked for changes in the background
         List<string> files;
-        try { files = await LibraryScanner.VideosAsync(_cfg.VideoFolders); }
-        catch { files = new List<string>(); }
+        try { files = await LibraryScanner.VideosAsync(folders); }
+        catch { files = cached; }
         if (token != _pageToken || _mode != LibMode.Videos) return;
 
         _loadingText = null;
-        var list = files.Select(p => new BrowserEntry(Path.GetFileNameWithoutExtension(p), p, EntryKind.Video,
-            Path.GetFileName(Path.GetDirectoryName(p) ?? ""))).ToList();
-        if (_sortDesc) list.Reverse();
-        _allEntries = list;
+        HideLoading();
+        bool same = cached.Count > 0 && files.Count == cached.Count &&
+                    files.SequenceEqual(cached, StringComparer.OrdinalIgnoreCase);
+        if (same) return;   // nothing changed: keep the page (and its scroll position) as it is
+
+        _allEntries = VideoEntries(files);
         FinishPage();
     }
 
@@ -205,21 +247,59 @@ public partial class MainWindow
     {
         int token = _pageToken;
         _allEntries = new List<BrowserEntry>();
-        if (_musicTracks.Count == 0)
+
+        if (_anon)
+        {
+            _musicTracks = AnonTracks();
+            BuildMusicEntries();
+            FinishPage();
+            return;
+        }
+
+        if (_musicTracks.Count > 0 && !_musicFromCache)
+        {
+            BuildMusicEntries();
+            FinishPage();
+            return;
+        }
+
+        var folders = _cfg.MusicFolders;
+
+        // 1) the songs read last time appear at once ...
+        var cached = await LibraryScanner.CachedTracksAsync(folders);
+        if (token != _pageToken || _mode != LibMode.Music) return;
+        if (cached.Count > 0)
+        {
+            _musicTracks = cached;
+            _musicFromCache = true;
+            BuildMusicEntries();
+        }
+        else
         {
             _loadingText = "Reading your music library…";
-            FinishPage();
-            try { _musicTracks = await LibraryScanner.TracksAsync(_cfg.MusicFolders); }
-            catch { _musicTracks = new List<Track>(); }
-            if (token != _pageToken || _mode != LibMode.Music) return;
-            _loadingText = null;
         }
+        FinishPage();
+        ShowLoading(cached.Count > 0 ? "Checking for new songs…" : "Reading your music library…");
+
+        // 2) ... while only new or changed files are read in the background
+        List<Track> fresh;
+        try { fresh = await LibraryScanner.TracksAsync(folders); }
+        catch { fresh = cached; }
+        if (token != _pageToken || _mode != LibMode.Music) return;
+
+        _loadingText = null;
+        HideLoading();
+        _musicTracks = fresh;
+        _musicFromCache = false;
+        bool same = cached.Count > 0 && cached.Count == fresh.Count && cached.Zip(fresh).All(z => z.First == z.Second);
+        if (same) return;
+
         BuildMusicEntries();
         FinishPage();
     }
 
-    private static BrowserEntry SongEntry(Track t, bool stripe) =>
-        new(t.Title, t.Path, EntryKind.Audio, "") { Artist = t.Artist, Album = t.Album, Genre = t.Genre, Duration = t.Duration, Stripe = stripe };
+    private BrowserEntry SongEntry(Track t, bool stripe) =>
+        new(t.Title, t.Path, EntryKind.Audio, "") { Artist = t.Artist, Album = t.Album, Genre = t.Genre, Duration = t.Duration, Stripe = stripe, IsVault = _anon };
 
     private void BuildMusicEntries()
     {
@@ -251,7 +331,8 @@ public partial class MainWindow
                 {
                     Album = g.Key.Album,
                     Artist = g.Key.Artist,
-                    Children = children
+                    Children = children,
+                    IsVault = _anon
                 };
             }).ToList();
             if (_sortDesc) list.Reverse();
@@ -266,7 +347,8 @@ public partial class MainWindow
                 return new BrowserEntry(g.Key, g.Key, EntryKind.Artist, ItemWord(children.Count, "song"))
                 {
                     Artist = g.Key,
-                    Children = children
+                    Children = children,
+                    IsVault = _anon
                 };
             }).ToList();
             if (_sortDesc) list.Reverse();
@@ -336,14 +418,11 @@ public partial class MainWindow
 
     private void BuildPlaylistDetail(Playlist pl)
     {
-        _allEntries = pl.Items.Where(File.Exists).Select(p =>
-            new BrowserEntry(Path.GetFileNameWithoutExtension(p), p,
-                MediaTypes.IsAudio(p) ? EntryKind.Audio : EntryKind.Video,
-                Path.GetFileName(Path.GetDirectoryName(p) ?? ""))).ToList();
+        _allEntries = pl.Items.Where(PathExists).Select(EntryForPath).ToList();
 
         PlName.Text = pl.Name;
         PlInfo.Text = ItemCount(_allEntries.Count);
-        PlCoverBrush.ImageSource = LoadImage(pl.Cover);
+        PlCoverBrush.ImageSource = _anon ? null : LoadImage(pl.Cover);
     }
 
     private static string ItemCount(int n) => ItemWord(n, "item");
@@ -396,6 +475,8 @@ public partial class MainWindow
 
     private void NavigateTo(string dir, bool record = true)
     {
+        if (_anon) { NavigateVirtual(dir, record); return; }
+
         var list = new List<BrowserEntry>();
         try
         {
@@ -439,6 +520,8 @@ public partial class MainWindow
 
     private string BuildBreadcrumb(string dir)
     {
+        if (_anon) return VirtualBreadcrumb(dir);
+
         var full = dir.TrimEnd(Path.DirectorySeparatorChar);
         var root = HomeRoots()
             .Select(r => r.TrimEnd(Path.DirectorySeparatorChar))
@@ -457,7 +540,7 @@ public partial class MainWindow
     {
         bool can = _mode switch
         {
-            LibMode.Home => _navBack.Count > 0 || (_currentDir != null && HomeRoots().Count > 1),
+            LibMode.Home => _navBack.Count > 0 || (_currentDir != null && (_anon ? _anonRootMulti : HomeRoots().Count > 1)),
             LibMode.PlaylistDetail => true,
             LibMode.Music => _musicScope != null,
             _ => false
@@ -485,7 +568,7 @@ public partial class MainWindow
                     _navForward.Push(_currentDir);
                     NavigateTo(_navBack.Pop(), record: false);
                 }
-                else if (_currentDir != null && HomeRoots().Count > 1)
+                else if (_currentDir != null && (_anon ? _anonRootMulti : HomeRoots().Count > 1))
                 {
                     GoRoot();
                 }
@@ -565,6 +648,12 @@ public partial class MainWindow
         else if (searching)
         {
             message = "No matches for “" + SearchBox.Text.Trim() + "”.";
+        }
+        else if (_anon && _mode is LibMode.Home or LibMode.Videos or LibMode.Music)
+        {
+            message = "Nothing here yet. Use the lock icon at the top to import files into Anonymous Mode.";
+            button = "Import files";
+            _emptyAction = () => ImportFiles_Click(this, new RoutedEventArgs());
         }
         else
         {
@@ -673,7 +762,7 @@ public partial class MainWindow
 
     private void ClearRecent_Click(object sender, RoutedEventArgs e)
     {
-        RecentStore.Clear();
+        if (_anon) _anonRecent.Clear(); else RecentStore.Clear();
         RefreshPage();
     }
 
@@ -741,7 +830,7 @@ public partial class MainWindow
 
     private void PlayEntries(List<BrowserEntry> files, int start)
     {
-        if (_vault != null || files.Count == 0) return;
+        if (files.Count == 0) return;
         _queue.Clear();
         foreach (var f in files) _queue.Add(new QueueItem(f.FullPath));
         PlayNormal(files[Math.Clamp(start, 0, files.Count - 1)].FullPath);
@@ -751,8 +840,6 @@ public partial class MainWindow
     /// <summary>Double-click / play: folders, playlists, albums and artists open; files play with the visible files as the queue.</summary>
     private void ActivateEntry(BrowserEntry entry)
     {
-        if (_vault != null) return;
-
         if (entry.IsDirectory) { NavigateTo(entry.FullPath); return; }
         if (entry.IsPlaylist && entry.Playlist != null) { OpenPlaylist(entry.Playlist); return; }
         if (entry.IsAlbum || entry.IsArtist) { OpenMusicScope(entry); return; }
@@ -831,8 +918,6 @@ public partial class MainWindow
 
     private void ShowEntryMenu(BrowserEntry entry, UIElement? anchor)
     {
-        if (_vault != null) return;
-
         var menu = new ContextMenu();
         if (anchor != null) { menu.PlacementTarget = anchor; menu.Placement = PlacementMode.Bottom; }
         else menu.Placement = PlacementMode.MousePoint;
@@ -845,7 +930,7 @@ public partial class MainWindow
             menu.Items.Add(MenuEntry("Shuffle play", "IcoShuffle", (_, _) => PlayPlaylist(pl, true)));
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Rename", "IcoEdit", (_, _) => RenamePlaylist(pl)));
-            menu.Items.Add(MenuEntry("Change cover picture", "IcoCamera", (_, _) => ChangeCover(pl)));
+            if (!_anon) menu.Items.Add(MenuEntry("Change cover picture", "IcoCamera", (_, _) => ChangeCover(pl)));
             menu.Items.Add(MenuEntry("Delete", "IcoTrash", (_, _) => DeletePlaylist(pl)));
         }
         else if (entry.IsAlbum || entry.IsArtist)
@@ -861,8 +946,11 @@ public partial class MainWindow
         {
             menu.Items.Add(MenuEntry("Open", "IcoFolder", (_, _) => NavigateTo(entry.FullPath)));
             menu.Items.Add(MenuEntry("Add folder to queue", "IcoAdd", (_, _) => EnqueueFolder(entry.FullPath)));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(MenuEntry("Show in File Explorer", "IcoFolder", (_, _) => ShowInExplorer(entry.FullPath)));
+            if (!_anon)
+            {
+                menu.Items.Add(new Separator());
+                menu.Items.Add(MenuEntry("Show in File Explorer", "IcoFolder", (_, _) => ShowInExplorer(entry.FullPath)));
+            }
         }
         else
         {
@@ -884,7 +972,8 @@ public partial class MainWindow
             {
                 menu.Items.Add(MenuEntry("Remove from recent", "IcoClose", (_, _) =>
                 {
-                    RecentStore.Remove(path);
+                    if (_anon) _anonRecent.RemoveAll(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase));
+                    else RecentStore.Remove(path);
                     RefreshPage();
                 }));
             }
@@ -896,7 +985,16 @@ public partial class MainWindow
                 menu.Items.Add(MenuEntry("Show artist", "IcoUser", (_, _) => ShowAlbumOrArtist(entry, album: false)));
             }
             menu.Items.Add(MenuEntry("Select", "IcoCheck", (_, _) => entry.IsChecked = true));
-            menu.Items.Add(MenuEntry("Show in File Explorer", "IcoFolder", (_, _) => ShowInExplorer(path)));
+            if (_anon)
+            {
+                menu.Items.Add(new Separator());
+                menu.Items.Add(MenuEntry("Restore…", "IcoExport", (_, _) => _ = RestoreEntriesAsync(RestoreTargets(entry))));
+                menu.Items.Add(MenuEntry("Delete permanently", "IcoTrash", (_, _) => _ = DeleteEntriesAsync(RestoreTargets(entry))));
+            }
+            else
+            {
+                menu.Items.Add(MenuEntry("Show in File Explorer", "IcoFolder", (_, _) => ShowInExplorer(path)));
+            }
         }
         menu.IsOpen = true;
     }
@@ -913,6 +1011,15 @@ public partial class MainWindow
 
     private void ShowProperties(string path)
     {
+        if (_anon)
+        {
+            if (!_anonItems.TryGetValue(path, out var vi)) return;
+            _modalOpen = true;
+            try { new PropertiesWindow(vi) { Owner = this }.ShowDialog(); }
+            finally { _modalOpen = false; }
+            return;
+        }
+
         if (!File.Exists(path)) { ShowOsd("That file isn't there any more"); return; }
 
         string? length = null;
@@ -931,7 +1038,7 @@ public partial class MainWindow
 
     private void Enqueue(string path, bool next)
     {
-        if (_vault != null || !MediaTypes.IsSupportedFile(path)) return;
+        if (!IsSupportedPath(path)) return;
 
         var existing = _queue.FindIndex(q => string.Equals(q.FullPath, path, StringComparison.OrdinalIgnoreCase));
         if (existing >= 0 && next)
@@ -953,6 +1060,12 @@ public partial class MainWindow
 
     private void EnqueueFolder(string folder)
     {
+        if (_anon)
+        {
+            foreach (var item in VirtualFiles(folder)) Enqueue(item.FullPath, next: false);
+            return;
+        }
+
         try
         {
             foreach (var f in Directory.EnumerateFiles(folder).Where(f => MediaTypes.IsSupportedExtension(Path.GetExtension(f)))
@@ -991,7 +1104,7 @@ public partial class MainWindow
         int added = 0;
         foreach (var p in paths)
         {
-            if (!MediaTypes.IsSupportedFile(p)) continue;
+            if (!IsSupportedPath(p)) continue;
             if (pl.Items.Any(x => string.Equals(x, p, StringComparison.OrdinalIgnoreCase))) continue;
             pl.Items.Add(p);
             added++;
@@ -1019,7 +1132,7 @@ public partial class MainWindow
 
     private void PlayPlaylist(Playlist pl, bool shuffle)
     {
-        var files = pl.Items.Where(File.Exists).ToList();
+        var files = pl.Items.Where(PathExists).ToList();
         if (files.Count == 0) { ShowOsd("This playlist is empty"); return; }
 
         _queue.Clear();
@@ -1044,6 +1157,11 @@ public partial class MainWindow
     private void PlAddTo_Click(object sender, RoutedEventArgs e)
     {
         if (PlaylistFor(sender) is not { } pl) return;
+        if (_anon)
+        {
+            Notify("Use the ··· menu on an item and choose Add to");
+            return;
+        }
         var dlg = new OpenFileDialog { Title = "Add to playlist", Filter = MediaTypes.DialogFilter, Multiselect = true };
         if (dlg.ShowDialog(this) == true) AddToPlaylist(pl, dlg.FileNames);
     }
@@ -1075,6 +1193,12 @@ public partial class MainWindow
 
     private void ChangeCover(Playlist pl)
     {
+        if (_anon)
+        {
+            Notify("Cover pictures aren't available in Anonymous Mode");
+            return;
+        }
+
         var dlg = new OpenFileDialog
         {
             Title = "Choose a cover picture",
@@ -1172,9 +1296,7 @@ public partial class MainWindow
 
         BrowserEntry Row(string path)
         {
-            var entry = new BrowserEntry(Path.GetFileNameWithoutExtension(path), path,
-                MediaTypes.IsAudio(path) ? EntryKind.Audio : EntryKind.Video,
-                Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
+            var entry = EntryForPath(path);
             entry.IsPlaying = playingPath != null && string.Equals(path, playingPath, StringComparison.OrdinalIgnoreCase);
             return entry;
         }
@@ -1201,7 +1323,7 @@ public partial class MainWindow
         }
         else
         {
-            foreach (var path in _sidePlaylist.Items.Where(File.Exists)) items.Add(Row(path));
+            foreach (var path in _sidePlaylist.Items.Where(PathExists)) items.Add(Row(path));
             emptyText = "This playlist is empty.";
             emptyButton = "Add files";
             SideAddButton.ToolTip = "Add files to this playlist";
@@ -1228,6 +1350,7 @@ public partial class MainWindow
     {
         if (_sideMode == SideMode.Queue) { AddFiles_Click(sender, e); return; }
         if (_sidePlaylist == null) { NewPlaylist_Click(sender, e); return; }
+        if (_anon) { Notify("Use the ··· menu on an item and choose Add to"); return; }
 
         var dlg = new OpenFileDialog { Title = "Add to playlist", Filter = MediaTypes.DialogFilter, Multiselect = true };
         if (dlg.ShowDialog(this) == true) AddToPlaylist(_sidePlaylist, dlg.FileNames);
@@ -1241,7 +1364,7 @@ public partial class MainWindow
 
     private void SideList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (SideList.SelectedItem is not BrowserEntry entry || _vault != null) return;
+        if (SideList.SelectedItem is not BrowserEntry entry) return;
 
         if (entry.IsPlaylist && entry.Playlist != null)
         {
@@ -1254,7 +1377,7 @@ public partial class MainWindow
         if (_sideMode == SideMode.Playlists && _sidePlaylist != null)
         {
             _queue.Clear();
-            foreach (var p in _sidePlaylist.Items.Where(File.Exists)) _queue.Add(new QueueItem(p));
+            foreach (var p in _sidePlaylist.Items.Where(PathExists)) _queue.Add(new QueueItem(p));
         }
         PlayNormal(entry.FullPath);
         RootGrid.Focus();
@@ -1262,7 +1385,7 @@ public partial class MainWindow
 
     private void SideItem_RightClick(object sender, MouseButtonEventArgs e)
     {
-        if (EntryOf(sender) is not { } entry || _vault != null) return;
+        if (EntryOf(sender) is not { } entry) return;
         e.Handled = true;
 
         var menu = new ContextMenu { Placement = PlacementMode.MousePoint };
@@ -1338,16 +1461,15 @@ public partial class MainWindow
     {
         _sidebarVisible = visible;
         ControlsPlaylistToggle.IsChecked = visible;
-        SidebarPanel.Visibility = visible && !_isFullscreen && _vault == null && !_libraryVisible
+        SidebarPanel.Visibility = visible && !_isFullscreen && !_libraryVisible
             ? Visibility.Visible : Visibility.Collapsed;
-        SchedulePositionVault();
     }
 
     // ------------------------------------------------------------------ queue navigation
 
     private void PlayAdjacent(int delta)
     {
-        if (_vault != null || _queue.Count == 0) return;
+        if (_queue.Count == 0) return;
 
         if (_cfg.Shuffle && _queue.Count > 1)
         {
@@ -1365,7 +1487,6 @@ public partial class MainWindow
     private void OnEndReached()
     {
         ResetTransport();
-        if (_vault != null) return; // a vault item that ends never touches the playlist
 
         if (_cfg.Loop == LoopMode.One && _queueIndex >= 0 && _queueIndex < _queue.Count)
         {

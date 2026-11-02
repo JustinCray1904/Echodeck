@@ -5,7 +5,12 @@ using System.Text.Json;
 
 namespace EchoDeck;
 
-public sealed record VaultMeta(string Name, long Length, string? Origin = null);
+/// <summary>
+/// The encrypted header of a vault file. Besides the name, size and original folder it carries the song / video details
+/// read at import (all optional, so files imported by earlier builds still open and just show no details).
+/// </summary>
+public sealed record VaultMeta(string Name, long Length, string? Origin = null,
+    string? Title = null, string? Artist = null, string? Album = null, string? Genre = null, long DurationMs = 0);
 
 /// <summary>
 /// On-disk format ("SVV1"). Each file gets its own random salt and AES-256-GCM key (HKDF from the master key),
@@ -27,7 +32,17 @@ public static class VaultFormat
     public const int TagSize = 16;
     public const int ChunkSize = 256 * 1024;
 
-    private const int MaxMetaSize = 4096;
+    private const int MaxMetaSize = 16384;
+    private const int MaxFieldChars = 120;
+
+    // Keep non-ASCII text as real UTF-8 in the header (the default escapes it to \uXXXX and would bloat the block).
+    private static readonly JsonSerializerOptions MetaJson = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private static string? Cap(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : (value.Length <= MaxFieldChars ? value : value.Substring(0, MaxFieldChars));
     private static readonly byte[] Magic = { (byte)'S', (byte)'V', (byte)'V', 1 };
     private static readonly byte[] KeyInfo = Encoding.UTF8.GetBytes("svv-file-key-v1");
 
@@ -41,7 +56,8 @@ public static class VaultFormat
         HKDF.DeriveKey(HashAlgorithmName.SHA256, masterKey, 32, salt, KeyInfo);
 
     /// <summary>Encrypts <paramref name="sourcePath"/> into a new vault file (written to .part, then renamed).</summary>
-    internal static void EncryptFile(string sourcePath, string destPath, byte[] masterKey, string originalName, string? origin = null)
+    internal static void EncryptFile(string sourcePath, string destPath, byte[] masterKey, string originalName,
+        string? origin = null, TagInfo? tags = null)
     {
         using var src = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete, 1 << 20, FileOptions.SequentialScan);
@@ -54,7 +70,9 @@ public static class VaultFormat
         try
         {
             using var aes = new AesGcm(fileKey, TagSize);
-            var meta = JsonSerializer.SerializeToUtf8Bytes(new VaultMeta(originalName, length, origin));
+            var meta = JsonSerializer.SerializeToUtf8Bytes(new VaultMeta(originalName, length, origin,
+                Cap(tags?.Title), Cap(tags?.Artist), Cap(tags?.Album), Cap(tags?.Genre),
+                Math.Max(0, (tags?.DurationSeconds ?? 0) * 1000)), MetaJson);
 
             using (var dst = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
             {

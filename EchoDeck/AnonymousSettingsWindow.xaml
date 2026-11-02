@@ -105,7 +105,7 @@
                     <StackPanel Width="440" HorizontalAlignment="Left">
                         <TextBlock Text="Passcode" Style="{StaticResource PageTitle}"/>
                         <TextBlock Style="{StaticResource HintText}" Margin="0,6,0,18"
-                                   Text="Hold Ctrl and type your passcode anywhere in EchoDeck to switch to Anonymous Mode. 4 to 8 digits."/>
+                                   Text="Hold Ctrl and type your passcode anywhere in Tempo to switch to Anonymous Mode. 4 to 8 digits."/>
                         <TextBlock Text="Current passcode" Style="{StaticResource HintText}" Margin="0,0,0,4"/>
                         <PasswordBox x:Name="CurrentBox" Style="{StaticResource DarkPassword}" MaxLength="8"
                                      PreviewTextInput="Digits_PreviewTextInput"/>

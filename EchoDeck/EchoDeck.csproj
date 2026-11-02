@@ -7,9 +7,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <RootNamespace>EchoDeck</RootNamespace>
-    <AssemblyName>EchoDeck</AssemblyName>
-    <Product>EchoDeck</Product>
-    <Version>2.2.0</Version>
+    <AssemblyName>Tempo</AssemblyName>
+    <Product>Tempo</Product>
+    <Version>3.0.0</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 
@@ -40,12 +40,15 @@
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\logo.png" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="LibVLCSharp" Version="3.8.5" />
     <!-- Decodes a few hundred short slices of an audio file to draw the waveform seek bar -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- Reads song tags (title, artist, album, genre, length) straight from the file headers: fast, parallel, no COM -->
+    <PackageReference Include="TagLibSharp" Version="2.3.0" />
     <PackageReference Include="LibVLCSharp.WPF" Version="3.8.5" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.20" />
     <!-- DPAPI: protects the vault's master key with the current Windows account -->

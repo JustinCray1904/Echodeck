@@ -6,7 +6,7 @@ namespace EchoDeck;
 /// <summary>
 /// Persists the Anonymous Mode passcode (4 to 8 digits). Only a salted PBKDF2-SHA256 hash is stored (never the
 /// passcode itself) and the record is wrapped with Windows DPAPI for the current user, in
-/// %LOCALAPPDATA%\EchoDeck\pin.dat. Record layout: [length byte][16 byte salt][32 byte hash]
+/// %LOCALAPPDATA%\Tempo\pin.dat. Record layout: [length byte][16 byte salt][32 byte hash]
 /// (the older 48-byte layout without the length byte is read as a 4-digit passcode).
 /// There is no default passcode: until one is set, the Ctrl+passcode gesture is disabled.
 /// The passcode is a UI gate; the vault's data protection is its AES key (see KeyStore).

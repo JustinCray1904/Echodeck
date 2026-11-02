@@ -16,7 +16,7 @@ namespace EchoDeck;
 
 public partial class MainWindow : Window
 {
-    private const string AppName = "EchoDeck";
+    private const string AppName = "Tempo";
     private static readonly string[] AspectNames = { "Default", "16:9", "4:3", "1:1", "21:9", "16:10" };
     private static readonly double[] SpeedValues = { 0.5, 0.75, 1.0, 1.25, 1.5, 2.0 };
     private static readonly string[] SpeedNames = { "0.5x", "0.75x", "1x (normal)", "1.25x", "1.5x", "2x" };
@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private readonly IKeyInputSource _keys;
     private readonly PinDetector _pinDetector = new(PinStore.Verify, () => PinStore.Length);
     private readonly VaultService _vaultService = new();
-    private AnonymousPanelWindow? _vault;
+    private bool _anon;   // Anonymous Mode is on (the vault feeds the library pages, queue and playlists)
     private AnonymousSettingsWindow? _anonSettings;
     private PlaybackSnapshot? _snapshot;
     private bool _transition;   // the going-dark / lights-on animation is running
@@ -102,13 +102,10 @@ public partial class MainWindow : Window
             ShowContextMenu();
         };
 
-        LocationChanged += (_, _) => SchedulePositionVault();
-        SizeChanged += (_, _) => SchedulePositionVault();
         StateChanged += (_, _) =>
         {
             OnWindowStateChanged();
-            SchedulePositionVault();
-            if (WindowState == WindowState.Minimized && _vault != null && _cfg.AnonymousExitOnMinimize)
+            if (WindowState == WindowState.Minimized && _anon && _cfg.AnonymousExitOnMinimize)
                 ExitAnonymous(animate: false);
         };
     }
@@ -137,9 +134,6 @@ public partial class MainWindow : Window
                 AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        // The Anonymous pill must never float above other applications: hide it while the app is in the background.
-        Application.Current.Activated += App_Activated;
-        Application.Current.Deactivated += App_Deactivated;
         AppSettings.Changed += OnSettingsChanged;
 
         VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
@@ -152,13 +146,13 @@ public partial class MainWindow : Window
         UpdateShuffleUi();
         UpdateTransportEnabled();
 
-        // The window (with the EchoDeck logo) is already on screen here. Starting LibVLC scans its plugins, which is the
+        // The window (with the Tempo logo) is already on screen here. Starting LibVLC scans its plugins, which is the
         // slow part of start-up, so it runs off the UI thread instead of freezing the window.
         await CreatePlayerAsync();
 
         // The video surface was created while visible; only now is the library shown on top of it.
         ShowLibrary(true);
-        StartupFlow();
+        await StartupFlowAsync();
     }
 
     private async Task CreatePlayerAsync()
@@ -190,14 +184,16 @@ public partial class MainWindow : Window
         VideoView.MediaPlayer = _player;
     }
 
-    private void StartupFlow()
+    private async Task StartupFlowAsync()
     {
+        // First launch: the logo splash has covered the screen while the player started; let it finish, then the tour.
+        await App.FinishSplashAsync();
         if (!_cfg.OnboardingDone) ShowOnboarding();
 
         PlaylistStore.EnsureLoaded();
         SetMode(_cfg.StartPage switch { "Home" => LibMode.Home, "Blank" => LibMode.Blank, _ => LibMode.Recent });
 
-        // Command line / "Open with": EchoDeck.exe "C:\path\video.mp4"
+        // Command line / "Open with": Tempo.exe "C:\path\video.mp4"
         var file = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(MediaTypes.IsSupportedFile);
         if (file != null) PlayNormal(file);
     }
@@ -214,8 +210,6 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        Application.Current.Activated -= App_Activated;
-        Application.Current.Deactivated -= App_Deactivated;
         AppSettings.Changed -= OnSettingsChanged;
         NativeMethods.KeepAwake(false);
         _waveCts?.Cancel();
@@ -223,7 +217,7 @@ public partial class MainWindow : Window
 
         _keys.Dispose();
         _anonSettings?.Close();
-        _vault?.Close();
+        LibraryScanner.Shutdown();   // keep what the scan has read so far
         _vaultStream?.Dispose();
         _vaultService.Lock();
 
@@ -241,15 +235,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private void App_Deactivated(object? sender, EventArgs e) => _vault?.Hide();
-
-    private void App_Activated(object? sender, EventArgs e)
-    {
-        if (_vault == null || _transition) return;
-        _vault.Show();
-        PositionVault();
-    }
-
     private string _folderSig = "";
 
     private string FolderSignature() =>
@@ -257,7 +242,7 @@ public partial class MainWindow : Window
 
     private void OnSettingsChanged()
     {
-        if (_vault == null) ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex);
+        if (!_anon) ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex);
         ApplyVideoAdjust();
         UpdateLoopUi();
         WaveBar.InvalidateVisual();
@@ -301,17 +286,23 @@ public partial class MainWindow : Window
         if (on) { QuickPopup.IsOpen = false; HighlightNav(); }
         else SetNavChecked(null);
 
-        SidebarPanel.Visibility = !on && _sidebarVisible && !_isFullscreen && _vault == null
+        SidebarPanel.Visibility = !on && _sidebarVisible && !_isFullscreen
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateMiniPlayer();
-        SchedulePositionVault();
     }
 
     private void NavAdd_Click(object sender, RoutedEventArgs e)
     {
         NavAdd.IsChecked = false;
         var menu = new ContextMenu { PlacementTarget = NavAdd, Placement = PlacementMode.Right };
+        if (_anon)
+        {
+            menu.Items.Add(MenuEntry("Import files…", "IcoImport", ImportFiles_Click, "Ctrl+O"));
+            menu.Items.Add(MenuEntry("Import folder…", "IcoFolder", ImportFolder_Click));
+            menu.IsOpen = true;
+            return;
+        }
         menu.Items.Add(MenuEntry("Open file(s)…", "IcoVideo", Open_Click, "Ctrl+O"));
         menu.Items.Add(MenuEntry("Open folder…", "IcoFolder", OpenFolder_Click));
         menu.IsOpen = true;
@@ -321,7 +312,8 @@ public partial class MainWindow : Window
 
     private void PlayNormal(string path)
     {
-        if (_vault != null || _libVlc is null) return;
+        if (_libVlc is null) return;
+        if (_anon) { PlayVaultPath(path); return; }
 
         var existing = _queue.FirstOrDefault(q => string.Equals(q.FullPath, path, StringComparison.OrdinalIgnoreCase));
         if (existing == null)
@@ -386,7 +378,7 @@ public partial class MainWindow : Window
         if (!_hasMedia)
         {
             // Nothing loaded: start the first queued item (never in Anonymous Mode, which has its own list).
-            if (_vault == null && _queue.Count > 0) PlayNormal(_queue[Math.Max(0, _queueIndex)].FullPath);
+            if (_queue.Count > 0) PlayNormal(_queue[Math.Max(0, _queueIndex)].FullPath);
             return;
         }
         if (_player.IsPlaying) _player.Pause(); else _player.Play();
@@ -417,7 +409,7 @@ public partial class MainWindow : Window
             ApplyVideoAdjust();
             if (Math.Abs(_cfg.DefaultSpeed - 1.0) > 0.001) _player.SetRate((float)_cfg.DefaultSpeed);
             if (!_cfg.SubtitlesOnByDefault) _player.SetSpu(-1);
-            if (_cfg.StartFullscreen && !_isFullscreen && !_currentIsAudio && _vault == null) ToggleFullscreen();
+            if (_cfg.StartFullscreen && !_isFullscreen && !_currentIsAudio && !_anon) ToggleFullscreen();
         }
     });
 
@@ -523,15 +515,15 @@ public partial class MainWindow : Window
         FwdButton.IsEnabled = has;
         AudioButton.IsEnabled = has;
         SubtitleButton.IsEnabled = has;
-        PrevButton.IsEnabled = _vault == null && _queue.Count > 1;
-        NextButton.IsEnabled = _vault == null && _queue.Count > 1;
-        PlayPauseButton.IsEnabled = has || (_vault == null && _queue.Count > 0);
+        PrevButton.IsEnabled = _queue.Count > 1;
+        NextButton.IsEnabled = _queue.Count > 1;
+        PlayPauseButton.IsEnabled = has || _queue.Count > 0;
         UpdateMiniPlayer();
     }
 
     private void UpdateMiniPlayer()
     {
-        MiniPlayer.Visibility = _libraryVisible && _hasMedia && _vault == null ? Visibility.Visible : Visibility.Collapsed;
+        MiniPlayer.Visibility = _libraryVisible && _hasMedia ? Visibility.Visible : Visibility.Collapsed;
         ApplyPlayerLayout();
     }
 
@@ -586,7 +578,7 @@ public partial class MainWindow : Window
             var raw = ShellThumbnail.Get(path, 600, 600, biggerOk: true);
             return raw == null ? null : ShellThumbnail.TrimBorders(raw);
         });
-        if (bmp == null || _vault != null) return;
+        if (bmp == null || _anon) return;
         if (!string.Equals(_queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex].FullPath : "", path,
                 StringComparison.OrdinalIgnoreCase)) return;
         CoverCircle.Fill = new System.Windows.Media.ImageBrush(bmp) { Stretch = System.Windows.Media.Stretch.UniformToFill };
@@ -630,7 +622,7 @@ public partial class MainWindow : Window
     private void Shuffle_Click(object sender, RoutedEventArgs e)
     {
         _cfg.Shuffle = (sender as ToggleButton)?.IsChecked == true;
-        if (_vault == null) _cfg.Save(notify: false);
+        if (!_anon) _cfg.Save(notify: false);
         UpdateShuffleUi();
     }
 
@@ -644,7 +636,7 @@ public partial class MainWindow : Window
     private void Loop_Click(object sender, RoutedEventArgs e)
     {
         _cfg.Loop = _cfg.Loop switch { LoopMode.Off => LoopMode.All, LoopMode.All => LoopMode.One, _ => LoopMode.Off };
-        if (_vault == null) _cfg.Save(notify: false);
+        if (!_anon) _cfg.Save(notify: false);
         UpdateLoopUi();
     }
 
@@ -709,15 +701,21 @@ public partial class MainWindow : Window
     {
         var menu = new ContextMenu { PlacementTarget = sender as UIElement ?? MenuButton, Placement = PlacementMode.Bottom };
 
-        if (_vault == null)
+        if (!_anon)
         {
             menu.Items.Add(MenuEntry("Open file(s)", "IcoVideo", Open_Click, "Ctrl+O"));
             menu.Items.Add(MenuEntry("Open folder", "IcoFolder", OpenFolder_Click));
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Keyboard shortcuts", "IcoKeyboard", Shortcuts_Click));
         }
+        else
+        {
+            menu.Items.Add(MenuEntry("Import files…", "IcoImport", ImportFiles_Click, "Ctrl+O"));
+            menu.Items.Add(MenuEntry("Import folder…", "IcoFolder", ImportFolder_Click));
+            menu.Items.Add(new Separator());
+        }
         menu.Items.Add(MenuEntry("Settings", "IcoSettings", AllSettings_Click, "Ctrl+,"));
-        menu.Items.Add(MenuEntry("About EchoDeck", "IcoInfo", About_Click));
+        menu.Items.Add(MenuEntry("About Tempo", "IcoInfo", About_Click));
         menu.Items.Add(new Separator());
         menu.Items.Add(MenuEntry("Exit", "IcoClose", Close_Click));
         menu.IsOpen = true;
@@ -732,12 +730,11 @@ public partial class MainWindow : Window
         if (!_libraryVisible)
         {
             menu.Items.Add(MenuEntry(_player != null && _player.IsPlaying ? "Pause" : "Play", "IcoPlay", PlayPause_Click, "Space"));
-            if (_vault == null)
             {
                 menu.Items.Add(MenuEntry("Previous", "IcoPrevious", Previous_Click, "Shift+,"));
                 menu.Items.Add(MenuEntry("Next", "IcoNext", Next_Click, "Shift+."));
                 menu.Items.Add(new Separator());
-                menu.Items.Add(MenuEntry("Open file(s)", "IcoVideo", Open_Click, "Ctrl+O"));
+                if (!_anon) menu.Items.Add(MenuEntry("Open file(s)", "IcoVideo", Open_Click, "Ctrl+O"));
                 menu.Items.Add(MenuEntry("Show play queue", "IcoPlaylist", (_, _) => ShowSide(SideMode.Queue), "Q"));
                 menu.Items.Add(MenuEntry("Show playlists", "IcoPlaylist", (_, _) => ShowSide(SideMode.Playlists), "P"));
                 if (_hasMedia && _queueIndex >= 0 && _queueIndex < _queue.Count)
@@ -754,13 +751,20 @@ public partial class MainWindow : Window
             menu.Items.Add(MenuEntry("Video settings", "IcoSettings", (_, _) => OpenQuick(QTabVideo, forceOpen: true)));
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Fullscreen", "IcoFullscreen", Fullscreen_Click, "F"));
-            if (_vault == null)
-                menu.Items.Add(MenuEntry("Back to library", "IcoHome", (_, _) => ShowLibrary(true), "Backspace"));
+            menu.Items.Add(MenuEntry("Back to library", "IcoHome", (_, _) => ShowLibrary(true), "Backspace"));
         }
-        else if (_vault == null)
+        else
         {
-            menu.Items.Add(MenuEntry("Open file(s)", "IcoVideo", Open_Click, "Ctrl+O"));
-            menu.Items.Add(MenuEntry("Open folder", "IcoFolder", OpenFolder_Click));
+            if (_anon)
+            {
+                menu.Items.Add(MenuEntry("Import files…", "IcoImport", ImportFiles_Click, "Ctrl+O"));
+                menu.Items.Add(MenuEntry("Import folder…", "IcoFolder", ImportFolder_Click));
+            }
+            else
+            {
+                menu.Items.Add(MenuEntry("Open file(s)", "IcoVideo", Open_Click, "Ctrl+O"));
+                menu.Items.Add(MenuEntry("Open folder", "IcoFolder", OpenFolder_Click));
+            }
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Settings", "IcoSettings", AllSettings_Click, "Ctrl+,"));
         }
@@ -771,8 +775,8 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        MessageBox.Show(this, $"EchoDeck {v?.Major}.{v?.Minor}.{v?.Build}\nA modern media player built on LibVLC.",
-            "About EchoDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show(this, $"Tempo {v?.Major}.{v?.Minor}.{v?.Build}\nA modern media player built on LibVLC.",
+            "About Tempo", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void Shortcuts_Click(object sender, RoutedEventArgs e) => ShowSettings("controls");
@@ -782,13 +786,13 @@ public partial class MainWindow : Window
 
     private void AllSettings_Click(object sender, RoutedEventArgs e)
     {
-        if (_vault != null) OpenAnonymousSettings();
+        if (_anon) OpenAnonymousSettings();
         else ShowSettings(null);
     }
 
     private void ShowSettings(string? page)
     {
-        if (_vault != null || _modalOpen) return;
+        if (_anon || _modalOpen) return;
         _modalOpen = true;
         try { new SettingsWindow(page) { Owner = this }.ShowDialog(); }
         finally { _modalOpen = false; }
@@ -857,7 +861,7 @@ public partial class MainWindow : Window
             FillTrackCombo(QAudioCombo, _quickAudioIds, audio: true);
             FillTrackCombo(QSubCombo, _quickSubIds, audio: false);
             QAudioHint.Text = QAudioCombo.Items.Count == 0 ? "Nothing is playing yet." : "";
-            QAddSubButton.IsEnabled = _hasMedia && _vault == null;
+            QAddSubButton.IsEnabled = _hasMedia && !_anon;
         }
         finally
         {
@@ -948,14 +952,14 @@ public partial class MainWindow : Window
     private void CommitPlayerSetting()
     {
         ApplyVideoAdjust();
-        if (_vault == null) _cfg.Save(notify: false);
+        if (!_anon) _cfg.Save(notify: false);
     }
 
     private void QuickAddSub_Click(object sender, RoutedEventArgs e) => AddSubtitleFile();
 
     private void AddSubtitleFile()
     {
-        if (_player is null || !_hasMedia || _vault != null) return;
+        if (_player is null || !_hasMedia || _anon) return;
         var dlg = new OpenFileDialog
         {
             Title = "Add subtitle file",
@@ -970,7 +974,7 @@ public partial class MainWindow : Window
 
     private void Open_Click(object sender, RoutedEventArgs e)
     {
-        if (_vault != null) return;
+        if (_anon) { ImportFiles_Click(sender, e); return; }
         var dlg = new OpenFileDialog { Title = "Open media", Filter = MediaTypes.DialogFilter, Multiselect = true };
         if (dlg.ShowDialog(this) != true) return;
 
@@ -988,7 +992,7 @@ public partial class MainWindow : Window
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (_vault != null) return;
+        if (_anon) { ImportFolder_Click(sender, e); return; }
         var dlg = new OpenFolderDialog { Title = "Choose a media folder" };
         if (dlg.ShowDialog(this) != true) return;
 
@@ -1000,7 +1004,11 @@ public partial class MainWindow : Window
 
     private void AddFiles_Click(object sender, RoutedEventArgs e)
     {
-        if (_vault != null) return;
+        if (_anon)
+        {
+            Notify("Use the ··· menu on an item and choose Add to");
+            return;
+        }
         var dlg = new OpenFileDialog { Title = "Add to playlist", Filter = MediaTypes.DialogFilter, Multiselect = true };
         if (dlg.ShowDialog(this) != true) return;
 
@@ -1068,7 +1076,7 @@ public partial class MainWindow : Window
     private void TakeSnapshot()
     {
         // Never in Anonymous Mode: a screenshot of decrypted video would be written to disk in the clear.
-        if (_player is null || !_hasMedia || _vault != null || _currentIsAudio) return;
+        if (_player is null || !_hasMedia || _anon || _currentIsAudio) return;
         try
         {
             var dir = !string.IsNullOrWhiteSpace(_cfg.SnapshotFolder)
@@ -1096,7 +1104,7 @@ public partial class MainWindow : Window
         TopBar.Visibility = v;
         if (visible) ApplyRail(); else Rail.Visibility = Visibility.Collapsed;
         if (visible) ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
-        SidebarPanel.Visibility = visible && _sidebarVisible && _vault == null && !_libraryVisible ? Visibility.Visible : Visibility.Collapsed;
+        SidebarPanel.Visibility = visible && _sidebarVisible && !_anon && !_libraryVisible ? Visibility.Visible : Visibility.Collapsed;
         if (!visible) QuickPopup.IsOpen = false;
         ContentGrid.Margin = visible ? new Thickness(8, 0, 8, 8) : new Thickness(0);
 
@@ -1109,8 +1117,8 @@ public partial class MainWindow : Window
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        if (_vault != null) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] items || items.Length == 0) return;
+        if (_anon) { _ = ImportDroppedAsync(items); return; }
 
         var folder = items.FirstOrDefault(Directory.Exists);
         if (folder != null)
@@ -1134,7 +1142,7 @@ public partial class MainWindow : Window
     {
         if (_player != null) _player.Volume = (int)e.NewValue;
         VolumeText.Text = (int)e.NewValue + "%";
-        if (IsLoaded && _vault == null && !_transition)
+        if (IsLoaded && !_anon && !_transition)
         {
             _cfg.Volume = (int)e.NewValue;
             _volumeSaveTimer ??= CreateVolumeSaveTimer();
@@ -1225,7 +1233,6 @@ public partial class MainWindow : Window
             SetChromeVisible(true);
             OnWindowStateChanged();
         }
-        SchedulePositionVault();
     }
 
     // ------------------------------------------------------------------ keyboard (hotkeys, stealth trigger, panic)
@@ -1236,7 +1243,7 @@ public partial class MainWindow : Window
         // is in front; with the default WPF input it works whenever this app is active.)
         if (vk == NativeMethods.VK_ESCAPE)
         {
-            if (_vault != null) ExitAnonymous();
+            if (_anon) ExitAnonymous();
             else if (appActive && _isFullscreen && !_modalOpen) ToggleFullscreen();
             return;
         }
@@ -1252,7 +1259,7 @@ public partial class MainWindow : Window
         // Ctrl + passcode digits
         if (ctrl && PinDetector.TryGetDigit(vk, out char digit))
         {
-            if (_vault == null && PinStore.IsSet && _pinDetector.Push(digit)) EnterAnonymous();
+            if (!_anon && PinStore.IsSet && _pinDetector.Push(digit)) EnterAnonymous();
             return;
         }
 
@@ -1300,7 +1307,7 @@ public partial class MainWindow : Window
                 ShowSide(SideMode.Playlists);
                 break;
             case NativeMethods.VK_BACK:
-                if (_vault == null) ShowLibrary(true);
+                ShowLibrary(true);
                 break;
             case NativeMethods.VK_OEM_COMMA: if (shift) PlayAdjacent(-1); break;
             case NativeMethods.VK_OEM_PERIOD:
@@ -1309,375 +1316,5 @@ public partial class MainWindow : Window
                 break;
             case NativeMethods.VK_S: if (shift) TakeSnapshot(); break;
         }
-    }
-
-    // ------------------------------------------------------------------ Anonymous Mode
-
-    /// <summary>
-    /// Checks the vault key first, then plays the "going dark" splash and, while the screen is fully black,
-    /// stops the normal media, swaps the whole UI to the Anonymous theme and builds the pill.
-    /// </summary>
-    private async void EnterAnonymous()
-    {
-        if (_vault != null || _player is null || _transition || !PinStore.IsSet) return;
-        _transition = true;
-
-        AnonymousSplashWindow? splash = null;
-        try
-        {
-            // 0) Make sure the vault can be opened BEFORE anything changes on screen.
-            if (!TryUnlockVault()) return;
-
-            // 1) Freeze the normal media and remember exactly where it was.
-            string? mrl = null;
-            if (_hasMedia)
-            {
-                using var media = _player.Media;
-                mrl = media?.Mrl;
-            }
-            if (_player.IsPlaying) _player.SetPause(true);
-            _snapshot = mrl != null ? new PlaybackSnapshot(mrl, _player.Time, _currentIsAudio, _normalTitle) : null;
-
-            // 2) Going dark.
-            splash = new AnonymousSplashWindow(WindowHelper.GetScreenBoundsDip(this), entering: true);
-            splash.Show();
-            await splash.PlayDarkenAsync();
-
-            // 3) Under cover of the black screen: STOP the normal media (it must not keep sounding or be resumable
-            //    from the Anonymous controls), restyle the UI, build the pill.
-            var player = _player;
-            await Task.Run(() => player.Stop());
-            _hasMedia = false;
-            _lengthMs = 0;
-            ResetTransport();
-
-            ApplyAnonymousUi(true);
-            _vault = new AnonymousPanelWindow(_vaultService)
-            {
-                Owner = this,
-                PlayHandler = PlayVaultItem,
-                DeleteHandler = DeleteVaultItemAsync
-            };
-            _vault.EscapePressed += () => ExitAnonymous();
-            _vault.SettingsRequested += OpenAnonymousSettings;
-            UpdateTransportEnabled();
-            PositionVault();
-
-            // 4) Lights up in Anonymous Mode.
-            await splash.PlayRevealAsync();
-            splash.Close();
-            splash = null;
-
-            _vault.Show();
-            PositionVault();
-        }
-        catch (Exception ex)
-        {
-            try { splash?.Close(); } catch { }
-            MessageBox.Show(this, "Couldn't open Anonymous Mode: " + ex.Message, AppName,
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        finally
-        {
-            _transition = false;
-        }
-    }
-
-    /// <summary>Loads the vault key; if existing encrypted files have lost their key, offers to start a fresh vault.</summary>
-    private bool TryUnlockVault()
-    {
-        try
-        {
-            _vaultService.Unlock();
-            return true;
-        }
-        catch (FileNotFoundException)
-        {
-            var answer = MessageBox.Show(this,
-                "EchoDeck can't find the key for the encrypted files already in the vault, so they can't be opened.\n\n" +
-                "Start a new, empty vault? The old files are moved to an \"unreadable\" folder inside the vault folder " +
-                "and can't be recovered without their original key.",
-                "Anonymous Mode", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes) return false;
-
-            try
-            {
-                _vaultService.ResetUnreadable();
-                _vaultService.Unlock();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Couldn't start a new vault: " + ex.Message, AppName,
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Couldn't open the vault: " + ex.Message, AppName,
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            return false;
-        }
-    }
-
-    /// <summary>Restyles the player for (or back from) Anonymous Mode.</summary>
-    private void ApplyAnonymousUi(bool on)
-    {
-        ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex, anonymous: on);
-        Rail.IsEnabled = !on;
-        QuickPopup.IsOpen = false;
-        MiniPlayer.Visibility = Visibility.Collapsed;
-        WaveBar.InvalidateVisual();
-
-        if (on)
-        {
-            ShowLibrary(false);
-            SidebarPanel.Visibility = Visibility.Collapsed;
-            SetTitles(AppName);
-            ShowMusic(false, "", "");
-            EmptyHint.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            SidebarPanel.Visibility = _sidebarVisible && !_isFullscreen && !_libraryVisible ? Visibility.Visible : Visibility.Collapsed;
-        }
-    }
-
-    /// <summary>
-    /// Panic exit: destroy the pill, wipe vault state, restore the normal media exactly. All of that happens
-    /// immediately; the "lights on" animation is only cosmetic and plays over a black cover.
-    /// </summary>
-    private async void ExitAnonymous(bool animate = true)
-    {
-        var vault = _vault;
-        if (vault == null || _player is null || _transition) return;
-        _transition = true;
-
-        AnonymousSplashWindow? splash = null;
-        try
-        {
-            vault.Hide(); // gone from the screen right now
-
-            if (animate && WindowState != WindowState.Minimized)
-            {
-                try
-                {
-                    splash = new AnonymousSplashWindow(WindowHelper.GetScreenBoundsDip(this), entering: false);
-                    splash.Show();
-                    splash.SetBlack();
-                    await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render); // let the black cover paint first
-                }
-                catch { splash = null; }
-            }
-
-            _vault = null;
-            _anonSettings?.Close();
-            vault.Wipe();
-            vault.Close();
-            _waveCts?.Cancel();
-            WaveBar.Peaks = null;
-
-            var snapshot = _snapshot;
-            _snapshot = null;
-
-            if (snapshot != null)
-            {
-                // Reload the saved path, resume at the saved timestamp.
-                ShowMusic(snapshot.WasAudio, Path.GetFileNameWithoutExtension(snapshot.Title), "");
-                StartPlayback(snapshot.Mrl, snapshot.TimeMs, isMrl: true);
-                RetireCurrentVault();
-                _normalTitle = snapshot.Title;
-                if (snapshot.WasAudio)
-                {
-                    try { LoadWaveform(new Uri(snapshot.Mrl).LocalPath, null); } catch { /* flat bars */ }
-                }
-            }
-            else if (_hasMedia)
-            {
-                // Nothing was playing before: just stop the vault media.
-                _hasMedia = false;
-                var player = _player;
-                Task.Run(() => player.Stop()).ContinueWith(_ => Dispatcher.InvokeAsync(RetireCurrentVault));
-                ShowMusic(false, "", "");
-                EmptyHint.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                RetireCurrentVault();
-                EmptyHint.Visibility = Visibility.Visible;
-            }
-
-            _vaultService.Lock(); // zero the master key in memory
-            ApplyAnonymousUi(false);
-            SetTitles(snapshot != null ? _normalTitle : AppName);
-            if (snapshot == null)
-            {
-                ResetTransport();
-                ShowLibrary(true);
-            }
-            else
-            {
-                ShowLibrary(false);
-            }
-            UpdateTransportEnabled();
-
-            if (splash != null)
-            {
-                await splash.PlayRevealAsync();
-                splash.Close();
-                splash = null;
-            }
-        }
-        catch (Exception)
-        {
-            try { splash?.Close(); } catch { }
-        }
-        finally
-        {
-            _transition = false;
-        }
-    }
-
-    private async void OpenAnonymousSettings()
-    {
-        if (_vault == null || _anonSettings != null) return;
-
-        var win = new AnonymousSettingsWindow(_vaultService, PlayVaultItem, DeleteVaultItemAsync) { Owner = this };
-        _anonSettings = win;
-        _modalOpen = true;
-        try { win.ShowDialog(); }
-        finally
-        {
-            _anonSettings = null;
-            _modalOpen = false;
-        }
-
-        if (_vault != null) await _vault.RefreshAsync();
-        RootGrid.Focus();
-    }
-
-    /// <summary>Plays an encrypted vault file by decrypting it on the fly into LibVLC. Returns an error message or null.</summary>
-    private string? PlayVaultItem(VaultItem item)
-    {
-        if (_vault == null || _libVlc is null || _player is null) return "The player isn't ready.";
-
-        EncryptedVaultStream? stream = null;
-        try
-        {
-            stream = _vaultService.OpenRead(item.FullPath);
-            var input = new StreamMediaInput(stream);
-            var media = new Media(_libVlc, input);
-
-            _pendingSeekMs = null;
-            _firstPlay = true;
-            if (!_player.Play(media))
-            {
-                stream.Dispose();
-                media.Dispose();
-                return "LibVLC couldn't start playback.";
-            }
-
-            // Swap in the new vault media, then release the previous one.
-            var (oldStream, oldInput, oldMedia) = (_vaultStream, _vaultInput, _vaultMedia);
-            _vaultStream = stream;
-            _vaultInput = input;
-            _vaultMedia = media;
-            _vaultPath = item.FullPath;
-            _hasMedia = true;
-            _lengthMs = 0;
-            SeekBar.Progress = 0;
-            WaveBar.Progress = 0;
-
-            ShowMusic(item.IsAudio, Path.GetFileNameWithoutExtension(item.Name), "");
-            if (!item.IsAudio) EmptyHint.Visibility = Visibility.Collapsed;
-            UpdateTransportEnabled();
-
-            // The waveform reads through its OWN decrypting stream, so nothing is written anywhere.
-            if (item.IsAudio)
-            {
-                try { LoadWaveform(item.FullPath, _vaultService.OpenRead(item.FullPath)); } catch { /* flat bars */ }
-            }
-
-            RetireVault(oldStream, oldInput, oldMedia);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            stream?.Dispose();
-            return "Can't play: " + ex.Message;
-        }
-    }
-
-    /// <summary>
-    /// Permanently deletes a vault file. If it's the media LibVLC is reading, playback is stopped and the
-    /// stream released first, so Windows doesn't report "file in use".
-    /// </summary>
-    private async Task<string?> DeleteVaultItemAsync(VaultItem item)
-    {
-        var player = _player;
-        if (player != null && _vaultPath != null &&
-            string.Equals(_vaultPath, item.FullPath, StringComparison.OrdinalIgnoreCase))
-        {
-            _waveCts?.Cancel();
-            await Task.Run(() => player.Stop()); // off the UI thread: Stop can block
-            _hasMedia = false;
-            RetireCurrentVault();
-            ResetTransport();
-            ShowMusic(false, "", "");
-            EmptyHint.Visibility = Visibility.Visible;
-            UpdateTransportEnabled();
-        }
-
-        try
-        {
-            await _vaultService.SecureDeleteAsync(item.FullPath);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            return "Delete failed: " + ex.Message;
-        }
-    }
-
-    private void RetireCurrentVault()
-    {
-        var (stream, input, media) = (_vaultStream, _vaultInput, _vaultMedia);
-        _vaultStream = null;
-        _vaultInput = null;
-        _vaultMedia = null;
-        _vaultPath = null;
-        RetireVault(stream, input, media);
-    }
-
-    private static void RetireVault(EncryptedVaultStream? stream, StreamMediaInput? input, Media? media)
-    {
-        // Closing the stream releases the file handle right now; a late LibVLC read just sees end-of-stream.
-        stream?.Dispose();
-
-        if (input == null && media == null) return;
-
-        // Give LibVLC a moment to finish closing before its native wrappers are released.
-        Task.Run(async () =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(5));
-            try { media?.Dispose(); } catch { /* already released */ }
-            try { input?.Dispose(); } catch { /* already released */ }
-        });
-    }
-
-    private void SchedulePositionVault() => Dispatcher.InvokeAsync(PositionVault, DispatcherPriority.Loaded);
-
-    private void PositionVault()
-    {
-        if (_vault == null || !IsLoaded || WindowState == WindowState.Minimized) return;
-
-        var source = PresentationSource.FromVisual(VideoHost);
-        if (source?.CompositionTarget == null) return;
-
-        var devicePoint = VideoHost.PointToScreen(new Point(0, 0));
-        var dip = source.CompositionTarget.TransformFromDevice.Transform(devicePoint);
-        _vault.Left = dip.X + 14;
-        _vault.Top = dip.Y + 14;
     }
 }

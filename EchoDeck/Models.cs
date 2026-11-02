@@ -39,6 +39,9 @@ public sealed class BrowserEntry : INotifyPropertyChanged
     public bool Stripe { get; set; }
     public List<BrowserEntry>? Children { get; set; }
 
+    /// <summary>Anonymous Mode entry: its file is encrypted, so the thumbnail comes from the vault, not from Explorer.</summary>
+    public bool IsVault { get; set; }
+
     public bool IsAlbum => Kind == EntryKind.Album;
     public bool IsArtist => Kind == EntryKind.Artist;
     public string Initial => string.IsNullOrEmpty(Name) ? "?" : Name.Trim().Substring(0, 1).ToUpperInvariant();
@@ -138,8 +141,11 @@ public sealed class EntryRow
 /// <summary>One row in the play queue.</summary>
 public sealed record QueueItem(string FullPath)
 {
-    public string Name => Path.GetFileName(FullPath);
-    public Geometry Icon => IconSet.Get(MediaTypes.IsAudio(FullPath) ? "IcoMusic" : "IcoVideo");
+    /// <summary>Set while Anonymous Mode is on: maps an encrypted file's path to its real name and kind.</summary>
+    public static Func<string, (string Name, bool IsAudio)?>? Resolver { get; set; }
+
+    public string Name => Resolver?.Invoke(FullPath)?.Name ?? Path.GetFileName(FullPath);
+    public Geometry Icon => IconSet.Get((Resolver?.Invoke(FullPath)?.IsAudio ?? MediaTypes.IsAudio(FullPath)) ? "IcoMusic" : "IcoVideo");
 }
 
 internal static class IconSet
@@ -167,30 +173,45 @@ public sealed class Playlist
     public List<string> Items { get; set; } = new();
 }
 
-/// <summary>Playlists the user creates on purpose, saved to %LOCALAPPDATA%\EchoDeck\playlists.json.</summary>
+/// <summary>Playlists the user creates on purpose, saved to %LOCALAPPDATA%\Tempo\playlists.json.</summary>
 public static class PlaylistStore
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     private static bool _loaded;
+    private static List<Playlist> _normal = new();
+    private static VaultService? _vault;
 
-    public static List<Playlist> All { get; private set; } = new();
+    /// <summary>
+    /// The playlists the pages work with: the normal ones, or - while Anonymous Mode is on - the encrypted vault
+    /// playlists. Every playlist screen uses this one list, so it behaves the same in both modes.
+    /// </summary>
+    public static List<Playlist> All => _vault?.Playlists ?? _normal;
+
+    /// <summary>Switches playlists to the vault (Anonymous Mode on) or back to the normal ones (null).</summary>
+    internal static void UseVault(VaultService? vault) => _vault = vault;
 
     private static string FilePath => Path.Combine(AppPaths.DataDir, "playlists.json");
 
     public static void EnsureLoaded()
     {
-        if (_loaded) return;
+        if (_vault != null || _loaded) return;
         _loaded = true;
         try
         {
             if (File.Exists(FilePath))
-                All = JsonSerializer.Deserialize<List<Playlist>>(File.ReadAllText(FilePath)) ?? new List<Playlist>();
+                _normal = JsonSerializer.Deserialize<List<Playlist>>(File.ReadAllText(FilePath)) ?? new List<Playlist>();
         }
-        catch { All = new List<Playlist>(); }
+        catch { _normal = new List<Playlist>(); }
     }
 
     public static void Save()
     {
+        if (_vault != null)
+        {
+            _vault.SavePlaylists();
+            return;
+        }
+
         try
         {
             Directory.CreateDirectory(AppPaths.DataDir);
@@ -284,6 +305,9 @@ internal static class ThumbnailLoader
 {
     private static readonly SemaphoreSlim Gate = new(3);
 
+    /// <summary>Set while Anonymous Mode is on: decrypts a vault file's small encrypted thumbnail (in memory only).</summary>
+    public static Func<string, BitmapSource?>? VaultDecoder { get; set; }
+
     public static async void Request(BrowserEntry entry)
     {
         var source = entry.ThumbSource;
@@ -293,7 +317,8 @@ internal static class ThumbnailLoader
         try
         {
             if (!entry.Visible || entry.Thumbnail != null) return;
-            var bmp = await Task.Run(() => Decode(source));
+            bool vault = entry.IsVault;
+            var bmp = await Task.Run(() => vault ? VaultDecoder?.Invoke(source) : Decode(source));
             if (bmp != null && entry.Visible) entry.Thumbnail = bmp;
         }
         catch { /* thumbnails are optional */ }
@@ -351,186 +376,4 @@ public sealed class SelectionState : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
-}
-
-public sealed record Track(string Path, string Title, string Artist, string Album, string Genre, string Duration);
-
-/// <summary>
-/// Finds the media in the library folders and reads song details (artist, album, genre, length) through the same
-/// Windows shell properties Explorer shows. Both are cached per session and built off the UI thread.
-/// </summary>
-internal static class LibraryScanner
-{
-    private const int MaxFiles = 6000;
-    private static List<Track>? _tracks;
-    private static string _tracksKey = "";
-    private static Task<List<Track>>? _tracksTask;
-    private static List<string>? _videos;
-    private static string _videosKey = "";
-
-    /// <summary>Bumped whenever the cached scans are dropped, so pages know to rebuild.</summary>
-    public static int Version { get; private set; }
-
-    public static void Invalidate()
-    {
-        Version++;
-        _tracks = null;
-        _tracksTask = null;
-        _videos = null;
-    }
-
-    private static string Key(IEnumerable<string> folders) =>
-        string.Join("|", folders.Select(f => f.TrimEnd('\\').ToLowerInvariant()).OrderBy(f => f));
-
-    public static List<string> Enumerate(IEnumerable<string> folders, Func<string, bool> match)
-    {
-        var found = new List<string>();
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint
-        };
-
-        foreach (var root in folders.Where(Directory.Exists))
-        {
-            try
-            {
-                foreach (var f in Directory.EnumerateFiles(root, "*", options))
-                {
-                    if (!match(Path.GetExtension(f))) continue;
-                    found.Add(f);
-                    if (found.Count >= MaxFiles) return found;
-                }
-            }
-            catch { /* unreadable folder */ }
-        }
-        return found;
-    }
-
-    public static Task<List<string>> VideosAsync(IReadOnlyList<string> folders)
-    {
-        var key = Key(folders);
-        if (_videos != null && key == _videosKey) return Task.FromResult(_videos);
-
-        return Task.Run(() =>
-        {
-            var list = Enumerate(folders, e => MediaTypes.IsSupportedExtension(e) && !MediaTypes.IsAudioExtension(e));
-            list.Sort((a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b), StringComparison.CurrentCultureIgnoreCase));
-            _videos = list;
-            _videosKey = key;
-            return list;
-        });
-    }
-
-    public static Task<List<Track>> TracksAsync(IReadOnlyList<string> folders)
-    {
-        var key = Key(folders);
-        if (_tracks != null && key == _tracksKey) return Task.FromResult(_tracks);
-        if (_tracksTask != null && key == _tracksKey) return _tracksTask;
-
-        _tracksKey = key;
-        _tracksTask = Task.Run(async () =>
-        {
-            var files = Enumerate(folders, MediaTypes.IsAudioExtension);
-            var details = await ShellDetails.ReadAsync(files);
-
-            var list = new List<Track>(files.Count);
-            foreach (var f in files)
-            {
-                details.TryGetValue(f, out var d);
-                string title = d != null && d[0].Length > 0 ? d[0] : Path.GetFileNameWithoutExtension(f);
-                string artist = d != null && d[1].Length > 0 ? FirstArtist(d[1]) : "Unknown artist";
-                string album = d != null && d[2].Length > 0 ? d[2] : "Unknown album";
-                string genre = d != null && d[3].Length > 0 ? d[3] : "Unknown genre";
-                string length = d != null ? ShortLength(d[4]) : "";
-                list.Add(new Track(f, title, artist, album, genre, length));
-            }
-            list.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.CurrentCultureIgnoreCase));
-            _tracks = list;
-            return list;
-        });
-        return _tracksTask;
-    }
-
-    private static string FirstArtist(string s)
-    {
-        int i = s.IndexOf(';');
-        return (i > 0 ? s.Substring(0, i) : s).Trim();
-    }
-
-    /// <summary>Explorer reports 00:03:12; show 03:12 (and keep hours when there are any).</summary>
-    private static string ShortLength(string s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return "";
-        if (s.StartsWith("00:", StringComparison.Ordinal) && s.Length > 3) return s.Substring(3);
-        return s;
-    }
-}
-
-/// <summary>Reads the Explorer "details" columns of audio files (title, artist, album, genre, length).</summary>
-internal static class ShellDetails
-{
-    public static Task<Dictionary<string, string[]>> ReadAsync(IReadOnlyList<string> files)
-    {
-        var tcs = new TaskCompletionSource<Dictionary<string, string[]>>();
-        var thread = new Thread(() =>
-        {
-            try { tcs.SetResult(ReadSync(files)); }
-            catch { tcs.SetResult(new Dictionary<string, string[]>()); }
-        });
-        thread.SetApartmentState(ApartmentState.STA); // Shell.Application needs a single-threaded apartment
-        thread.IsBackground = true;
-        thread.Start();
-        return tcs.Task;
-    }
-
-    private static Dictionary<string, string[]> ReadSync(IReadOnlyList<string> files)
-    {
-        var result = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-        var type = Type.GetTypeFromProgID("Shell.Application");
-        if (type == null) return result;
-
-        dynamic shell = Activator.CreateInstance(type)!;
-        int cTitle = -1, cArtist = -1, cAlbum = -1, cGenre = -1, cLength = -1;
-
-        foreach (var group in files.GroupBy(f => Path.GetDirectoryName(f) ?? ""))
-        {
-            if (group.Key.Length == 0) continue;
-            dynamic? ns = null;
-            try { ns = shell.NameSpace(group.Key); } catch { }
-            if (ns == null) continue;
-
-            if (cTitle < 0)
-            {
-                // column numbers differ between Windows versions, so look them up by name once
-                for (int i = 0; i < 320; i++)
-                {
-                    string header;
-                    try { header = ((string?)ns.GetDetailsOf(null, i) ?? "").Trim().ToLowerInvariant(); }
-                    catch { continue; }
-
-                    if (header == "title" && cTitle < 0) cTitle = i;
-                    else if ((header == "contributing artists" || header == "artists" || header == "artist") && cArtist < 0) cArtist = i;
-                    else if (header == "album" && cAlbum < 0) cAlbum = i;
-                    else if (header == "genre" && cGenre < 0) cGenre = i;
-                    else if (header == "length" && cLength < 0) cLength = i;
-                }
-                if (cTitle < 0) cTitle = 21;
-            }
-
-            foreach (var file in group)
-            {
-                try
-                {
-                    dynamic? item = ns.ParseName(Path.GetFileName(file));
-                    if (item == null) continue;
-                    string Get(int col) => col < 0 ? "" : ((string?)ns.GetDetailsOf(item, col) ?? "").Trim();
-                    result[file] = new[] { Get(cTitle), Get(cArtist), Get(cAlbum), Get(cGenre), Get(cLength) };
-                }
-                catch { /* this file has no readable tags */ }
-            }
-        }
-        return result;
-    }
 }

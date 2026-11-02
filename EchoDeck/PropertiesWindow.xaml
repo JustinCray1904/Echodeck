@@ -48,7 +48,7 @@
                 <StackPanel Grid.Row="3" Grid.ColumnSpan="2">
                     <TextBlock Text="File location" Style="{StaticResource HintText}"/>
                     <TextBlock x:Name="LocationValue" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,8"/>
-                    <Button Content="Open file location" Background="Transparent" BorderThickness="0" Padding="0"
+                    <Button x:Name="OpenLocationButton" Content="Open file location" Background="Transparent" BorderThickness="0" Padding="0"
                             Foreground="{DynamicResource AccentBrush}" Style="{StaticResource FlatButton}" HorizontalAlignment="Left"
                             Click="OpenLocation_Click"/>
                 </StackPanel>
