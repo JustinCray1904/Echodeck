@@ -25,6 +25,14 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - Playlists are kept in `vault.db` (AES-GCM, key derived from the master key). Thumbnails are small encrypted sidecar files (`.svt`).
 - "Recent" in Anonymous Mode lives in memory only and is wiped on exit. Files imported by earlier builds have no stored details (shown as Unknown artist / album); import them again to add them.
 
+## Lyrics, keys and Windows integration
+- **Lyrics**: the Lyrics button in the music view loads a `.lrc` (timed, preferred) or `.txt` with the song's exact file name from the same folder. The line being sung glows and the list glides to it; double-click a line to jump there. **Edit** opens the editor: paste text, press *Stamp line* (Ctrl+Enter) as each line starts, nudge all times, save.
+- **AI lyrics** (optional, offline): put whisper.cpp's `whisper-cli.exe` and a `ggml-*.bin` model in `%LOCALAPPDATA%\Tempo\whisper` (or choose them in Settings > Lyrics), then *Generate with AI*. Nothing leaves the PC. Not available in Anonymous Mode.
+- **System-wide keys**: the keyboard's media keys (and Ctrl+Alt+Space / arrows) control Tempo while it is minimised. Volume keys can optionally control Tempo's volume.
+- **Taskbar**: Previous / Play-Pause / Next in the taskbar preview and progress on the taskbar icon (off in Anonymous Mode).
+- **Default player**: Settings > General > "Open media files with Tempo" registers the common formats for the current user.
+- **Shortcuts**: B shows / hides the side bar next to the player (the pages keep theirs), A cycles the audio track.
+
 ## First launch
 A fresh install (the installer drops `fresh-install.flag`) shows the logo splash and then the onboarding tour. To see it again by hand, delete `%LOCALAPPDATA%\Tempo\settings.json` (never `vault.key`).
 
