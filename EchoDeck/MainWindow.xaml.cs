@@ -227,6 +227,7 @@ public partial class MainWindow : Window
         _keys.Dispose();
         _anonSettings?.Close();
         LibraryScanner.Shutdown();   // keep what the scan has read so far
+        CommitResume();
         _lyricsCts?.Cancel();
         _lyricsEditor?.Close();
         ReleaseShell();
@@ -335,6 +336,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        StopResumeTracking();   // remember where the previous video was left
+
         var existing = _queue.FirstOrDefault(q => string.Equals(q.FullPath, path, StringComparison.OrdinalIgnoreCase));
         if (existing == null)
         {
@@ -353,6 +356,8 @@ public partial class MainWindow : Window
         if (stayInLibrary && _libraryVisible) UpdateMiniPlayer(); else ShowLibrary(false);
         StartPlayback(path, 0, isMrl: false);
         LoadLyricsFor(path, audio);
+        BeginResumeTracking(path, audio);
+        MaybeOfferResume(path, audio, inMini: stayInLibrary && _libraryVisible);
 
         if (audio) LoadWaveform(path, null);
         else WaveBar.Peaks = null;
@@ -477,6 +482,7 @@ public partial class MainWindow : Window
         {
             TimeText.Text = Fmt(t);
             UpdateLyrics(t);
+            TrackResume(t);
             UpdateTaskbarProgress(t);
             if (_lengthMs > 0) Visualizer.SetPosition((double)t / _lengthMs, _lengthMs / 1000.0);
             if (_lengthMs <= 0) return;

@@ -439,6 +439,7 @@ public partial class MainWindow
             var items = await _vaultService.ListAsync();
 
             // 1) Freeze the normal media and remember exactly where it was.
+            StopResumeTracking();   // the video's spot is saved for "continue where you left off"
             string? mrl = null;
             if (_hasMedia)
             {
@@ -741,6 +742,8 @@ public partial class MainWindow
 
     private string? StartVault(string path, bool stayInLibrary = false)
     {
+        _resumePath = null;                   // never remembered in Anonymous Mode
+        HideResumePrompt(animate: false);
         if (!_anon || !_anonItems.TryGetValue(path, out var item)) return "That item isn't in the vault any more.";
 
         var existing = _queue.FirstOrDefault(q => string.Equals(q.FullPath, path, StringComparison.OrdinalIgnoreCase));

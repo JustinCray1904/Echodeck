@@ -80,6 +80,8 @@ public partial class MainWindow
         var player = _player;
         if (player == null) return;
 
+        StopResumeTracking();
+
         _waveCts?.Cancel();
         await Task.Run(() => player.Stop());
         _hasMedia = false;

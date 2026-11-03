@@ -73,6 +73,7 @@ public partial class SettingsWindow : Window
         AwakeSwitch.IsChecked = _cfg.KeepAwake;
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
         SubsOnSwitch.IsChecked = _cfg.SubtitlesOnByDefault;
+        ResumeSwitch.IsChecked = _cfg.RememberPosition;
         GlobalKeysSwitch.IsChecked = _cfg.GlobalMediaKeys;
         GlobalVolSwitch.IsChecked = _cfg.GlobalVolumeKeys;
         GlobalVolSwitch.IsEnabled = _cfg.GlobalMediaKeys;
@@ -230,6 +231,7 @@ public partial class SettingsWindow : Window
             case nameof(AwakeSwitch): _cfg.KeepAwake = on; break;
             case nameof(HwSwitch): _cfg.HardwareDecoding = on; HwModeCombo.IsEnabled = on; break;
             case nameof(SubsOnSwitch): _cfg.SubtitlesOnByDefault = on; break;
+            case nameof(ResumeSwitch): _cfg.RememberPosition = on; break;
             case nameof(GlobalKeysSwitch): _cfg.GlobalMediaKeys = on; GlobalVolSwitch.IsEnabled = on; break;
             case nameof(GlobalVolSwitch): _cfg.GlobalVolumeKeys = on; break;
             case nameof(TaskbarSwitch): _cfg.TaskbarControls = on; break;

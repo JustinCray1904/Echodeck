@@ -340,7 +340,17 @@
                             </StackPanel>
                             <ComboBox x:Name="SkipCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="5 seconds"/><ComboBoxItem Content="10 seconds"/><ComboBoxItem Content="15 seconds"/><ComboBoxItem Content="30 seconds"/></ComboBox>
                         </Grid>
-                    </StackPanel>
+                                            <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
+                        <TextBlock Text="Resume" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Continue where you left off"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Tempo remembers how far you watched a video and offers to continue the next time you play it. Never used in Anonymous Mode."/>
+                            </StackPanel>
+                            <CheckBox x:Name="ResumeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+</StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="PageVideo" VerticalScrollBarVisibility="Auto" Padding="30,24,30,24" Visibility="Collapsed">
                     <StackPanel>

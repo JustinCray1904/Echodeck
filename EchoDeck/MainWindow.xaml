@@ -961,6 +961,25 @@
                                     </StackPanel>
                                 </Border>
 
+                                <!-- "continue where you left off": small, just above the control bar -->
+                                <Border x:Name="ResumeCard" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                        Margin="0,0,0,26" Padding="14,8,8,8" CornerRadius="14"
+                                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black"/>
+                                    </Border.Effect>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="ResumeText" FontSize="13" VerticalAlignment="Center" Margin="0,0,14,0"
+                                                   Foreground="{DynamicResource TextBrush}"/>
+                                        <Button Content="Continue" Style="{StaticResource AccentButton}" Padding="12,5" FontSize="12" Margin="0,0,6,0"
+                                                Click="ResumeContinue_Click"/>
+                                        <Button Content="Start over" Style="{StaticResource FlatButton}" Padding="12,5" FontSize="12" Margin="0,0,2,0"
+                                                Click="ResumeDismiss_Click"/>
+                                        <Button Content="✕" Style="{StaticResource FlatButton}" Padding="8,5" FontSize="12" Background="Transparent" BorderThickness="0"
+                                                Click="ResumeDismiss_Click"/>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- the control bar floats here in fullscreen -->
                                 <Border x:Name="FloatingBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
                                         Margin="40,0,40,30" MaxWidth="1280" CornerRadius="20"

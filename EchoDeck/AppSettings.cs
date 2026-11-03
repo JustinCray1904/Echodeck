@@ -71,6 +71,7 @@ public sealed class AppSettings
     public bool TaskbarControls { get; set; } = true;     // taskbar thumbnail buttons + progress on the taskbar icon
 
     // ---- system-wide keys
+    public bool RememberPosition { get; set; } = true;    // offer to continue a video where it was left off
     public bool GlobalMediaKeys { get; set; } = true;     // Play/Pause, Next, Previous, Stop keys work with Tempo in the background
     public bool GlobalVolumeKeys { get; set; }            // volume keys change Tempo's volume instead of the system volume
 
