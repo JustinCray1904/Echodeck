@@ -310,10 +310,14 @@ public partial class MainWindow
 
         if (!WhisperService.IsReady(_cfg))
         {
-            var ask = MessageBox.Show(this,
-                "AI lyrics run on this PC with whisper.cpp, and it isn't set up yet.\n\nYou need the whisper.cpp program and a model file (for example ggml-base.en.bin). Open the Lyrics settings to choose them?",
-                "Generate lyrics", MessageBoxButton.YesNo, MessageBoxImage.Information);
-            if (ask == MessageBoxResult.Yes) ShowSettings("lyrics");
+            OfferWhisperSettings("AI lyrics run on this PC with whisper.cpp, and it isn't set up yet.\n\nYou need the whisper.cpp program and a model file (for example ggml-base.en.bin). Open the Lyrics settings to choose them?");
+            return;
+        }
+
+        var modelProblem = WhisperService.CheckModel(WhisperService.Resolve(_cfg).Model);
+        if (modelProblem != null)
+        {
+            OfferWhisperSettings("Model missing or invalid (" + modelProblem + ").\n\nOpen the Lyrics settings to choose a working model file?");
             return;
         }
 
@@ -365,9 +369,16 @@ public partial class MainWindow
         {
             Notify("Lyrics generation cancelled");
         }
+        catch (WhisperException ex) when (ex.SetupProblem)
+        {
+            OfferWhisperSettings(ex.Message + "\n\nOpen the Lyrics settings?");
+        }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Couldn't generate lyrics.\n\n" + ex.Message, "Generate lyrics", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // a failed transcription (or anything unexpected) is reported, never allowed to reach the crash handler
+            AppLog.Write("Generate lyrics", ex);
+            try { MessageBox.Show(this, "Couldn't generate lyrics.\n\n" + ex.Message, "Generate lyrics", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            catch { /* window closing */ }
         }
         finally
         {
@@ -375,6 +386,16 @@ public partial class MainWindow
             _lyricsBusyPath = null;
             UpdateLyricsBusyVisibility();
         }
+    }
+
+    private void OfferWhisperSettings(string message)
+    {
+        try
+        {
+            if (MessageBox.Show(this, message, "Generate lyrics", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+                ShowSettings("lyrics");
+        }
+        catch (Exception ex) { AppLog.Write("Whisper prompt", ex); }
     }
 
     private void LyricsCancel_Click(object sender, RoutedEventArgs e) => _lyricsCts?.Cancel();

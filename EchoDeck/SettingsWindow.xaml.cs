@@ -162,15 +162,26 @@ public partial class SettingsWindow : Window
 
     private void ToggleAssociation(CheckBox box, bool on)
     {
+        FileAssociations.Outcome outcome;
         try
         {
-            if (on) FileAssociations.Register(); else FileAssociations.Unregister();
+            outcome = on ? FileAssociations.Register() : FileAssociations.Unregister();
         }
         catch (Exception ex)
         {
-            box.IsChecked = !on;   // it didn't happen: show the real state
-            MessageBox.Show(this, "Couldn't change the file associations.\n\n" + ex.Message, "Tempo",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            // Register / Unregister already contain their failures; this is the last safety net
+            AppLog.Write("File associations", ex);
+            outcome = new FileAssociations.Outcome(false, 1, ex.Message);
+        }
+
+        if (!outcome.Succeeded)
+        {
+            // show what the registry really says now; playback and everything else are unaffected
+            box.IsChecked = FileAssociations.IsRegistered();
+            MessageBox.Show(this,
+                "Windows (or security software on this PC) blocked part of the change, so Tempo couldn't fully " + (on ? "register" : "unregister") +
+                " the file types.\n\nNothing else is affected. You can still choose Tempo under Settings > Apps > Default apps.\n\nDetails were written to " + AppLog.FilePath + ".",
+                "Tempo", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -207,13 +218,16 @@ public partial class SettingsWindow : Window
     private void UpdateWhisperStatus()
     {
         var (exe, model) = WhisperService.Resolve(_cfg);
+        var modelProblem = model == null ? null : WhisperService.CheckModel(model);
         WhisperExeText.Text = exe ?? "Not found yet";
-        WhisperModelText.Text = model ?? "Not found yet";
+        WhisperModelText.Text = model == null ? "Not found yet" : modelProblem == null ? model : model + "  (" + modelProblem + ")";
 
-        bool ready = exe != null && model != null;
+        bool ready = exe != null && model != null && modelProblem == null;
         WhisperStatusText.Text = ready
             ? "Ready: open a song, press Lyrics, then Generate with AI."
-            : "Choose both the program and a model to turn on AI lyrics.";
+            : modelProblem != null
+                ? "Model missing or invalid: " + modelProblem + ". Choose a working ggml model."
+                : "Choose both the program and a model to turn on AI lyrics.";
         WhisperStatusText.SetResourceReference(TextBlock.ForegroundProperty, ready ? "AccentBrush" : "MutedBrush");
     }
 

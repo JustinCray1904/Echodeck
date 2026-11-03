@@ -9,8 +9,9 @@ namespace EchoDeck;
 /// is separate XAML). It follows the song's own waveform peaks at the current position, so it really moves with the music,
 /// and settles down when playback pauses.
 /// </summary>
-public sealed class CircleVisualizer : FrameworkElement
+public sealed class CircleVisualizer : FrameworkElement, IDisposable
 {
+    private bool _disposed;
     private const int BarCount = 72;       // 36 per side, mirrored left / right
     private const double InnerRadius = 164;
     private const double MaxBar = 34;
@@ -62,8 +63,29 @@ public sealed class CircleVisualizer : FrameworkElement
 
     private void Sync()
     {
-        if (_style > 0 && IsLoaded && IsVisible) Subscribe(); else { Unsubscribe(); }
-        InvalidateVisual();
+        if (!_disposed && _style > 0 && IsLoaded && IsVisible) Subscribe(); else { Unsubscribe(); }
+        if (!_disposed) InvalidateVisual();
+    }
+
+    /// <summary>Stops the frame loop and drops the waveform: called when the window closes or the music view is torn down.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Unsubscribe();
+        _peaks = null;
+        _playing = false;
+        Tint = null;
+    }
+
+    /// <summary>Back to rest between songs: no waveform, no motion (the frame loop itself stays tied to visibility).</summary>
+    public void Reset()
+    {
+        _peaks = null;
+        _playing = false;
+        _fraction = 0;
+        _lengthSeconds = 0;
+        Array.Clear(_smooth, 0, _smooth.Length);
     }
 
     private void Subscribe()
@@ -82,6 +104,8 @@ public sealed class CircleVisualizer : FrameworkElement
 
     private void OnFrame(object? sender, EventArgs e)
     {
+        if (_disposed) { Unsubscribe(); return; }
+
         // ~40 fps is plenty for this and keeps the CPU quiet
         double now = _clock.Elapsed.TotalSeconds;
         if (now - _lastRender < 0.025) return;
@@ -109,7 +133,22 @@ public sealed class CircleVisualizer : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        if (_style <= 0 || ActualWidth <= 0) return;
+        if (_disposed || _style <= 0 || ActualWidth <= 0) return;
+
+        try
+        {
+            Draw(dc);
+        }
+        catch (Exception ex)
+        {
+            // a drawing hiccup (for example while the window is closing) must never become a crash
+            Unsubscribe();
+            AppLog.Write("Visualiser", ex);
+        }
+    }
+
+    private void Draw(DrawingContext dc)
+    {
 
         double t = _clock.Elapsed.TotalSeconds;
         double frac = _fraction;

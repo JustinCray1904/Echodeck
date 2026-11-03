@@ -48,6 +48,16 @@ internal static class UiAnim
         CompositionTarget.Rendering += handler;
     }
 
+    /// <summary>Stops every running tween and detaches their frame handlers (used when the window closes).</summary>
+    public static void CancelAll()
+    {
+        foreach (var stop in Running.Values.ToList())
+        {
+            try { stop(); } catch { /* already detached */ }
+        }
+        Running.Clear();
+    }
+
     public static void Cancel(object key)
     {
         if (Running.Remove(key, out var stop)) stop();

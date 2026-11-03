@@ -228,6 +228,8 @@ public partial class MainWindow : Window
         _anonSettings?.Close();
         LibraryScanner.Shutdown();   // keep what the scan has read so far
         CommitResume();
+        Visualizer.Dispose();
+        UiAnim.CancelAll();
         _lyricsCts?.Cancel();
         _lyricsEditor?.Close();
         ReleaseShell();
@@ -596,8 +598,7 @@ public partial class MainWindow : Window
         GlowStop.Color = (System.Windows.Media.Color)FindResource("AccentColor");
         SetPulse(false); // the ripples only run while something is actually playing
         Visualizer.Tint = null;
-        Visualizer.SetPeaks(null);
-        Visualizer.SetPosition(0, 0);
+        Visualizer.Reset();   // new song / stopped: no waveform, no motion
         OnMusicViewChanged(on);
         if (!on) ClearLyrics();
 

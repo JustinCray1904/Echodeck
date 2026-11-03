@@ -52,7 +52,11 @@ public sealed class EqualizerBars : FrameworkElement
         CompositionTarget.Rendering -= OnFrame;
     }
 
-    private void OnFrame(object? sender, EventArgs e) => InvalidateVisual();
+    private void OnFrame(object? sender, EventArgs e)
+    {
+        if (!IsLoaded) { Unsubscribe(); return; }   // removed from the window: stop immediately
+        InvalidateVisual();
+    }
 
     protected override void OnRender(DrawingContext dc)
     {
