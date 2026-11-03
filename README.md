@@ -33,6 +33,9 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Default player**: Settings > General > "Open media files with Tempo" registers the common formats for the current user.
 - **Shortcuts**: B shows / hides the side bar next to the player (the pages keep theirs), A cycles the audio track.
 
+## Continue where you left off
+Videos remember how far you watched (`%LOCALAPPDATA%\Tempo\resume.json`, saved when you switch, stop or close, and every 15 s). Playing the same file again shows a small "Continue from 12:34?" card just above the control bar with **Continue** / **Start over**; it fades away on its own after 12 seconds. Videos watched to the end, clips under 90 s and music are not remembered, and nothing is ever stored in Anonymous Mode. Turn it off in Settings > Playback.
+
 ## First launch
 A fresh install (the installer drops `fresh-install.flag`) shows the logo splash and then the onboarding tour. To see it again by hand, delete `%LOCALAPPDATA%\Tempo\settings.json` (never `vault.key`).
 
