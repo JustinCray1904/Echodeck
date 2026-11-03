@@ -139,6 +139,8 @@ public partial class MainWindow : Window
         VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
         _sidebarVisible = _cfg.ShowSidebarAtStart;
         InitLibrary();
+        InitLyrics();
+        ApplyVisualizerStyle();
         ApplyViewMode();
         ApplyRail();
         _folderSig = FolderSignature();
@@ -160,10 +162,16 @@ public partial class MainWindow : Window
         var args = new List<string>
         {
             "--no-video-title-show",
-            _cfg.HardwareDecoding ? "--avcodec-hw=any" : "--avcodec-hw=none",
             "--freetype-rel-fontsize=" + new[] { 18, 16, 12, 6 }[Math.Clamp(_cfg.SubtitleSize, 0, 3)],
             "--network-caching=" + Math.Clamp(_cfg.NetworkCachingMs, 100, 10000)
         };
+
+        // Hardware decoding: automatic picks the best GPU path; Direct3D 11 asks for the zero-copy route
+        // (decoded frames stay on the GPU and go straight to the D3D11 video output).
+        if (!_cfg.HardwareDecoding) args.Add("--avcodec-hw=none");
+        else if (_cfg.HardwareMode == "d3d11") { args.Add("--avcodec-hw=d3d11va"); args.Add("--vout=direct3d11"); }
+        else if (_cfg.HardwareMode == "dxva2") args.Add("--avcodec-hw=dxva2");
+        else args.Add("--avcodec-hw=any");
 
         var argArray = args.ToArray();
         _libVlc = await Task.Run(() => new LibVLC(argArray));
@@ -180,6 +188,7 @@ public partial class MainWindow : Window
         _player.EndReached += (_, _) => Dispatcher.InvokeAsync(OnEndReached);
         _player.LengthChanged += Player_LengthChanged;
         _player.TimeChanged += Player_TimeChanged;
+        _player.EncounteredError += (_, _) => Dispatcher.InvokeAsync(OnPlaybackError);
 
         VideoView.MediaPlayer = _player;
     }
@@ -218,6 +227,9 @@ public partial class MainWindow : Window
         _keys.Dispose();
         _anonSettings?.Close();
         LibraryScanner.Shutdown();   // keep what the scan has read so far
+        _lyricsCts?.Cancel();
+        _lyricsEditor?.Close();
+        ReleaseShell();
         _vaultStream?.Dispose();
         _vaultService.Lock();
 
@@ -249,6 +261,8 @@ public partial class MainWindow : Window
         SeekBar.InvalidateVisual();
         VideoCorners.InvalidateVisual();
         ApplyViewMode();
+        ApplyGlobalKeys();
+        ApplyVisualizerStyle();
 
         var sig = FolderSignature();
         if (sig != _folderSig)
@@ -269,12 +283,12 @@ public partial class MainWindow : Window
     private void ShowLibrary(bool on)
     {
         _libraryVisible = on;
-        LibraryView.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (on) UiAnim.FadeIn(LibraryView, 170);
+        else { UiAnim.Cancel(LibraryView); LibraryView.Opacity = 1; LibraryView.Visibility = Visibility.Collapsed; }
         if (!_isFullscreen) ControlBar.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
 
         // Expanded rail (icons + labels) in the library, icon-only next to a playing video.
         ApplyRail();
-        Rail.Width = on ? 190 : 56;
         Rail.Padding = new Thickness(on ? 8 : 4);
         NavRecent.Content = on ? "Recent" : null;
         NavHome.Content = on ? "Home" : null;
@@ -286,8 +300,7 @@ public partial class MainWindow : Window
         if (on) { QuickPopup.IsOpen = false; HighlightNav(); }
         else SetNavChecked(null);
 
-        SidebarPanel.Visibility = !on && _sidebarVisible && !_isFullscreen
-            ? Visibility.Visible : Visibility.Collapsed;
+        ApplySidebar();
 
         UpdateMiniPlayer();
     }
@@ -310,10 +323,17 @@ public partial class MainWindow : Window
 
     // ------------------------------------------------------------------ playback
 
-    private void PlayNormal(string path)
+    /// <param name="stayInLibrary">Queue / playlist moves (next, previous, auto-advance) keep the mini player instead of opening the full player.</param>
+    private void PlayNormal(string path, bool stayInLibrary = false)
     {
         if (_libVlc is null) return;
-        if (_anon) { PlayVaultPath(path); return; }
+        if (_anon) { PlayVaultPath(path, stayInLibrary); return; }
+
+        if (!File.Exists(path))
+        {
+            Notify("“" + Path.GetFileName(path) + "” isn't there any more. It may have been moved, renamed or deleted.");
+            return;
+        }
 
         var existing = _queue.FirstOrDefault(q => string.Equals(q.FullPath, path, StringComparison.OrdinalIgnoreCase));
         if (existing == null)
@@ -330,8 +350,9 @@ public partial class MainWindow : Window
 
         bool audio = MediaTypes.IsAudio(path);
         ShowMusic(audio, Path.GetFileNameWithoutExtension(path), Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
-        ShowLibrary(false);
+        if (stayInLibrary && _libraryVisible) UpdateMiniPlayer(); else ShowLibrary(false);
         StartPlayback(path, 0, isMrl: false);
+        LoadLyricsFor(path, audio);
 
         if (audio) LoadWaveform(path, null);
         else WaveBar.Peaks = null;
@@ -351,24 +372,33 @@ public partial class MainWindow : Window
     {
         if (_libVlc is null || _player is null) return;
 
-        using var media = new Media(_libVlc, pathOrMrl, isMrl ? FromType.FromLocation : FromType.FromPath);
-        if (startMs > 0)
+        try
         {
-            media.AddOption(":start-time=" + (startMs / 1000.0).ToString("0.000", CultureInfo.InvariantCulture));
-            _pendingSeekMs = startMs;
-        }
-        else
-        {
-            _pendingSeekMs = null;
-        }
+            using var media = new Media(_libVlc, pathOrMrl, isMrl ? FromType.FromLocation : FromType.FromPath);
+            if (startMs > 0)
+            {
+                media.AddOption(":start-time=" + (startMs / 1000.0).ToString("0.000", CultureInfo.InvariantCulture));
+                _pendingSeekMs = startMs;
+            }
+            else
+            {
+                _pendingSeekMs = null;
+            }
 
-        _hasMedia = true;
-        _firstPlay = true;
-        _lengthMs = 0;
-        SeekBar.Progress = 0;
-        WaveBar.Progress = 0;
-        UpdateTransportEnabled();
-        _player.Play(media);
+            _hasMedia = true;
+            _firstPlay = true;
+            _lengthMs = 0;
+            SeekBar.Progress = 0;
+            WaveBar.Progress = 0;
+            UpdateTransportEnabled();
+            _player.Play(media);
+        }
+        catch (Exception ex)
+        {
+            _hasMedia = false;
+            UpdateTransportEnabled();
+            Notify("Couldn't start playback: " + ex.Message);
+        }
     }
 
     private void TogglePlayPause()
@@ -388,6 +418,7 @@ public partial class MainWindow : Window
     private void Player_Playing(object? sender, EventArgs e) => Dispatcher.InvokeAsync(() =>
     {
         if (_player is null) return;
+        _errorSkips = 0;
         SetPlayGlyph(true);
         SetPulse(_currentIsAudio);
         EmptyHint.Visibility = Visibility.Collapsed;
@@ -445,6 +476,9 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             TimeText.Text = Fmt(t);
+            UpdateLyrics(t);
+            UpdateTaskbarProgress(t);
+            if (_lengthMs > 0) Visualizer.SetPosition((double)t / _lengthMs, _lengthMs / 1000.0);
             if (_lengthMs <= 0) return;
 
             double frac = Math.Clamp((double)t / _lengthMs, 0, 1);
@@ -472,6 +506,7 @@ public partial class MainWindow : Window
         var data = (System.Windows.Media.Geometry)FindResource(playing ? "IcoPause" : "IcoPlay");
         PlayPauseIcon.Data = data;
         MiniPlayIcon.Data = data;
+        SyncPlayingState(playing);
     }
 
     private static string Fmt(long ms)
@@ -523,7 +558,16 @@ public partial class MainWindow : Window
 
     private void UpdateMiniPlayer()
     {
-        MiniPlayer.Visibility = _libraryVisible && _hasMedia ? Visibility.Visible : Visibility.Collapsed;
+        bool show = _libraryVisible && _hasMedia;
+        if (show) UiAnim.FadeIn(MiniPlayer, 200); else { UiAnim.Cancel(MiniPlayer); MiniPlayer.Visibility = Visibility.Collapsed; MiniPlayer.Opacity = 1; }
+
+        // the mini player owns the right-hand side: the tiles shrink to make room instead of sitting underneath it
+        double reserve = show ? MiniPlayer.Width + 6 + 14 : 0;
+        UiAnim.Tween(LibraryList, LibraryList.Margin.Right, reserve, 220,
+            v => LibraryList.Margin = new Thickness(0, 10, v, 0));
+        UiAnim.Tween(LibEmptyPanel, LibEmptyPanel.Margin.Right, reserve, 220,
+            v => LibEmptyPanel.Margin = new Thickness(0, 0, v, 0));
+
         ApplyPlayerLayout();
     }
 
@@ -545,6 +589,11 @@ public partial class MainWindow : Window
         PulseRing.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
         GlowStop.Color = (System.Windows.Media.Color)FindResource("AccentColor");
         SetPulse(false); // the ripples only run while something is actually playing
+        Visualizer.Tint = null;
+        Visualizer.SetPeaks(null);
+        Visualizer.SetPosition(0, 0);
+        OnMusicViewChanged(on);
+        if (!on) ClearLyrics();
 
         // Music gets the waveform seek bar, video the plain one (same position, same dragging).
         SeekBar.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
@@ -557,13 +606,18 @@ public partial class MainWindow : Window
         _waveCts?.Cancel();
         var cts = _waveCts = new CancellationTokenSource();
         WaveBar.Peaks = null;
+        Visualizer.SetPeaks(null);
 
         try
         {
             var peaks = vaultStream != null
                 ? await WaveformLoader.FromStreamAsync(vaultStream, cts.Token)
                 : await WaveformLoader.FromFileAsync(path, cts.Token);
-            if (!cts.IsCancellationRequested) WaveBar.Peaks = peaks;
+            if (!cts.IsCancellationRequested)
+            {
+                WaveBar.Peaks = peaks;
+                Visualizer.SetPeaks(peaks);
+            }
         }
         catch (OperationCanceledException) { /* a newer track started */ }
         catch { /* keep the flat placeholder bars */ }
@@ -588,13 +642,15 @@ public partial class MainWindow : Window
         if (ShellThumbnail.DominantColor(bmp) is { } color)
         {
             PulseRing.Stroke = new System.Windows.Media.SolidColorBrush(color);
+            Visualizer.Tint = new System.Windows.Media.SolidColorBrush(color);
             GlowStop.Color = color;
         }
     }
 
     private void SetPulse(bool on)
     {
-        if (on)
+        // the ripples are one of three music visualisers (Settings > Interface)
+        if (on && _cfg.VisualizerStyle == 0)
         {
             var span = TimeSpan.FromSeconds(1.9);
             var scale = new DoubleAnimation(1.0, 1.3, span)
@@ -746,7 +802,7 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Equaliser", "IcoSliders", (_, _) => OpenEqualizer()));
             menu.Items.Add(MenuEntry("Speed", "IcoClock", (_, _) => ShowSpeedMenu()));
-            menu.Items.Add(MenuEntry("Audio track", "IcoAudio", Audio_Click, "B"));
+            menu.Items.Add(MenuEntry("Audio track", "IcoAudio", Audio_Click, "A"));
             menu.Items.Add(MenuEntry("Subtitles", "IcoSubtitles", Subtitle_Click, "V"));
             menu.Items.Add(MenuEntry("Video settings", "IcoSettings", (_, _) => OpenQuick(QTabVideo, forceOpen: true)));
             menu.Items.Add(new Separator());
@@ -1092,7 +1148,7 @@ public partial class MainWindow : Window
     private void OnWindowStateChanged()
     {
         bool maximized = WindowState == WindowState.Maximized && !_isFullscreen;
-        RootGrid.Margin = maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
+        RootGrid.Margin = maximized ? _maxMargin : new Thickness(0);
         MaxIcon.Data = (System.Windows.Media.Geometry)FindResource(
             WindowState == WindowState.Maximized ? "IcoRestore" : "IcoMaximize");
     }
@@ -1102,9 +1158,9 @@ public partial class MainWindow : Window
     {
         var v = visible ? Visibility.Visible : Visibility.Collapsed;
         TopBar.Visibility = v;
-        if (visible) ApplyRail(); else Rail.Visibility = Visibility.Collapsed;
+        ApplyRail(animate: false);
         if (visible) ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
-        SidebarPanel.Visibility = visible && _sidebarVisible && !_anon && !_libraryVisible ? Visibility.Visible : Visibility.Collapsed;
+        ApplySidebar(animate: false);
         if (!visible) QuickPopup.IsOpen = false;
         ContentGrid.Margin = visible ? new Thickness(8, 0, 8, 8) : new Thickness(0);
 
@@ -1299,7 +1355,8 @@ public partial class MainWindow : Window
             case NativeMethods.VK_F: ToggleFullscreen(); break;
             case NativeMethods.VK_M: ToggleMute(); break;
             case NativeMethods.VK_V: CycleTrack(audio: false); break;
-            case NativeMethods.VK_B: CycleTrack(audio: true); break;
+            case NativeMethods.VK_A: CycleTrack(audio: true); break;
+            case NativeMethods.VK_B: ToggleRail(); break;
             case NativeMethods.VK_Q:
                 ShowSide(SideMode.Queue);
                 break;

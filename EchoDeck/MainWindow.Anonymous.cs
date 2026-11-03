@@ -498,6 +498,13 @@ public partial class MainWindow
             await splash.PlayRevealAsync();
             splash.Close();
             splash = null;
+
+            if (_vaultService.LastUnreadableCount > 0)
+            {
+                int n = _vaultService.LastUnreadableCount;
+                Notify(n + (n == 1 ? " encrypted file couldn't be read" : " encrypted files couldn't be read") +
+                       " (damaged, or made with a different key). They were left untouched.");
+            }
         }
         catch (Exception ex)
         {
@@ -612,6 +619,10 @@ public partial class MainWindow
             SelectionState.Instance.Reset();
             _sideItems.Clear();
             ClearAnonData();
+            _lyricsEditor?.Close();   // anything typed in Anonymous Mode goes with it
+            _anonLyrics.Clear();
+            ClearLyrics();
+            Visualizer.SetPeaks(null);
             if (SearchBox.Text.Length > 0) SearchBox.Text = "";
 
             // ---- put the normal state back
@@ -720,15 +731,15 @@ public partial class MainWindow
     // ------------------------------------------------------------------ playback
 
     /// <summary>Plays a vault item from anywhere in the app (tile, queue, playlist): it joins the queue like a normal file.</summary>
-    private void PlayVaultPath(string path)
+    private void PlayVaultPath(string path, bool stayInLibrary = false)
     {
-        var error = StartVault(path);
+        var error = StartVault(path, stayInLibrary);
         if (error != null) Notify(error);
     }
 
     private string? PlayFromSettings(VaultItem item) => StartVault(item.FullPath);
 
-    private string? StartVault(string path)
+    private string? StartVault(string path, bool stayInLibrary = false)
     {
         if (!_anon || !_anonItems.TryGetValue(path, out var item)) return "That item isn't in the vault any more.";
 
@@ -748,7 +759,8 @@ public partial class MainWindow
         _anonRecent.Insert(0, path);
         if (_anonRecent.Count > 50) _anonRecent.RemoveRange(50, _anonRecent.Count - 50);
 
-        ShowLibrary(false);
+        if (stayInLibrary && _libraryVisible) UpdateMiniPlayer(); else ShowLibrary(false);
+        LoadLyricsFor(path, item.IsAudio);
         RefreshSide();
         UpdateTransportEnabled();
         return null;

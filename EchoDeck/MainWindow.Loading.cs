@@ -93,14 +93,14 @@ public partial class MainWindow
         }
 
         ToastText.Text = text;
-        ToastBox.Visibility = Visibility.Visible;
+        UiAnim.FadeIn(ToastBox, 160);
         if (_toastTimer == null)
         {
             _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2600) };
             _toastTimer.Tick += (_, _) =>
             {
                 _toastTimer!.Stop();
-                ToastBox.Visibility = Visibility.Collapsed;
+                UiAnim.FadeOut(ToastBox, 220);
             };
         }
         _toastTimer.Stop();

@@ -349,12 +349,16 @@ public sealed class VaultService
             throw new InvalidOperationException("That path is outside the vault.");
     }
 
+    /// <summary>How many encrypted files the last <see cref="ListAsync"/> could not read (damaged, cut short, or made with another key).</summary>
+    public int LastUnreadableCount { get; private set; }
+
     public Task<IReadOnlyList<VaultItem>> ListAsync() => Task.Run<IReadOnlyList<VaultItem>>(() =>
     {
         EnsureDirectory();
         var key = KeyCopy();
         try
         {
+            int unreadable = 0;
             var items = new List<VaultItem>();
             foreach (var path in Directory.EnumerateFiles(VaultPath))
             {
@@ -365,8 +369,9 @@ public sealed class VaultService
                     items.Add(new VaultItem(meta.Name, path, FormatSize(meta.Length), meta.Origin,
                         meta.Title ?? "", meta.Artist ?? "", meta.Album ?? "", meta.Genre ?? "", meta.DurationMs));
                 }
-                catch { /* unreadable or foreign file: skip */ }
+                catch { unreadable++; /* damaged or foreign file: left untouched, reported to the user */ }
             }
+            LastUnreadableCount = unreadable;
             items.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return items;
         }

@@ -159,16 +159,71 @@ public partial class MainWindow
     /// <summary>The icon at the top-left only shows / hides the navigation. The queue and playlists open with Q and P.</summary>
     private void RailToggle_Click(object sender, RoutedEventArgs e)
     {
+        if (_libraryVisible) { ApplyRail(); return; }   // the pages always keep their side bar
         _railHidden = TopSidebarToggle.IsChecked != true;
         ApplyRail();
     }
 
-    private bool _railHidden;
-
-    private void ApplyRail()
+    /// <summary>B: show / hide the side bar next to the player. On the Recent, Home, Videos, Music and Playlists pages it stays.</summary>
+    private void ToggleRail()
     {
-        Rail.Visibility = _railHidden || _isFullscreen ? Visibility.Collapsed : Visibility.Visible;
-        TopSidebarToggle.IsChecked = !_railHidden;
+        if (_libraryVisible || _isFullscreen) return;
+        _railHidden = !_railHidden;
+        ApplyRail();
+    }
+
+    private bool _railHidden;
+    private readonly Thickness _railMargin = new(0, 0, 8, 0);
+
+    private double RailWidth => _libraryVisible ? 190 : 56;
+
+    private void ApplyRail(bool animate = true)
+    {
+        // On the library pages the side bar is always there; only next to the player can it be collapsed.
+        bool collapsed = (_railHidden && !_libraryVisible) || _isFullscreen;
+        TopSidebarToggle.IsEnabled = !_libraryVisible;
+        TopSidebarToggle.IsChecked = !(_railHidden && !_libraryVisible);
+
+        if (!animate)
+        {
+            UiAnim.Cancel(Rail);
+            Rail.Width = RailWidth;
+            Rail.Margin = _railMargin;
+            Rail.Opacity = 1;
+            Rail.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+            return;
+        }
+
+        if (collapsed)
+        {
+            UiAnim.SlidePanel(Rail, false, RailWidth, _railMargin);
+        }
+        else if (Rail.Visibility == Visibility.Visible)
+        {
+            // already showing: glide between the wide (pages) and narrow (player) side bar
+            UiAnim.Tween(Rail, Rail.Width, RailWidth, 220, w => Rail.Width = w, () => Rail.Width = RailWidth);
+        }
+        else
+        {
+            UiAnim.SlidePanel(Rail, true, RailWidth, _railMargin);
+        }
+    }
+
+    /// <summary>The queue / playlists panel next to the player: slides open and shut.</summary>
+    private void ApplySidebar(bool animate = true)
+    {
+        bool show = _sidebarVisible && !_isFullscreen && !_libraryVisible;
+        var margin = new Thickness(0, 0, 8, 0);
+        if (!animate)
+        {
+            UiAnim.Cancel(SidebarPanel);
+            SidebarPanel.Width = 330;
+            SidebarPanel.Margin = margin;
+            SidebarPanel.Opacity = 1;
+            SidebarPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+        UiAnim.SlidePanel(SidebarPanel, show, 330, margin);
     }
 
     // ------------------------------------------------------------------ page content
@@ -1298,6 +1353,7 @@ public partial class MainWindow
         {
             var entry = EntryForPath(path);
             entry.IsPlaying = playingPath != null && string.Equals(path, playingPath, StringComparison.OrdinalIgnoreCase);
+            entry.IsAnimating = entry.IsPlaying && _playingNow;   // the bars stand still while paused
             return entry;
         }
 
@@ -1461,8 +1517,7 @@ public partial class MainWindow
     {
         _sidebarVisible = visible;
         ControlsPlaylistToggle.IsChecked = visible;
-        SidebarPanel.Visibility = visible && !_isFullscreen && !_libraryVisible
-            ? Visibility.Visible : Visibility.Collapsed;
+        ApplySidebar();
     }
 
     // ------------------------------------------------------------------ queue navigation
@@ -1475,13 +1530,13 @@ public partial class MainWindow
         {
             int pick;
             do { pick = _rng.Next(_queue.Count); } while (pick == _queueIndex);
-            PlayNormal(_queue[pick].FullPath);
+            PlayNormal(_queue[pick].FullPath, stayInLibrary: _libraryVisible);
             return;
         }
 
         int i = _queueIndex + delta;
         if (i < 0 || i >= _queue.Count) return;
-        PlayNormal(_queue[i].FullPath);
+        PlayNormal(_queue[i].FullPath, stayInLibrary: _libraryVisible);
     }
 
     private void OnEndReached()
@@ -1490,7 +1545,7 @@ public partial class MainWindow
 
         if (_cfg.Loop == LoopMode.One && _queueIndex >= 0 && _queueIndex < _queue.Count)
         {
-            PlayNormal(_queue[_queueIndex].FullPath);
+            PlayNormal(_queue[_queueIndex].FullPath, stayInLibrary: _libraryVisible);
             return;
         }
 
@@ -1498,8 +1553,8 @@ public partial class MainWindow
         if (!_cfg.AutoAdvance && _cfg.Loop != LoopMode.All) return;
 
         if (_queueIndex >= 0 && _queueIndex + 1 < _queue.Count)
-            PlayNormal(_queue[_queueIndex + 1].FullPath);
+            PlayNormal(_queue[_queueIndex + 1].FullPath, stayInLibrary: _libraryVisible);
         else if (_cfg.Loop == LoopMode.All && _queue.Count > 0)
-            PlayNormal(_queue[0].FullPath);
+            PlayNormal(_queue[0].FullPath, stayInLibrary: _libraryVisible);
     }
 }

@@ -7,7 +7,11 @@ namespace EchoDeck;
 /// <summary>Eased mouse-wheel scrolling for lists (a short glide instead of jumping a few lines at a time).</summary>
 internal static class SmoothScroll
 {
-    public static void Attach(ListBox list)
+    /// <summary>
+    /// Wires eased wheel scrolling onto the list. The returned action glides the list to an absolute offset with the same
+    /// easing (used by the lyrics view to follow the song), and shares the wheel's target so the two never fight.
+    /// </summary>
+    public static Action<double> Attach(ListBox list, double ease = 0.22)
     {
         ScrollViewer? viewer = null;
         double target = 0;
@@ -26,7 +30,7 @@ internal static class SmoothScroll
                 running = false;
                 return;
             }
-            viewer.ScrollToVerticalOffset(current + diff * 0.22);
+            viewer.ScrollToVerticalOffset(current + diff * ease);
         }
 
         list.PreviewMouseWheel += (_, e) =>
@@ -38,6 +42,18 @@ internal static class SmoothScroll
             if (!running) target = viewer.VerticalOffset;
             target = Math.Clamp(target - e.Delta * 0.8, 0, viewer.ScrollableHeight);
 
+            if (!running)
+            {
+                running = true;
+                CompositionTarget.Rendering += Step;
+            }
+        };
+
+        return offset =>
+        {
+            viewer ??= Find(list);
+            if (viewer == null) return;
+            target = Math.Clamp(offset, 0, Math.Max(0, viewer.ScrollableHeight));
             if (!running)
             {
                 running = true;

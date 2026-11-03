@@ -22,6 +22,7 @@ internal static class NativeMethods
     public const int VK_UP = 0x26;
     public const int VK_RIGHT = 0x27;
     public const int VK_DOWN = 0x28;
+    public const int VK_A = 0x41;
     public const int VK_B = 0x42;
     public const int VK_F = 0x46;
     public const int VK_L = 0x4C;

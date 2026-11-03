@@ -24,7 +24,7 @@ public partial class MainWindow
         OsdText.Text = text;
         OsdBarHost.Visibility = fraction.HasValue ? Visibility.Visible : Visibility.Collapsed;
         if (fraction.HasValue) OsdBarFill.Width = 140 * Math.Clamp(fraction.Value, 0, 1);
-        OsdBox.Visibility = Visibility.Visible;
+        UiAnim.FadeIn(OsdBox, 110);
 
         if (_osdTimer == null)
         {
@@ -32,7 +32,7 @@ public partial class MainWindow
             _osdTimer.Tick += (_, _) =>
             {
                 _osdTimer!.Stop();
-                OsdBox.Visibility = Visibility.Collapsed;
+                UiAnim.FadeOut(OsdBox, 240);
             };
         }
         _osdTimer.Stop();
@@ -58,7 +58,7 @@ public partial class MainWindow
             PlayerView.Height = 166;
             PlayerView.Margin = new Thickness(0, 0, 18, 74);
             MiniVideoSpacer.Visibility = Visibility.Visible;
-            SidebarPanel.Visibility = Visibility.Collapsed;
+            ApplySidebar(animate: false);
             QuickPopup.IsOpen = false;
             VideoSurface.Visibility = Visibility.Collapsed;
             return;

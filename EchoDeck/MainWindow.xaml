@@ -283,6 +283,50 @@
         </DataTemplate>
 
         <!-- queue / playlist panel row: the playing item is highlighted and shows a small animated waveform -->
+        <!-- lyric rows: the line being sung is bright, the rest dimmed -->
+        <Style x:Key="LyricItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="LyricTpl">
+            <TextBlock Text="{Binding Text}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" Margin="18,9"
+                       Foreground="{DynamicResource TextBrush}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Opacity" Value="0.36"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPlain}" Value="True">
+                                <Setter Property="Opacity" Value="0.92"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.30"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0.36" Duration="0:0:0.30"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </DataTemplate>
+
         <DataTemplate x:Key="SideTpl">
             <Border Margin="0,0,0,2" CornerRadius="8" MouseRightButtonUp="SideItem_RightClick" Loaded="Tile_Loaded" Unloaded="Tile_Unloaded">
                 <Border.Style>
@@ -311,9 +355,10 @@
                             </Style>
                         </Path.Style>
                     </Path>
-                    <StackPanel Orientation="Horizontal" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
+                    <local:EqualizerBars Width="16" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                         IsActive="{Binding IsAnimating}">
+                        <local:EqualizerBars.Style>
+                            <Style TargetType="local:EqualizerBars">
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsPlaying}" Value="True">
@@ -321,28 +366,8 @@
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </StackPanel.Style>
-                        <Rectangle Width="3" Height="16" Margin="1,0" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource AccentBrush}" RenderTransformOrigin="0.5,1">
-                            <Rectangle.RenderTransform><ScaleTransform x:Name="Bar1" ScaleY="0.4"/></Rectangle.RenderTransform>
-                        </Rectangle>
-                        <Rectangle Width="3" Height="16" Margin="1,0" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource AccentBrush}" RenderTransformOrigin="0.5,1">
-                            <Rectangle.RenderTransform><ScaleTransform x:Name="Bar2" ScaleY="0.8"/></Rectangle.RenderTransform>
-                        </Rectangle>
-                        <Rectangle Width="3" Height="16" Margin="1,0" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource AccentBrush}" RenderTransformOrigin="0.5,1">
-                            <Rectangle.RenderTransform><ScaleTransform x:Name="Bar3" ScaleY="0.55"/></Rectangle.RenderTransform>
-                        </Rectangle>
-                        <StackPanel.Triggers>
-                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Bar1" Storyboard.TargetProperty="ScaleY" From="0.2" To="1" Duration="0:0:0.45" AutoReverse="True" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="Bar2" Storyboard.TargetProperty="ScaleY" From="1" To="0.25" Duration="0:0:0.6" AutoReverse="True" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="Bar3" Storyboard.TargetProperty="ScaleY" From="0.3" To="0.95" Duration="0:0:0.35" AutoReverse="True" RepeatBehavior="Forever"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </StackPanel.Triggers>
-                    </StackPanel>
+                        </local:EqualizerBars.Style>
+                    </local:EqualizerBars>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0,6,0">
                         <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis">
                             <TextBlock.Style>
@@ -825,6 +850,10 @@
                                 </StackPanel>
 
                                 <Grid x:Name="MusicPanel" Visibility="Collapsed" Background="{DynamicResource PanelBrush}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition x:Name="LyricsCol" Width="0"/>
+                                    </Grid.ColumnDefinitions>
                                     <Ellipse Width="760" Height="760" Opacity="0.24" HorizontalAlignment="Center"
                                              VerticalAlignment="Center" IsHitTestVisible="False">
                                         <Ellipse.Fill>
@@ -842,6 +871,8 @@
                                                     <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1"/>
                                                 </Ellipse.RenderTransform>
                                             </Ellipse>
+                                            <local:CircleVisualizer x:Name="Visualizer" Width="440" Height="440" HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center" Visibility="Collapsed"/>
                                             <Ellipse x:Name="CoverCircle" Width="310" Height="310" Fill="{StaticResource CoverFallback}"/>
                                             <Path x:Name="MusicGlyph" Data="{StaticResource IcoMusic}" Stretch="Uniform" Width="90" Height="90"
                                                   Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round"
@@ -854,6 +885,62 @@
                                                    TextAlignment="Center" TextTrimming="CharacterEllipsis"
                                                    Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"/>
                                     </StackPanel>
+
+                                    <!-- lyrics button + panel -->
+                                    <Button x:Name="LyricsToggle" Grid.ColumnSpan="2" Content="Lyrics" Style="{StaticResource FlatButton}"
+                                            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="22,20,0,0" Padding="14,7"
+                                            Click="LyricsToggle_Click"/>
+
+                                    <Border x:Name="LyricsPanel" Grid.Column="1" Width="480" Margin="0,70,28,28" Visibility="Collapsed"
+                                            CornerRadius="18" Padding="4" Background="{DynamicResource RaisedBrush}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <Grid Margin="16,10,8,4">
+                                                <TextBlock Text="Lyrics" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                    <Button Content="Edit" Style="{StaticResource FlatButton}" Padding="12,5" Margin="0,0,6,0" Click="LyricsEdit_Click"/>
+                                                    <Button x:Name="LyricsAiButton" Content="Generate with AI" Style="{StaticResource FlatButton}" Padding="12,5" Margin="0,0,6,0" Click="LyricsAi_Click"/>
+                                                    <Button Content="Close" Style="{StaticResource FlatButton}" Padding="12,5" Click="LyricsClose_Click"/>
+                                                </StackPanel>
+                                            </Grid>
+                                            <Grid Grid.Row="1">
+                                                <ListBox x:Name="LyricsList" Background="Transparent" BorderThickness="0" Focusable="False"
+                                                         Padding="0,150" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                         ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False"
+                                                         VirtualizingPanel.IsVirtualizing="False" ItemContainerStyle="{StaticResource LyricItemStyle}"
+                                                         ItemTemplate="{StaticResource LyricTpl}" MouseDoubleClick="LyricsList_MouseDoubleClick"/>
+                                                <StackPanel x:Name="LyricsEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,0">
+                                                    <TextBlock x:Name="LyricsEmptyText" TextWrapping="Wrap" TextAlignment="Center" FontSize="14"
+                                                               Foreground="{DynamicResource Fg3Brush}" MaxWidth="360"
+                                                               Text="No lyrics for this song yet."/>
+                                                    <WrapPanel HorizontalAlignment="Center" Margin="0,16,0,0">
+                                                        <Button Content="Paste lyrics" Style="{StaticResource FlatButton}" Padding="14,8" Margin="0,0,8,0" Click="LyricsEdit_Click"/>
+                                                        <Button Content="Generate with AI" Style="{StaticResource FlatButton}" Padding="14,8" Click="LyricsAi_Click"/>
+                                                    </WrapPanel>
+                                                </StackPanel>
+                                                <Border x:Name="LyricsBusy" Visibility="Collapsed" VerticalAlignment="Bottom" Margin="16,0,16,14" Padding="14,10"
+                                                        CornerRadius="12" Background="{DynamicResource PanelBrush}">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock x:Name="LyricsBusyText" FontSize="12" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6"/>
+                                                            <Border x:Name="LyricsBusyTrack" Height="4" CornerRadius="2" Background="{DynamicResource RaisedBrush}" ClipToBounds="True">
+                                                                <Border x:Name="LyricsBusyFill" Width="0" HorizontalAlignment="Left" CornerRadius="2"
+                                                                        Background="{DynamicResource AccentBrush}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" Content="Cancel" Style="{StaticResource FlatButton}" Padding="12,5" Margin="12,0,0,0" Click="LyricsCancel_Click"/>
+                                                    </Grid>
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
                                 </Grid>
 
                                 <!-- rounded video corners (the picture itself can't be clipped) -->

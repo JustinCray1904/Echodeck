@@ -15,6 +15,7 @@ public sealed class BrowserEntry : INotifyPropertyChanged
 {
     private ImageSource? _thumbnail;
     private bool _selected;
+    private bool _animating;
 
     public BrowserEntry(string name, string fullPath, EntryKind kind, string subtitle = "", Playlist? playlist = null)
     {
@@ -114,6 +115,18 @@ public sealed class BrowserEntry : INotifyPropertyChanged
             if (_playing == value) return;
             _playing = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPlaying)));
+        }
+    }
+
+    /// <summary>The "now playing" bars only move while the song is actually playing (not when paused or stopped).</summary>
+    public bool IsAnimating
+    {
+        get => _animating;
+        set
+        {
+            if (_animating == value) return;
+            _animating = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAnimating)));
         }
     }
 

@@ -14,6 +14,8 @@ public partial class SettingsWindow : Window
     private static readonly int[] SkipValues = { 5, 10, 15, 30 };
     private static readonly int[] CacheValues = { 300, 1000, 3000, 6000 };
     private static readonly string[] Aspects = { "Default", "16:9", "4:3", "1:1", "21:9", "16:10" };
+    private static readonly string[] HwModes = { "auto", "d3d11", "dxva2" };
+    private static readonly string[] WhisperLangs = { "auto", "en", "es", "fr", "de", "it", "pt", "nl", "ru", "ja", "ko", "zh" };
 
     private readonly AppSettings _cfg = AppSettings.Current;
     private readonly Dictionary<RadioButton, UIElement> _pages = new();
@@ -33,6 +35,7 @@ public partial class SettingsWindow : Window
         _pages[NavVideo] = PageVideo;
         _pages[NavAudio] = PageAudio;
         _pages[NavSubtitles] = PageSubtitles;
+        _pages[NavLyrics] = PageLyrics;
         _pages[NavLibrary] = PageLibrary;
         _pages[NavNetwork] = PageNetwork;
         _pages[NavPerformance] = PagePerformance;
@@ -46,6 +49,7 @@ public partial class SettingsWindow : Window
         if (page == "library") NavLibrary.IsChecked = true;
         else if (page == "privacy") NavPrivacy.IsChecked = true;
         else if (page == "controls") NavControls.IsChecked = true;
+        else if (page == "lyrics") NavLyrics.IsChecked = true;
     }
 
     protected override void OnClosed(EventArgs e)
@@ -69,6 +73,19 @@ public partial class SettingsWindow : Window
         AwakeSwitch.IsChecked = _cfg.KeepAwake;
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
         SubsOnSwitch.IsChecked = _cfg.SubtitlesOnByDefault;
+        GlobalKeysSwitch.IsChecked = _cfg.GlobalMediaKeys;
+        GlobalVolSwitch.IsChecked = _cfg.GlobalVolumeKeys;
+        GlobalVolSwitch.IsEnabled = _cfg.GlobalMediaKeys;
+        TaskbarSwitch.IsChecked = _cfg.TaskbarControls;
+        AssocSwitch.IsChecked = FileAssociations.IsRegistered();
+        LyricsAutoSwitch.IsChecked = _cfg.AutoLoadLyrics;
+        LyricsSaveSwitch.IsChecked = _cfg.SaveGeneratedLyrics;
+        VisualizerCombo.SelectedIndex = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
+        HwModeCombo.SelectedIndex = Math.Max(0, Array.IndexOf(HwModes, _cfg.HardwareMode));
+        HwModeCombo.IsEnabled = _cfg.HardwareDecoding;
+        WhisperLangCombo.SelectedIndex = Math.Max(0, Array.IndexOf(WhisperLangs, _cfg.WhisperLanguage));
+        WhisperFolderText.Text = "Folder checked automatically: " + WhisperService.DefaultFolder;
+        UpdateWhisperStatus();
 
         LoopCombo.SelectedIndex = (int)_cfg.Loop;
         SpeedCombo.SelectedIndex = NearestIndex(Speeds, _cfg.DefaultSpeed);
@@ -142,6 +159,63 @@ public partial class SettingsWindow : Window
 
     // ------------------------------------------------------------------ controls -> settings
 
+    private void ToggleAssociation(CheckBox box, bool on)
+    {
+        try
+        {
+            if (on) FileAssociations.Register(); else FileAssociations.Unregister();
+        }
+        catch (Exception ex)
+        {
+            box.IsChecked = !on;   // it didn't happen: show the real state
+            MessageBox.Show(this, "Couldn't change the file associations.\n\n" + ex.Message, "Tempo",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (on)
+            MessageBox.Show(this,
+                "Tempo is registered for common video and audio formats.\n\nIf Windows still opens another player, choose Tempo for that file type under Settings > Apps > Default apps.",
+                "Tempo", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OpenDefaultApps_Click(object sender, RoutedEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true }); }
+        catch { /* older Windows without the Settings app page */ }
+    }
+
+    private void WhisperExe_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog { Title = "Choose the whisper.cpp program", Filter = "Programs (*.exe)|*.exe", CheckFileExists = true };
+        if (dlg.ShowDialog(this) != true) return;
+        _cfg.WhisperExePath = dlg.FileName;
+        _cfg.Save();
+        UpdateWhisperStatus();
+    }
+
+    private void WhisperModel_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog { Title = "Choose a Whisper model", Filter = "ggml models (*.bin)|*.bin|All files (*.*)|*.*", CheckFileExists = true };
+        if (dlg.ShowDialog(this) != true) return;
+        _cfg.WhisperModelPath = dlg.FileName;
+        _cfg.Save();
+        UpdateWhisperStatus();
+    }
+
+    private void UpdateWhisperStatus()
+    {
+        var (exe, model) = WhisperService.Resolve(_cfg);
+        WhisperExeText.Text = exe ?? "Not found yet";
+        WhisperModelText.Text = model ?? "Not found yet";
+
+        bool ready = exe != null && model != null;
+        WhisperStatusText.Text = ready
+            ? "Ready: open a song, press Lyrics, then Generate with AI."
+            : "Choose both the program and a model to turn on AI lyrics.";
+        WhisperStatusText.SetResourceReference(TextBlock.ForegroundProperty, ready ? "AccentBrush" : "MutedBrush");
+    }
+
     private void Switch_Click(object sender, RoutedEventArgs e)
     {
         if (_loading || sender is not CheckBox box) return;
@@ -154,8 +228,14 @@ public partial class SettingsWindow : Window
             case nameof(AutoAdvanceSwitch): _cfg.AutoAdvance = on; break;
             case nameof(FullscreenSwitch): _cfg.StartFullscreen = on; break;
             case nameof(AwakeSwitch): _cfg.KeepAwake = on; break;
-            case nameof(HwSwitch): _cfg.HardwareDecoding = on; break;
+            case nameof(HwSwitch): _cfg.HardwareDecoding = on; HwModeCombo.IsEnabled = on; break;
             case nameof(SubsOnSwitch): _cfg.SubtitlesOnByDefault = on; break;
+            case nameof(GlobalKeysSwitch): _cfg.GlobalMediaKeys = on; GlobalVolSwitch.IsEnabled = on; break;
+            case nameof(GlobalVolSwitch): _cfg.GlobalVolumeKeys = on; break;
+            case nameof(TaskbarSwitch): _cfg.TaskbarControls = on; break;
+            case nameof(LyricsAutoSwitch): _cfg.AutoLoadLyrics = on; break;
+            case nameof(LyricsSaveSwitch): _cfg.SaveGeneratedLyrics = on; break;
+            case nameof(AssocSwitch): ToggleAssociation(box, on); return;
             default: return;
         }
         _cfg.Save();
@@ -178,6 +258,9 @@ public partial class SettingsWindow : Window
             case nameof(ViewCombo): _cfg.LibraryGrid = i == 0; break;
             case nameof(StartPageCombo): _cfg.StartPage = i == 1 ? "Home" : i == 2 ? "Blank" : "Recent"; break;
             case nameof(NetCacheCombo): _cfg.NetworkCachingMs = CacheValues[i]; break;
+            case nameof(VisualizerCombo): _cfg.VisualizerStyle = i; break;
+            case nameof(HwModeCombo): _cfg.HardwareMode = HwModes[i]; break;
+            case nameof(WhisperLangCombo): _cfg.WhisperLanguage = WhisperLangs[i]; break;
             default: return;
         }
         _cfg.Save();

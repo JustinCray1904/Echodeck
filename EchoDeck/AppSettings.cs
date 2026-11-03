@@ -64,6 +64,23 @@ public sealed class AppSettings
     public int NetworkCachingMs { get; set; } = 1000;
     public string SnapshotFolder { get; set; } = "";
     public bool Shuffle { get; set; }
+    public string HardwareMode { get; set; } = "auto";   // auto, d3d11, dxva2 (used while HardwareDecoding is on)
+
+    // ---- interface additions
+    public int VisualizerStyle { get; set; }              // music view: 0 ripples, 1 radial bars, 2 wave ring
+    public bool TaskbarControls { get; set; } = true;     // taskbar thumbnail buttons + progress on the taskbar icon
+
+    // ---- system-wide keys
+    public bool GlobalMediaKeys { get; set; } = true;     // Play/Pause, Next, Previous, Stop keys work with Tempo in the background
+    public bool GlobalVolumeKeys { get; set; }            // volume keys change Tempo's volume instead of the system volume
+
+    // ---- lyrics
+    public bool AutoLoadLyrics { get; set; } = true;      // .lrc / .txt next to the song with the same name
+    public bool LyricsOpen { get; set; }                  // lyrics panel is open in the music view
+    public bool SaveGeneratedLyrics { get; set; } = true; // write AI-generated lyrics next to the song as .lrc
+    public string WhisperExePath { get; set; } = "";      // whisper.cpp command line program (whisper-cli.exe)
+    public string WhisperModelPath { get; set; } = "";    // ggml model, for example ggml-base.en.bin
+    public string WhisperLanguage { get; set; } = "auto"; // auto, en, es, fr ...
 
     /// <summary>Library locations: seeded from the single folder chosen earlier, or the Windows Music / Videos folders.</summary>
     public void EnsureFolders()
