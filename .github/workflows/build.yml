@@ -1,4 +1,4 @@
-name: Build EchoDeck
+name: Build Tempo
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
           } else {
             [xml]$xml = Get-Content $env:PROJECT
             $ver = $xml.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -First 1
-            if (-not $ver) { $ver = '2.0.0' }
+            if (-not $ver) { $ver = '3.0.0' }
           }
           "APP_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Version: $ver"
@@ -82,7 +82,7 @@ jobs:
             Copy-Item (Join-Path $src.DirectoryName '*') $dest -Recurse -Force
           }
 
-          foreach ($p in 'EchoDeck.exe', 'libvlc\win-x64\libvlc.dll', 'libvlc\win-x64\libvlccore.dll', 'libvlc\win-x64\plugins') {
+          foreach ($p in 'Tempo.exe', 'libvlc\win-x64\libvlc.dll', 'libvlc\win-x64\libvlccore.dll', 'libvlc\win-x64\plugins') {
             if (-not (Test-Path (Join-Path $pub $p))) { throw "Missing from publish output: $p" }
           }
 
@@ -126,12 +126,12 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\publish\*" -CompressionLevel Optimal `
-            -DestinationPath "$env:GITHUB_WORKSPACE\installer-output\EchoDeck-portable-$($env:APP_VERSION).zip"
+            -DestinationPath "$env:GITHUB_WORKSPACE\installer-output\Tempo-portable-$($env:APP_VERSION).zip"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: EchoDeck-${{ env.APP_VERSION }}
+          name: Tempo-${{ env.APP_VERSION }}
           path: installer-output/*
           compression-level: 0     # already compressed
           if-no-files-found: error
