@@ -22,7 +22,11 @@ internal static class NativeShell
     public const uint MOD_NOREPEAT = 0x4000;
 
     public const int MONITOR_DEFAULTTONEAREST = 2;
+    public const uint ABM_GETSTATE = 0x00000004;
+    public const uint ABM_GETTASKBARPOS = 0x00000005;
     public const uint ABM_GETAUTOHIDEBAREX = 0x0000000B;
+    public const uint ABS_AUTOHIDE = 0x1;
+    public const uint MONITORINFOF_PRIMARY = 0x1;
     public const int SM_CXSIZEFRAME = 32;
     public const int SM_CYSIZEFRAME = 33;
     public const int SM_CXPADDEDBORDER = 92;

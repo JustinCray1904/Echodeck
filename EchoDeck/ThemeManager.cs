@@ -51,7 +51,8 @@ public static class ThemeManager
         var res = Application.Current?.Resources;
         if (res == null) return;
 
-        bool dark = anonymous || mode == ThemeMode.Dark || (mode == ThemeMode.System && !SystemUsesLightTheme());
+        bool dark = anonymous || mode != ThemeMode.Light && (mode != ThemeMode.System || !SystemUsesLightTheme());
+        bool glass = !anonymous && mode == ThemeMode.LiquidGlass;
         IsDark = dark;
 
         Color accent = anonymous ? Parse(AnonymousAccentHex) : AccentColorOf(accentIndex);
@@ -62,6 +63,28 @@ public static class ThemeManager
             bg = Parse("#1B1B1B"); rail = Parse("#191919"); panel = Parse("#0E0E0E"); track = Parse("#090909");
             raised = Parse("#222222"); slate = Parse("#373737"); text = Parse("#D9D9D9"); fg1 = Parse("#969696");
             muted = Parse("#8F8F8F"); fg3 = Parse("#6B6B6B"); card = Parse("#151515"); danger = Parse("#FF5C6C");
+
+            if (!anonymous && mode == ThemeMode.Midnight)
+            {
+                bg = Parse("#0B1020"); rail = Parse("#0A0E1B"); panel = Parse("#070B16"); track = Parse("#04060D");
+                raised = Parse("#141B31"); slate = Parse("#27315A"); text = Parse("#DCE3F7"); fg1 = Parse("#8D99BC");
+                muted = Parse("#8691B5"); fg3 = Parse("#5D6890"); card = Parse("#0C1226");
+            }
+            else if (!anonymous && mode == ThemeMode.Amoled)
+            {
+                bg = Parse("#000000"); rail = Parse("#050505"); panel = Parse("#000000"); track = Parse("#000000");
+                raised = Parse("#0E0E0E"); slate = Parse("#262626"); text = Parse("#E4E4E4"); fg1 = Parse("#9A9A9A");
+                muted = Parse("#929292"); fg3 = Parse("#6E6E6E"); card = Parse("#080808");
+            }
+            else if (glass)
+            {
+                // "Liquid glass": a deep colour wash behind translucent, softly lit panels with bright hairline edges.
+                // Panels keep enough body (about 70 %) to stay readable over video.
+                bg = Parse("#10163A"); rail = Color.FromArgb(0x4A, 0x9B, 0xB4, 0xFF); panel = Color.FromArgb(0xB4, 0x14, 0x1C, 0x4A);
+                track = Color.FromArgb(0x66, 0x05, 0x08, 0x22); raised = Color.FromArgb(0x52, 0xB4, 0xC8, 0xFF);
+                slate = Color.FromArgb(0x5C, 0xD2, 0xE0, 0xFF); text = Parse("#F4F7FF"); fg1 = Parse("#C3CDEE");
+                muted = Parse("#B2BEE6"); fg3 = Parse("#8D9AC8"); card = Color.FromArgb(0x5A, 0x1A, 0x24, 0x58);
+            }
         }
         else
         {
@@ -83,6 +106,18 @@ public static class ThemeManager
         Set(res, "Accent", accent); Set(res, "AccentHover", accentHover); Set(res, "AccentMid", accentMid);
         Set(res, "AccentDim", accentDim); Set(res, "AccentSoft", accentSoft); Set(res, "OnAccent", onAccent);
         Set(res, "Scrim", Color.FromArgb(0xCC, bg.R, bg.G, bg.B));
+
+        // the window background: a flat colour, or for liquid glass a slow colour wash the glass panels sit on
+        if (glass)
+        {
+            var wash = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 1) };
+            wash.GradientStops.Add(new GradientStop(Parse("#24114F"), 0.0));
+            wash.GradientStops.Add(new GradientStop(Parse("#0E2A63"), 0.45));
+            wash.GradientStops.Add(new GradientStop(Parse("#0B4A5C"), 0.8));
+            wash.GradientStops.Add(new GradientStop(Parse("#14335E"), 1.0));
+            wash.Freeze();
+            res["BgBrush"] = wash;
+        }
     }
 
     private static void Set(ResourceDictionary res, string name, Color c)

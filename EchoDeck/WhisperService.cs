@@ -32,6 +32,13 @@ internal static class WhisperService
     public static (string? Exe, string? Model) Resolve(AppSettings cfg)
     {
         string? exe = File.Exists(cfg.WhisperExePath) ? cfg.WhisperExePath : null;
+
+        // Recent whisper.cpp releases ship main.exe only as a stub that prints "deprecated" and exits: use whisper-cli.exe beside it
+        if (exe != null && IsDeprecatedStub(exe))
+        {
+            var sibling = Path.Combine(Path.GetDirectoryName(exe) ?? "", "whisper-cli.exe");
+            if (File.Exists(sibling)) exe = sibling;
+        }
         string? model = File.Exists(cfg.WhisperModelPath) ? cfg.WhisperModelPath : null;
 
         try
@@ -56,7 +63,28 @@ internal static class WhisperService
     public static bool IsReady(AppSettings cfg)
     {
         var (exe, model) = Resolve(cfg);
-        return exe != null && model != null;
+        return exe != null && !IsDeprecatedStub(exe) && model != null;
+    }
+
+    /// <summary>True for the old "main.exe" that newer whisper.cpp releases keep only as a do-nothing deprecation notice.</summary>
+    public static bool IsDeprecatedStub(string? exePath) =>
+        !string.IsNullOrEmpty(exePath) && string.Equals(Path.GetFileName(exePath), "main.exe", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A warning when the transcript clearly stops well before the song does (whisper often gives up on musical passages),
+    /// otherwise null. <paramref name="durationSeconds"/> 0 means unknown.
+    /// </summary>
+    public static string? CoverageWarning(string lrcText, long durationSeconds)
+    {
+        if (durationSeconds < 30) return null;
+        var doc = LyricsParser.Parse(lrcText);
+        var last = doc.Lines.LastOrDefault(l => l.Text.Length > 0 && l.TimeMs >= 0);
+        if (last == null) return null;
+
+        double covered = last.TimeMs / 1000.0 / durationSeconds;
+        if (covered >= 0.72) return null;
+        return $"Only the first {LibraryScanner.FormatDuration((long)(last.TimeMs / 1000))} of {LibraryScanner.FormatDuration(durationSeconds)} was transcribed. " +
+               "A larger model, or the cloud option, usually does better with music.";
     }
 
     private const long MinModelBytes = 1_000_000;
@@ -160,29 +188,77 @@ internal static class WhisperService
             foreach (var a in new[]
             {
                 "-m", model, "-f", wav, "-olrc", "-of", outBase, "-pp",
-                "-l", lang, "-t", Math.Clamp(Environment.ProcessorCount / 2, 2, 8).ToString(CultureInfo.InvariantCulture)
+                // short lines (about one sung line each) give far better highlight timing; no carried-over context stops the
+                // "gets stuck and skips the rest of the song" repetition loops whisper is prone to on music
+                "-ml", "45", "-sow", "-mc", "0",
+                "-l", lang, "-t", Math.Clamp(Environment.ProcessorCount - 2, 2, 8).ToString(CultureInfo.InvariantCulture)   // leave two cores for playback and the UI
             })
                 psi.ArgumentList.Add(a);
 
             using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
             var tail = new Queue<string>();
+
+            // what the user sees: the current stage, how long it has been running, and whisper's latest message
+            string stage = "Starting Whisper…";
+            double fraction = 0;
+            string lastMessage = "";
+            var clock = Stopwatch.StartNew();
+            void Publish()
+            {
+                string text, hint;
+                double f;
+                lock (tail)
+                {
+                    text = stage;
+                    f = fraction;
+                    hint = lastMessage;
+                }
+                var elapsed = clock.Elapsed;
+                string time = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
+                if (f <= 0 && elapsed.TotalSeconds > 45) text += "  (big models take a while to load on a CPU)";
+                if (f <= 0 && hint.Length > 0) text += "\n" + (hint.Length > 80 ? hint.Substring(0, 80) + "…" : hint);
+                progress?.Report((f, text + "  ·  " + time));
+            }
+
             void OnLine(string? line)
             {
                 if (string.IsNullOrWhiteSpace(line)) return;
-                lock (tail) { tail.Enqueue(line.Trim()); while (tail.Count > 6) tail.Dequeue(); }
-                var m = ProgressLine.Match(line);
-                if (m.Success && int.TryParse(m.Groups[1].Value, out int pct))
-                    progress?.Report((Math.Clamp(pct, 0, 100) / 100.0, "Transcribing…  " + pct + "%"));
+                line = line.Trim();
+                lock (tail)
+                {
+                    tail.Enqueue(line);
+                    while (tail.Count > 6) tail.Dequeue();
+
+                    var m = ProgressLine.Match(line);
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out int pct))
+                    {
+                        fraction = Math.Clamp(pct, 0, 100) / 100.0;
+                        stage = "Transcribing…  " + pct + "%";
+                    }
+                    else
+                    {
+                        lastMessage = line;
+                        if (line.Contains("loading model", StringComparison.OrdinalIgnoreCase) || line.Contains("whisper_init", StringComparison.OrdinalIgnoreCase))
+                            stage = "Loading the model…";
+                        else if (line.Contains("processing", StringComparison.OrdinalIgnoreCase))
+                            stage = "Transcribing…";
+                    }
+                }
+                Publish();
             }
             process.OutputDataReceived += (_, e) => OnLine(e.Data);
             process.ErrorDataReceived += (_, e) => OnLine(e.Data);
 
+            AppLog.Write("Whisper", null, "running: " + exe + " " + string.Join(" ", psi.ArgumentList.Select(a => a.Contains(' ') ? "\"" + a + "\"" : a)));
             progress?.Report((0, "Starting Whisper…"));
             try
             {
                 if (!process.Start()) throw new WhisperException("The whisper.cpp program could not be started.", setupProblem: true);
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
+
+                // long jobs must not make the music or video stutter
+                try { process.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { /* already exited / not allowed */ }
             }
             catch (WhisperException) { throw; }
             catch (Exception ex)
@@ -192,9 +268,13 @@ internal static class WhisperService
                     setupProblem: true, inner: ex);
             }
 
+            // a once-a-second tick so the status never looks frozen while whisper.cpp is silent (model loading, long passes)
+            using var heartbeat = new Timer(_ => Publish(), null, 1000, 1000);
+
             using (ct.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { /* already gone */ } }))
                 await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
 
+            process.WaitForExit();   // lets the redirected output finish, so the last lines are in the error message
             ct.ThrowIfCancellationRequested();
 
             var lrc = outBase + ".lrc";
@@ -208,6 +288,9 @@ internal static class WhisperService
                 bool loadFailure = Regex.IsMatch(detail, "failed to (load|initialize)|invalid model|bad magic|not a ggml|unknown model|failed to read", RegexOptions.IgnoreCase);
                 if (modelGone || loadFailure)
                     throw new WhisperException("Model missing or invalid. Choose a working ggml model file in Settings > Lyrics.", setupProblem: true);
+
+                if (IsDeprecatedStub(exe))
+                    throw new WhisperException("main.exe is an old stub that does nothing in recent whisper.cpp releases. Choose whisper-cli.exe instead.", setupProblem: true);
 
                 throw new WhisperException("Whisper didn't produce lyrics" + (detail.Length > 0 ? ": " + detail : "."));
             }
@@ -223,7 +306,7 @@ internal static class WhisperService
         }
     }
 
-    private static void ConvertTo16kMono(string source, string wavPath)
+    internal static void ConvertTo16kMono(string source, string wavPath)
     {
         using var reader = new MediaFoundationReader(source);
         using var resampler = new MediaFoundationResampler(reader, new WaveFormat(16000, 16, 1)) { ResamplerQuality = 60 };

@@ -302,24 +302,19 @@ public partial class MainWindow
             return;
         }
 
-        if (_lyricsCts != null)
+        if (_lyricsCts != null || BatchRunning)
         {
             Notify("Lyrics are already being generated.");
             return;
         }
 
-        if (!WhisperService.IsReady(_cfg))
+        var notReady = LyricsGenerator.NotReadyReason(_cfg);
+        if (notReady != null)
         {
-            OfferWhisperSettings("AI lyrics run on this PC with whisper.cpp, and it isn't set up yet.\n\nYou need the whisper.cpp program and a model file (for example ggml-base.en.bin). Open the Lyrics settings to choose them?");
+            OfferWhisperSettings(notReady + "\n\nOpen the Lyrics settings to set it up?");
             return;
         }
-
-        var modelProblem = WhisperService.CheckModel(WhisperService.Resolve(_cfg).Model);
-        if (modelProblem != null)
-        {
-            OfferWhisperSettings("Model missing or invalid (" + modelProblem + ").\n\nOpen the Lyrics settings to choose a working model file?");
-            return;
-        }
+        if (!ConfirmCloudUpload(1)) return;
 
         if (_lyrics != null && MessageBox.Show(this, "Replace the lyrics shown for this song with AI-generated ones?", "Generate lyrics",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
@@ -336,7 +331,7 @@ public partial class MainWindow
 
         try
         {
-            var text = await WhisperService.TranscribeAsync(path, _cfg, progress, cts.Token);
+            var text = await LyricsGenerator.GenerateAsync(path, _cfg, progress, cts.Token);
             text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
             _sessionLyrics[path] = text;
 
@@ -354,6 +349,8 @@ public partial class MainWindow
                 }
             }
 
+            var coverage = WhisperService.CoverageWarning(text, LibraryScanner.ReadTags(path).DurationSeconds);
+
             if (string.Equals(_lyricsMediaPath, path, StringComparison.OrdinalIgnoreCase))
             {
                 ShowLyrics(LyricsParser.Parse(text, null));
@@ -364,6 +361,9 @@ public partial class MainWindow
             {
                 Notify("Lyrics for “" + Path.GetFileNameWithoutExtension(path) + "” are ready" + note);
             }
+
+            if (coverage != null)
+                MessageBox.Show(this, coverage, "Lyrics may be incomplete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (OperationCanceledException)
         {

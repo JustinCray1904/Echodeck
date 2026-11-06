@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace EchoDeck;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ThemeMode { Dark, Light, System }
+public enum ThemeMode { Dark, Light, System, LiquidGlass, Midnight, Amoled }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LoopMode { Off, One, All }
@@ -71,6 +71,13 @@ public sealed class AppSettings
     public bool TaskbarControls { get; set; } = true;     // taskbar thumbnail buttons + progress on the taskbar icon
 
     // ---- system-wide keys
+    public string MiniDock { get; set; } = "right";        // small player docks to the "left" or "right" while browsing
+    public double VisualizerIntensity { get; set; } = 1.0;   // how tall / bold the visualiser moves (0.4 - 2.0)
+    public double VisualizerSensitivity { get; set; } = 1.0; // how strongly it reacts to the song (0.4 - 2.5)
+    public string LyricsEngine { get; set; } = "local";      // "local" (whisper.cpp on this PC) or "cloud" (OpenAI-compatible service)
+    public string CloudEndpoint { get; set; } = "https://api.openai.com/v1";
+    public string CloudModel { get; set; } = "whisper-1";
+    public string CloudKeyProtected { get; set; } = "";      // API key, encrypted with Windows DPAPI for this user
     public bool RememberPosition { get; set; } = true;    // offer to continue a video where it was left off
     public bool GlobalMediaKeys { get; set; } = true;     // Play/Pause, Next, Previous, Stop keys work with Tempo in the background
     public bool GlobalVolumeKeys { get; set; }            // volume keys change Tempo's volume instead of the system volume

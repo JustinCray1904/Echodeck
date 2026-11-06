@@ -52,19 +52,18 @@ public partial class MainWindow
         if (mini)
         {
             PlayerView.Visibility = Visibility.Visible;
-            PlayerView.HorizontalAlignment = HorizontalAlignment.Right;
-            PlayerView.VerticalAlignment = VerticalAlignment.Bottom;
-            PlayerView.Width = 296;
-            PlayerView.Height = 166;
-            PlayerView.Margin = new Thickness(0, 0, 18, 74);
             MiniVideoSpacer.Visibility = Visibility.Visible;
             ApplySidebar(animate: false);
             QuickPopup.IsOpen = false;
-            VideoSurface.Visibility = Visibility.Collapsed;
+            // the overlay window sits on the small video and carries only the previous / next buttons
+            MiniOverlay.Visibility = Visibility.Visible;
+            VideoSurface.Visibility = Visibility.Visible;
+            PositionMiniVideo();
             return;
         }
 
         MiniVideoSpacer.Visibility = Visibility.Collapsed;
+        MiniOverlay.Visibility = Visibility.Collapsed;
         PlayerView.HorizontalAlignment = HorizontalAlignment.Stretch;
         PlayerView.VerticalAlignment = VerticalAlignment.Stretch;
         PlayerView.Width = double.NaN;

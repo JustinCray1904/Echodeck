@@ -81,10 +81,16 @@ public partial class MainWindow
             var info = new NativeShell.MONITORINFO { cbSize = Marshal.SizeOf<NativeShell.MONITORINFO>() };
             if (monitor == IntPtr.Zero || !NativeShell.GetMonitorInfo(monitor, ref info)) return false;
 
-            bool left = HasAutoHideBar(0, info.rcMonitor);
-            bool top = HasAutoHideBar(1, info.rcMonitor);
-            bool right = HasAutoHideBar(2, info.rcMonitor);
-            bool bottom = HasAutoHideBar(3, info.rcMonitor);
+            var edges = DetectAutoHideEdges(info);
+            bool left = edges[0], top = edges[1], right = edges[2], bottom = edges[3];
+
+            string seen = $"L{(left ? 1 : 0)} T{(top ? 1 : 0)} R{(right ? 1 : 0)} B{(bottom ? 1 : 0)}";
+            if (seen != _lastTaskbarLog)
+            {
+                _lastTaskbarLog = seen;
+                AppLog.Write("Taskbar", null, "auto-hide edges on this monitor: " + seen);
+            }
+
             if (!left && !top && !right && !bottom)
             {
                 _maxMargin = SystemParameters.WindowResizeBorderThickness;
@@ -124,6 +130,36 @@ public partial class MainWindow
         {
             return false;   // fall back to the normal behaviour
         }
+    }
+
+    private string _lastTaskbarLog = "";
+
+    /// <summary>
+    /// Which edges of this monitor carry an auto-hiding taskbar. Asks Windows per edge first (works for any monitor), then
+    /// falls back to the classic "is the taskbar auto-hide, and where is it" questions for the primary monitor.
+    /// </summary>
+    private static bool[] DetectAutoHideEdges(NativeShell.MONITORINFO info)
+    {
+        var edges = new bool[4];
+        for (uint e = 0; e < 4; e++) edges[e] = HasAutoHideBar(e, info.rcMonitor);
+        if (edges.Any(x => x)) return edges;
+
+        if ((info.dwFlags & NativeShell.MONITORINFOF_PRIMARY) == 0) return edges;
+        try
+        {
+            var state = new NativeShell.APPBARDATA { cbSize = (uint)Marshal.SizeOf<NativeShell.APPBARDATA>() };
+            uint flags = (uint)NativeShell.SHAppBarMessage(NativeShell.ABM_GETSTATE, ref state).ToUInt64();
+            if ((flags & NativeShell.ABS_AUTOHIDE) == 0) return edges;
+
+            var pos = new NativeShell.APPBARDATA { cbSize = (uint)Marshal.SizeOf<NativeShell.APPBARDATA>() };
+            bool found = NativeShell.SHAppBarMessage(NativeShell.ABM_GETTASKBARPOS, ref pos) != UIntPtr.Zero;
+            edges[found ? Math.Clamp((int)pos.uEdge, 0, 3) : 3] = true;   // 0 left, 1 top, 2 right, 3 bottom (the default)
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Taskbar", ex, "fallback detection");
+        }
+        return edges;
     }
 
     private static bool HasAutoHideBar(uint edge, NativeShell.RECT monitorRect)
@@ -255,6 +291,8 @@ public partial class MainWindow
     {
         int style = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
         Visualizer.Mode = style;
+        Visualizer.Intensity = Math.Clamp(_cfg.VisualizerIntensity, 0.4, 2.0);
+        Visualizer.Sensitivity = Math.Clamp(_cfg.VisualizerSensitivity, 0.4, 2.5);
         Visualizer.Visibility = style == 0 ? Visibility.Collapsed : Visibility.Visible;
         SetPulse(_playingNow && _currentIsAudio);   // the ripples only belong to style 0
     }

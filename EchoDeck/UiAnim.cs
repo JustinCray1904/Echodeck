@@ -85,45 +85,55 @@ internal static class UiAnim
         });
     }
 
-    /// <summary>Opens or closes a fixed-width panel by sliding its width (and side margin) with a fade.</summary>
-    public static void SlidePanel(FrameworkElement panel, bool show, double openWidth, Thickness openMargin, int ms = 230)
+    /// <summary>
+    /// Opens or closes a panel that sits beside the video. The video lives in a separate native window, which cannot follow a
+    /// layout that changes on every frame (it flickers, loses its rounded corners and shows a black strip). So the layout
+    /// changes ONCE, at the start of opening / end of closing, and only the panel itself fades and slides.
+    /// </summary>
+    /// <param name="slideFrom">How far the panel travels while fading (negative = from the left).</param>
+    public static void SlidePanel(FrameworkElement panel, bool show, double openWidth, Thickness openMargin, int ms = 210, double slideFrom = -26)
     {
+        if (panel.RenderTransform is not TranslateTransform move)
+        {
+            move = new TranslateTransform();
+            panel.RenderTransform = move;
+        }
+
         if (show)
         {
-            if (panel.Visibility == Visibility.Visible && Math.Abs(panel.Width - openWidth) < 0.5 && !Running.ContainsKey(panel)) return;
-            double startW = panel.Visibility == Visibility.Visible && !double.IsNaN(panel.Width) ? panel.Width : 0;
-            panel.Width = startW;
-            panel.Opacity = startW <= 0 ? 0 : panel.Opacity;
+            if (panel.Visibility == Visibility.Visible && panel.Opacity >= 0.999 && !Running.ContainsKey(panel)) return;
+
+            double start = panel.Visibility == Visibility.Visible ? panel.Opacity : 0;
+            panel.Width = openWidth;
+            panel.Margin = openMargin;
+            panel.Opacity = start;
+            move.X = slideFrom * (1 - start);
             panel.Visibility = Visibility.Visible;
-            Tween(panel, startW, openWidth, ms, w =>
+
+            Tween(panel, start, 1, ms, v =>
             {
-                double f = openWidth <= 0 ? 1 : w / openWidth;
-                panel.Width = w;
-                panel.Margin = new Thickness(openMargin.Left * f, openMargin.Top * f, openMargin.Right * f, openMargin.Bottom * f);
-                panel.Opacity = Math.Min(1, f * 1.4);
+                panel.Opacity = v;
+                move.X = slideFrom * (1 - v);
             }, () =>
             {
-                panel.Width = openWidth;
-                panel.Margin = openMargin;
                 panel.Opacity = 1;
+                move.X = 0;
             });
         }
         else
         {
             if (panel.Visibility != Visibility.Visible) return;
-            double startW = double.IsNaN(panel.Width) ? panel.ActualWidth : panel.Width;
-            Tween(panel, startW, 0, ms, w =>
+
+            Tween(panel, panel.Opacity, 0, (int)(ms * 0.75), v =>
             {
-                double f = openWidth <= 0 ? 0 : Math.Clamp(w / openWidth, 0, 1);
-                panel.Width = w;
-                panel.Margin = new Thickness(openMargin.Left * f, openMargin.Top * f, openMargin.Right * f, openMargin.Bottom * f);
-                panel.Opacity = Math.Min(1, f * 1.4);
+                panel.Opacity = v;
+                move.X = slideFrom * (1 - v);
             }, () =>
             {
+                // the one and only layout change: the panel's space is given back in a single step
                 panel.Visibility = Visibility.Collapsed;
-                panel.Width = openWidth;
-                panel.Margin = openMargin;
                 panel.Opacity = 1;
+                move.X = 0;
             });
         }
     }

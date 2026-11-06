@@ -36,6 +36,12 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         IsVisibleChanged += (_, _) => Sync();
     }
 
+    /// <summary>How tall / bold the bars and the ring move (Settings > Interface). 1 = default.</summary>
+    public double Intensity { get; set; } = 1.0;
+
+    /// <summary>How strongly it reacts to the music: low ignores quiet parts, high lifts them. 1 = default.</summary>
+    public double Sensitivity { get; set; } = 1.0;
+
     /// <summary>The colour of the visualiser (the cover's own colour); null = the accent colour.</summary>
     public Brush? Tint { get; set; }
 
@@ -161,10 +167,13 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         int half = BarCount / 2;
         for (int d = 0; d <= half; d++)
         {
-            double target = PeakAt(frac + span * d / half, t, d);
+            double target = Math.Clamp(PeakAt(frac + span * d / half, t, d), 0, 1);
+            // sensitivity bends the response: above 1 quiet passages are lifted, below 1 only loud ones show
+            target = Math.Pow(target, 1.0 / Math.Max(0.2, Sensitivity));
             // a little life on top so quiet passages still breathe
             target *= 0.8 + 0.2 * Math.Sin(t * 7.5 + d * 0.8);
-            _smooth[d] += (target - _smooth[d]) * 0.35;
+            // and a more sensitive visualiser also follows changes more quickly
+            _smooth[d] += (target - _smooth[d]) * Math.Clamp(0.22 + 0.13 * Sensitivity, 0.15, 0.7);
         }
 
         var brush = Tint ?? TryFindResource("AccentBrush") as Brush ?? Brushes.White;
@@ -184,7 +193,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
             // bar 0 sits at the top; left and right halves mirror each other
             int d = i <= BarCount / 2 ? i : BarCount - i;
             double angle = 2 * Math.PI * i / BarCount - Math.PI / 2;
-            double len = 3 + MaxBar * _smooth[d] * _level;
+            double len = Math.Min(3 + MaxBar * Intensity * _smooth[d] * _level, MaxBar * 1.6);
 
             double cos = Math.Cos(angle), sin = Math.Sin(angle);
             dc.DrawLine(pen,
@@ -212,7 +221,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
                 int hi = Math.Min(BarCount / 2, lo + 1);
                 double a = _smooth[lo] * (1 - (pos - lo)) + _smooth[hi] * (pos - lo);
 
-                double r = baseR + (a * _level - 0.25) * MaxBar * 0.9;
+                double r = baseR + Math.Clamp((a * _level - 0.25) * MaxBar * 0.9 * Intensity, -MaxBar * 0.6, MaxBar * 1.4);
                 var pt = new Point(c.X + Math.Cos(angle) * r, c.Y + Math.Sin(angle) * r);
                 if (i == 0) ctx.BeginFigure(pt, false, true); else ctx.LineTo(pt, true, true);
             }

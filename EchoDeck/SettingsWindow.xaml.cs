@@ -74,6 +74,15 @@ public partial class SettingsWindow : Window
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
         SubsOnSwitch.IsChecked = _cfg.SubtitlesOnByDefault;
         ResumeSwitch.IsChecked = _cfg.RememberPosition;
+        VizIntensitySlider.Value = Math.Clamp(_cfg.VisualizerIntensity, 0.4, 2.0);
+        VizSensitivitySlider.Value = Math.Clamp(_cfg.VisualizerSensitivity, 0.4, 2.5);
+        VizIntensityText.Text = VizIntensitySlider.Value.ToString("0.0") + "×";
+        VizSensitivityText.Text = VizSensitivitySlider.Value.ToString("0.0") + "×";
+        LyricsEngineCombo.SelectedIndex = string.Equals(_cfg.LyricsEngine, "cloud", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        CloudPanel.Visibility = LyricsEngineCombo.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        CloudEndpointBox.Text = _cfg.CloudEndpoint;
+        CloudModelBox.Text = _cfg.CloudModel;
+        CloudKeyBox.Password = string.IsNullOrEmpty(_cfg.CloudKeyProtected) ? "" : KeyPlaceholder;
         GlobalKeysSwitch.IsChecked = _cfg.GlobalMediaKeys;
         GlobalVolSwitch.IsChecked = _cfg.GlobalVolumeKeys;
         GlobalVolSwitch.IsEnabled = _cfg.GlobalMediaKeys;
@@ -160,6 +169,76 @@ public partial class SettingsWindow : Window
 
     // ------------------------------------------------------------------ controls -> settings
 
+    private const string KeyPlaceholder = "••••••••••••";
+    private readonly System.Windows.Threading.DispatcherTimer _vizSave = new() { Interval = TimeSpan.FromMilliseconds(250) };
+
+    private bool ConfirmCloudChoice() =>
+        MessageBox.Show(this,
+            "With the cloud engine, the audio of every song you generate lyrics for is uploaded to the online service you set below.\n\nNothing is sent until you press Generate. Use it?",
+            "Cloud lyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    private void Cloud_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _cfg.CloudEndpoint = CloudEndpointBox.Text.Trim();
+        _cfg.CloudModel = CloudModelBox.Text.Trim();
+
+        var typed = CloudKeyBox.Password;
+        if (typed.Length > 0 && typed != KeyPlaceholder)
+        {
+            try
+            {
+                _cfg.CloudKeyProtected = CloudTranscriber.ProtectKey(typed);
+                CloudKeyBox.Password = KeyPlaceholder;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Cloud key", ex, "could not encrypt the key");
+                MessageBox.Show(this, "Couldn't store the key securely: " + ex.Message, "Cloud lyrics", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        else if (typed.Length == 0)
+        {
+            _cfg.CloudKeyProtected = "";
+        }
+        _cfg.Save();
+    }
+
+    private void VizSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loading || sender is not Slider slider) return;
+
+        if (slider == VizIntensitySlider)
+        {
+            _cfg.VisualizerIntensity = Math.Round(slider.Value, 2);
+            VizIntensityText.Text = slider.Value.ToString("0.0") + "×";
+        }
+        else
+        {
+            _cfg.VisualizerSensitivity = Math.Round(slider.Value, 2);
+            VizSensitivityText.Text = slider.Value.ToString("0.0") + "×";
+        }
+
+        // save once the slider stops moving (and the visualiser follows right away)
+        _vizSave.Stop();
+        _vizSave.Tick -= VizSave_Tick;
+        _vizSave.Tick += VizSave_Tick;
+        _vizSave.Start();
+    }
+
+    private void VizSave_Tick(object? sender, EventArgs e)
+    {
+        _vizSave.Stop();
+        _cfg.Save();
+    }
+
+    private void WhisperDownload_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new WhisperSetupWindow { Owner = this };
+        window.ShowDialog();
+        UpdateWhisperStatus();
+    }
+
     private void ToggleAssociation(CheckBox box, bool on)
     {
         FileAssociations.Outcome outcome;
@@ -222,10 +301,13 @@ public partial class SettingsWindow : Window
         WhisperExeText.Text = exe ?? "Not found yet";
         WhisperModelText.Text = model == null ? "Not found yet" : modelProblem == null ? model : model + "  (" + modelProblem + ")";
 
-        bool ready = exe != null && model != null && modelProblem == null;
+        bool stub = WhisperService.IsDeprecatedStub(exe);
+        bool ready = exe != null && !stub && model != null && modelProblem == null;
         WhisperStatusText.Text = ready
             ? "Ready: open a song, press Lyrics, then Generate with AI."
-            : modelProblem != null
+            : stub
+                ? "main.exe is an old stub that does nothing in recent whisper.cpp releases. Choose whisper-cli.exe instead."
+                : modelProblem != null
                 ? "Model missing or invalid: " + modelProblem + ". Choose a working ggml model."
                 : "Choose both the program and a model to turn on AI lyrics.";
         WhisperStatusText.SetResourceReference(TextBlock.ForegroundProperty, ready ? "AccentBrush" : "MutedBrush");
@@ -277,6 +359,17 @@ public partial class SettingsWindow : Window
             case nameof(VisualizerCombo): _cfg.VisualizerStyle = i; break;
             case nameof(HwModeCombo): _cfg.HardwareMode = HwModes[i]; break;
             case nameof(WhisperLangCombo): _cfg.WhisperLanguage = WhisperLangs[i]; break;
+            case nameof(LyricsEngineCombo):
+                if (i == 1 && !ConfirmCloudChoice())
+                {
+                    _loading = true;
+                    LyricsEngineCombo.SelectedIndex = 0;
+                    _loading = false;
+                    return;
+                }
+                _cfg.LyricsEngine = i == 1 ? "cloud" : "local";
+                CloudPanel.Visibility = i == 1 ? Visibility.Visible : Visibility.Collapsed;
+                break;
             default: return;
         }
         _cfg.Save();

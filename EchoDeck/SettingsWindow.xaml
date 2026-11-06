@@ -63,9 +63,9 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Theme"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Light, dark, or follow Windows."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Dark, light, follow Windows, or one of the new looks: Liquid Glass, Midnight, AMOLED Black."/>
                             </StackPanel>
-                            <ComboBox x:Name="ThemeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Dark"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="System"/></ComboBox>
+                            <ComboBox x:Name="ThemeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Dark"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="System"/><ComboBoxItem Content="Liquid Glass"/><ComboBoxItem Content="Midnight"/><ComboBoxItem Content="AMOLED Black"/></ComboBox>
                         </Grid>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -145,6 +145,37 @@
                             </StackPanel>
                             <ComboBox x:Name="VisualizerCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Ripples"/><ComboBoxItem Content="Radial bars"/><ComboBoxItem Content="Wave ring"/></ComboBox>
                         </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="210"/>
+                                <ColumnDefinition Width="46"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Visualiser intensity"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="How tall and bold the bars and the wave ring move. Applies to Radial bars and Wave ring."/>
+                            </StackPanel>
+                            <Slider x:Name="VizIntensitySlider" Grid.Column="1" Style="{StaticResource ModernSlider}" Minimum="0.4" Maximum="2" Value="1"
+                                    IsMoveToPointEnabled="True" VerticalAlignment="Center" ValueChanged="VizSlider_Changed"/>
+                            <TextBlock x:Name="VizIntensityText" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource MutedBrush}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="210"/>
+                                <ColumnDefinition Width="46"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Visualiser sensitivity"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="How strongly it reacts to the music: low ignores quiet parts, high makes it jump on everything."/>
+                            </StackPanel>
+                            <Slider x:Name="VizSensitivitySlider" Grid.Column="1" Style="{StaticResource ModernSlider}" Minimum="0.4" Maximum="2.5" Value="1"
+                                    IsMoveToPointEnabled="True" VerticalAlignment="Center" ValueChanged="VizSlider_Changed"/>
+                            <TextBlock x:Name="VizSensitivityText" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource MutedBrush}"/>
+                        </Grid>
+
                         <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
                         <TextBlock Text="Windows taskbar" Style="{StaticResource SectionTitle}"/>
                         <Grid Margin="0,0,0,16">
@@ -467,6 +498,14 @@
                         <TextBlock x:Name="WhisperFolderText" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,16"/>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Download Whisper for me"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Pick a model (with speed and accuracy for each) and Tempo downloads it, and the program that runs it, then sets everything up."/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Choose and download…" Style="{StaticResource AccentButton}" Padding="16,8" Click="WhisperDownload_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Whisper program"/>
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,6" TextWrapping="Wrap" Text="whisper-cli.exe (or main.exe from older releases)."/>
@@ -491,6 +530,30 @@
                             </StackPanel>
                             <ComboBox x:Name="WhisperLangCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Auto-detect"/><ComboBoxItem Content="English"/><ComboBoxItem Content="Spanish"/><ComboBoxItem Content="French"/><ComboBoxItem Content="German"/><ComboBoxItem Content="Italian"/><ComboBoxItem Content="Portuguese"/><ComboBoxItem Content="Dutch"/><ComboBoxItem Content="Russian"/><ComboBoxItem Content="Japanese"/><ComboBoxItem Content="Korean"/><ComboBoxItem Content="Chinese"/></ComboBox>
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
+                        <TextBlock Text="Cloud transcription (optional)" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Lyrics engine"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="This PC keeps everything offline. Cloud sends each song's audio to an online service you choose and is usually faster and more accurate."/>
+                            </StackPanel>
+                            <ComboBox x:Name="LyricsEngineCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed">
+                                <ComboBoxItem Content="On this PC (offline)"/><ComboBoxItem Content="Cloud (online)"/>
+                            </ComboBox>
+                        </Grid>
+                        <StackPanel x:Name="CloudPanel" Visibility="Collapsed">
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="Works with OpenAI and compatible services. For example Groq: address https://api.groq.com/openai/v1 and model whisper-large-v3. The key is stored encrypted for your Windows account only."/>
+                            <TextBlock Style="{StaticResource RowLabel}" Text="Service address"/>
+                            <TextBox x:Name="CloudEndpointBox" Style="{StaticResource DarkTextBox}" Margin="0,6,0,12" LostFocus="Cloud_LostFocus"/>
+                            <TextBlock Style="{StaticResource RowLabel}" Text="Model"/>
+                            <TextBox x:Name="CloudModelBox" Style="{StaticResource DarkTextBox}" Margin="0,6,0,12" LostFocus="Cloud_LostFocus"/>
+                            <TextBlock Style="{StaticResource RowLabel}" Text="API key"/>
+                            <PasswordBox x:Name="CloudKeyBox" Margin="0,6,0,16" Height="38" Padding="12,0" VerticalContentAlignment="Center" FontSize="13"
+                                         Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextBrush}"
+                                         BorderBrush="{DynamicResource SlateBrush}" CaretBrush="{DynamicResource AccentBrush}" LostFocus="Cloud_LostFocus"/>
+                        </StackPanel>
                         <TextBlock x:Name="WhisperStatusText" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,8"/>
                     </StackPanel>
                 </ScrollViewer>

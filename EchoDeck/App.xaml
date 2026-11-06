@@ -51,6 +51,87 @@
                 <Setter Property="Fill" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}"/>
             </Style>
 
+            <!-- ===== Modern slider: slim rounded track, accent fill, round thumb that glows on hover / drag ===== -->
+            <Style x:Key="ModernSliderFill" TargetType="RepeatButton">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="IsTabStop" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RepeatButton">
+                            <Grid Background="Transparent" Height="26">
+                                <Border Height="4" CornerRadius="2" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="ModernSliderRest" TargetType="RepeatButton">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="IsTabStop" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RepeatButton">
+                            <Grid Background="Transparent" Height="26"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="ModernSliderThumb" TargetType="Thumb">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="Width" Value="16"/>
+                <Setter Property="Height" Value="16"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Grid Width="16" Height="16" Background="Transparent">
+                                <Ellipse x:Name="Halo" Width="30" Height="30" Fill="{DynamicResource AccentBrush}" Opacity="0"/>
+                                <Ellipse x:Name="Dot" Width="14" Height="14" Fill="White" Stroke="{DynamicResource AccentBrush}" StrokeThickness="3"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Halo" Property="Opacity" Value="0.22"/>
+                                    <Setter TargetName="Dot" Property="Width" Value="16"/>
+                                    <Setter TargetName="Dot" Property="Height" Value="16"/>
+                                </Trigger>
+                                <Trigger Property="IsDragging" Value="True">
+                                    <Setter TargetName="Halo" Property="Opacity" Value="0.34"/>
+                                    <Setter TargetName="Dot" Property="Width" Value="16"/>
+                                    <Setter TargetName="Dot" Property="Height" Value="16"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="ModernSlider" TargetType="Slider">
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="Height" Value="26"/>
+                <Setter Property="MinWidth" Value="80"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Slider">
+                            <Grid Background="Transparent" SnapsToDevicePixels="True">
+                                <Border Height="4" CornerRadius="2" VerticalAlignment="Center" Background="{DynamicResource SlateBrush}"/>
+                                <Track x:Name="PART_Track">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="Slider.DecreaseLarge" Style="{StaticResource ModernSliderFill}"/>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource ModernSliderThumb}"/>
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="Slider.IncreaseLarge" Style="{StaticResource ModernSliderRest}"/>
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- ===== Text styles ===== -->
             <Style x:Key="PageTitle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="20"/>

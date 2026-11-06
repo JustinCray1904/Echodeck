@@ -139,6 +139,8 @@ public partial class MainWindow : Window
         VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
         _sidebarVisible = _cfg.ShowSidebarAtStart;
         InitLibrary();
+        InitMini();
+        InitPopups();
         InitLyrics();
         ApplyVisualizerStyle();
         ApplyViewMode();
@@ -306,6 +308,7 @@ public partial class MainWindow : Window
         ApplySidebar();
 
         UpdateMiniPlayer();
+        UpdateBatchUi();
     }
 
     private void NavAdd_Click(object sender, RoutedEventArgs e)
@@ -569,14 +572,14 @@ public partial class MainWindow : Window
         bool show = _libraryVisible && _hasMedia;
         if (show) UiAnim.FadeIn(MiniPlayer, 200); else { UiAnim.Cancel(MiniPlayer); MiniPlayer.Visibility = Visibility.Collapsed; MiniPlayer.Opacity = 1; }
 
-        // the mini player owns the right-hand side: the tiles shrink to make room instead of sitting underneath it
-        double reserve = show ? MiniPlayer.Width + 6 + 14 : 0;
-        UiAnim.Tween(LibraryList, LibraryList.Margin.Right, reserve, 220,
-            v => LibraryList.Margin = new Thickness(0, 10, v, 0));
-        UiAnim.Tween(LibEmptyPanel, LibEmptyPanel.Margin.Right, reserve, 220,
-            v => LibEmptyPanel.Margin = new Thickness(0, 0, v, 0));
+        // the cards keep their full width: the small player just floats above them at its docked side
+        var listMargin = LibraryList.Margin;
+        if (listMargin.Right != 0) LibraryList.Margin = new Thickness(listMargin.Left, listMargin.Top, 0, listMargin.Bottom);
+        var emptyMargin = LibEmptyPanel.Margin;
+        if (emptyMargin.Right != 0) LibEmptyPanel.Margin = new Thickness(emptyMargin.Left, emptyMargin.Top, 0, emptyMargin.Bottom);
 
         ApplyPlayerLayout();
+        if (show) Dispatcher.InvokeAsync(() => { PositionMini(animate: false); PositionMiniVideo(); }, DispatcherPriority.Loaded);
     }
 
     private void MiniExpand_Click(object sender, RoutedEventArgs e) => ShowLibrary(false);
@@ -1230,7 +1233,11 @@ public partial class MainWindow : Window
         if (e.ClickCount >= 2) ToggleFullscreen();
     }
 
-    private void VideoSurface_MouseRightButtonUp(object sender, MouseButtonEventArgs e) => ShowContextMenu();
+    private void VideoSurface_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_libraryVisible) { e.Handled = true; return; }   // no context menu on the small player
+        ShowContextMenu();
+    }
 
     private Rect _prevBounds;
 

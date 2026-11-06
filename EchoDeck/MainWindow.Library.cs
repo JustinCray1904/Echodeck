@@ -175,7 +175,7 @@ public partial class MainWindow
     private bool _railHidden;
     private readonly Thickness _railMargin = new(0, 0, 8, 0);
 
-    private double RailWidth => _libraryVisible ? 190 : 56;
+    private double RailWidth => _libraryVisible ? 236 : 56;
 
     private void ApplyRail(bool animate = true)
     {
@@ -200,8 +200,11 @@ public partial class MainWindow
         }
         else if (Rail.Visibility == Visibility.Visible)
         {
-            // already showing: glide between the wide (pages) and narrow (player) side bar
-            UiAnim.Tween(Rail, Rail.Width, RailWidth, 220, w => Rail.Width = w, () => Rail.Width = RailWidth);
+            // already showing: switch between the wide (pages) and narrow (player) side bar in one step, so the
+            // video window next to it is laid out once instead of on every frame
+            UiAnim.Cancel(Rail);
+            Rail.Width = RailWidth;
+            Rail.Opacity = 1;
         }
         else
         {
@@ -1033,6 +1036,8 @@ public partial class MainWindow
                 }));
             }
             menu.Items.Add(new Separator());
+            if (!_anon && entry.IsAudio)
+                menu.Items.Add(MenuEntry("Generate lyrics", "IcoMusic", (_, _) => StartLyricsBatch(new[] { path })));
             menu.Items.Add(MenuEntry("Properties", "IcoInfo", (_, _) => ShowProperties(path)));
             if (entry.IsAudio && entry.Album.Length > 0)
             {
