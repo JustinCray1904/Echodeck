@@ -33,6 +33,17 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Default player**: Settings > General > "Open media files with Tempo" registers the common formats for the current user.
 - **Shortcuts**: B shows / hides the side bar next to the player (the pages keep theirs), A cycles the audio track.
 
+## Look and layout
+- **Themes**: Dark, Light, System, plus **Liquid Glass** (translucent panels over a colour wash), **Midnight** and **AMOLED Black**.
+- **Visualiser**: Ripples, Radial bars or Wave ring, with *intensity* and *sensitivity* sliders in Settings > Interface. The whole visualiser always fits: the cover, rings and title scale down together in a small window.
+- **Small player**: drag it by its grip or title; it snaps to the left (inside the side bar) or the right and remembers which. Previous / Next appear over its video on hover. It has no right-click menu.
+- **Panels** (side bar, queue / playlists) change the layout once and fade, instead of resizing the video every frame.
+
+## Lyrics generation
+- **Download Whisper for me** (Settings > Lyrics): choose a model with its speed and accuracy shown, and Tempo fetches it plus the whisper.cpp program.
+- **Cloud (optional)**: any OpenAI-compatible service (OpenAI, Groq ...). Off by default; the song's audio is uploaded only when you press Generate, and the API key is stored encrypted for your Windows account.
+- **Batch**: tick songs, More > Generate lyrics. It runs in the background at low priority; a card in the side bar shows "Song n of N" and progress, and each result is saved next to its song as `.lrc`.
+
 ## Handled problems
 Things Tempo recovers from by itself (an unusable Whisper model, a blocked registry write, a visualiser hiccup) are written to `%LOCALAPPDATA%\Tempo\tempo.log`. `crash.log` stays reserved for real crashes.
 
