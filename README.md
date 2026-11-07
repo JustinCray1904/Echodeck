@@ -37,7 +37,8 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Themes**: Dark, Light, System, plus **Liquid Glass** (translucent panels over a colour wash), **Midnight** and **AMOLED Black**.
 - **Visualiser**: Ripples, Radial bars or Wave ring, with *intensity* and *sensitivity* sliders in Settings > Interface. The whole visualiser always fits: the cover, rings and title scale down together in a small window.
 - **Small player**: drag it by its grip or title; it snaps to the left (inside the side bar) or the right and remembers which. Previous / Next appear over its video on hover. It has no right-click menu.
-- **Panels** (side bar, queue / playlists) change the layout once and fade, instead of resizing the video every frame.
+- **Panels** (side bar, queue / playlists) slide the video area open and shut. For the instant the video's native window is resized it is covered by a curtain, so no flash, squeeze or black strip shows; key-mashing is ignored while a panel is moving. *Settings > Interface > Smooth panel resizing* turns the slide off (the layout then changes in one step with a fade).
+- **Popups** (volume, video / audio / subtitles) open above their own button and clear of the control bar, at a fixed size, and slide + fade both ways.
 
 ## Lyrics generation
 - **Download Whisper for me** (Settings > Lyrics): choose a model with its speed and accuracy shown, and Tempo fetches it plus the whisper.cpp program.
