@@ -618,16 +618,18 @@ public partial class MainWindow : Window
         var cts = _waveCts = new CancellationTokenSource();
         WaveBar.Peaks = null;
         Visualizer.SetPeaks(null);
+        Visualizer.SetSpectrum(null);
 
         try
         {
-            var peaks = vaultStream != null
+            var analysis = vaultStream != null
                 ? await WaveformLoader.FromStreamAsync(vaultStream, cts.Token)
                 : await WaveformLoader.FromFileAsync(path, cts.Token);
             if (!cts.IsCancellationRequested)
             {
-                WaveBar.Peaks = peaks;
-                Visualizer.SetPeaks(peaks);
+                WaveBar.Peaks = analysis?.Peaks;
+                Visualizer.SetPeaks(analysis?.Peaks);
+                Visualizer.SetSpectrum(analysis?.Spectrum);
             }
         }
         catch (OperationCanceledException) { /* a newer track started */ }

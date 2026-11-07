@@ -175,17 +175,17 @@
         <!-- grid-style rows: four per row -->
         <DataTemplate x:Key="RowGridTpl">
             <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource TileTpl}" Focusable="False">
-                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><local:TileRowPanel Columns="{Binding DataContext.Columns, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
             </ItemsControl>
         </DataTemplate>
         <DataTemplate x:Key="RowSquareTpl">
             <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource SquareTileTpl}" Focusable="False">
-                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><local:TileRowPanel Columns="{Binding DataContext.Columns, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
             </ItemsControl>
         </DataTemplate>
         <DataTemplate x:Key="RowArtistTpl">
             <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource ArtistTileTpl}" Focusable="False">
-                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><local:TileRowPanel Columns="{Binding DataContext.Columns, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
             </ItemsControl>
         </DataTemplate>
 
@@ -898,7 +898,7 @@
                     <!-- Video area. VideoView is a native surface ("airspace"), so everything that must sit on top of the
                          picture (empty state, music view, volume popup, floating fullscreen bar) is its Content. -->
                     <Grid x:Name="VideoHost" Grid.Column="1" Background="Black">
-                        <vlc:VideoView x:Name="VideoView">
+                        <vlc:VideoView x:Name="VideoView" Background="Black">
                             <Grid x:Name="VideoSurface" Background="#01000000"
                                   MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown"
                                   MouseRightButtonUp="VideoSurface_MouseRightButtonUp"
@@ -1035,26 +1035,9 @@ CornerRadius="18" Padding="4" Background="Transparent">
 
                                 <!-- controls on the small video while browsing (appear on hover): open / close at the top, previous / pause / next at the bottom -->
                                 <Grid x:Name="MiniOverlay" Visibility="Collapsed" Background="#01000000">
-                                    <Grid x:Name="MiniControls">
-                                        <Grid.Style>
-                                            <Style TargetType="Grid">
-                                                <Setter Property="Opacity" Value="0"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsMouseOver, ElementName=MiniOverlay}" Value="True">
-                                                        <DataTrigger.EnterActions>
-                                                            <BeginStoryboard><Storyboard>
-                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.16"/>
-                                                            </Storyboard></BeginStoryboard>
-                                                        </DataTrigger.EnterActions>
-                                                        <DataTrigger.ExitActions>
-                                                            <BeginStoryboard><Storyboard>
-                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.22"/>
-                                                            </Storyboard></BeginStoryboard>
-                                                        </DataTrigger.ExitActions>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Grid.Style>
+                                    <!-- faded in / out from code (MainWindow.Mini.cs): this overlay lives in LibVLC's own window, where
+                                         XAML "ElementName" hover triggers can't find MiniOverlay, so the icons never became visible -->
+                                    <Grid x:Name="MiniControls" Opacity="0">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0">
                                             <Button Style="{StaticResource MiniOverlayButton}" Width="24" Height="24" Margin="0,0,4,0" ToolTip="Open player" Click="MiniExpand_Click">
                                                 <Path Style="{StaticResource Ico}" Data="{StaticResource IcoFullscreen}" Width="11" Height="11" Stretch="Uniform"/>
@@ -1181,7 +1164,7 @@ CornerRadius="18" Padding="4" Background="Transparent">
                     </Button>
                     <TextBlock x:Name="VolumeText" Width="38" FontSize="12" Foreground="{DynamicResource Fg3Brush}"
                                VerticalAlignment="Center" TextAlignment="Left" Margin="2,0,0,0"/>
-                    <Popup x:Name="VolumePopup" PlacementTarget="{Binding ElementName=VolumeButton}" Placement="Top"
+                    <Popup x:Name="VolumePopup"
                            StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade" Closed="VolumePopup_Closed">
                         <Border Margin="14" Padding="14,12" CornerRadius="14" Background="{DynamicResource PanelBrush}"
                                 BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1">
@@ -1214,8 +1197,8 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                 Click="Settings_Click">
                             <Path Style="{StaticResource Ico}" Data="{StaticResource IcoSettings}"/>
                         </Button>
-                        <Popup x:Name="QuickPopup" PlacementTarget="{Binding ElementName=ToolsBundle}" Placement="Top" HorizontalOffset="-218"
-                               VerticalOffset="-4" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade" Closed="QuickPopup_Closed">
+                        <Popup x:Name="QuickPopup"
+                               StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade" Closed="QuickPopup_Closed">
                             <Border x:Name="QuickPanel" Width="322" Height="430" Margin="16" CornerRadius="16"
                                     Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1">
                                 <Border.Effect>

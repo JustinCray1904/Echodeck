@@ -624,6 +624,7 @@ public partial class MainWindow
             _anonLyrics.Clear();
             ClearLyrics();
             Visualizer.SetPeaks(null);
+            Visualizer.SetSpectrum(null);
             if (SearchBox.Text.Length > 0) SearchBox.Text = "";
 
             // ---- put the normal state back

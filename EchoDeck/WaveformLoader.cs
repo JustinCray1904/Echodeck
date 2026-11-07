@@ -7,6 +7,8 @@ namespace EchoDeck;
 /// positions and measures a short slice at each, so even long mixes finish in a few seconds. If a format can't be
 /// read (Media Foundation has no decoder for it) the caller keeps the flat placeholder bars.
 /// </summary>
+internal sealed record AudioAnalysis(float[] Peaks, SpectrumData? Spectrum);
+
 internal static class WaveformLoader
 {
     public const int Buckets = 300;
@@ -15,8 +17,8 @@ internal static class WaveformLoader
     // seeking inside VBR mp3 files is slower than just reading). Longer mixes use evenly spaced seeks instead.
     private static readonly TimeSpan SequentialLimit = TimeSpan.FromMinutes(25);
 
-    public static Task<float[]?> FromFileAsync(string path, CancellationToken ct) =>
-        Task.Run<float[]?>(() =>
+    public static Task<AudioAnalysis?> FromFileAsync(string path, CancellationToken ct) =>
+        Task.Run<AudioAnalysis?>(() =>
         {
             try
             {
@@ -28,8 +30,8 @@ internal static class WaveformLoader
         }, ct);
 
     /// <summary>For Anonymous Mode: reads from its own decrypting stream, so nothing touches the disk.</summary>
-    public static Task<float[]?> FromStreamAsync(Stream stream, CancellationToken ct) =>
-        Task.Run<float[]?>(() =>
+    public static Task<AudioAnalysis?> FromStreamAsync(Stream stream, CancellationToken ct) =>
+        Task.Run<AudioAnalysis?>(() =>
         {
             try
             {
@@ -41,7 +43,7 @@ internal static class WaveformLoader
             catch { return null; }
         }, ct);
 
-    private static float[]? Analyze(WaveStream reader, CancellationToken ct)
+    private static AudioAnalysis? Analyze(WaveStream reader, CancellationToken ct)
     {
         var total = reader.TotalTime;
         if (total.TotalSeconds < 1) return null;
@@ -49,9 +51,16 @@ internal static class WaveformLoader
         var samples = reader.ToSampleProvider();
         var peaks = new float[Buckets];
         var buffer = new float[16384];
+        SpectrumBuilder? spectrum = null;
 
         if (total <= SequentialLimit)
         {
+            // the same single read also feeds the spectrum (the music visualiser): mono mix of every sample frame
+            int channels = Math.Max(1, reader.WaveFormat.Channels);
+            spectrum = new SpectrumBuilder(reader.WaveFormat.SampleRate);
+            float mix = 0;
+            int mixCount = 0;
+
             long perBucket = Math.Max(1, (long)(total.TotalSeconds * reader.WaveFormat.SampleRate) * reader.WaveFormat.Channels / Buckets);
             long index = 0;
             int read;
@@ -64,6 +73,14 @@ internal static class WaveformLoader
                     int b = (int)Math.Min(Buckets - 1, index / perBucket);
                     if (v > peaks[b]) peaks[b] = v;
                     index++;
+
+                    mix += buffer[k];
+                    if (++mixCount == channels)
+                    {
+                        spectrum.Push(mix / channels);
+                        mix = 0;
+                        mixCount = 0;
+                    }
                 }
             }
         }
@@ -92,6 +109,6 @@ internal static class WaveformLoader
         // normalise, then ease the values a little so quiet parts stay visible
         for (int i = 0; i < peaks.Length; i++)
             peaks[i] = (float)Math.Pow(peaks[i] / overall, 0.8);
-        return peaks;
+        return new AudioAnalysis(peaks, spectrum?.Build());
     }
 }

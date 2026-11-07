@@ -35,6 +35,7 @@ public partial class MainWindow
         SelectionState.Instance.PropertyChanged += (_, _) => UpdateSelectionBar();
         SmoothScroll.Attach(LibraryList);
         SmoothScroll.Attach(SideList);
+        LibraryList.SizeChanged += LibraryList_SizeChanged;
         LibraryScanner.Progress += p => Dispatcher.InvokeAsync(() => OnScanProgress(p));
     }
 
@@ -200,7 +201,7 @@ public partial class MainWindow
 
         if (collapsed)
         {
-            UiAnim.SlidePanel(Rail, false, RailWidth, _railMargin, AppSettings.Current.SmoothResize, CurtainOn, CurtainOff);
+            UiAnim.SlidePanel(Rail, false, RailWidth, _railMargin, SmoothPanels, CurtainOn, CurtainOff);
         }
         else if (Rail.Visibility == Visibility.Visible)
         {
@@ -212,7 +213,7 @@ public partial class MainWindow
         }
         else
         {
-            UiAnim.SlidePanel(Rail, true, RailWidth, _railMargin, AppSettings.Current.SmoothResize, CurtainOn, CurtainOff);
+            UiAnim.SlidePanel(Rail, true, RailWidth, _railMargin, SmoothPanels, CurtainOn, CurtainOff);
         }
     }
 
@@ -230,7 +231,7 @@ public partial class MainWindow
             SidebarPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
-        UiAnim.SlidePanel(SidebarPanel, show, 330, margin, AppSettings.Current.SmoothResize, CurtainOn, CurtainOff);
+        UiAnim.SlidePanel(SidebarPanel, show, 330, margin, SmoothPanels, CurtainOn, CurtainOff);
     }
 
     // ------------------------------------------------------------------ page content
@@ -669,20 +670,11 @@ public partial class MainWindow
 
         var key = RowTemplateKey();
         bool tiles = key is "RowGridTpl" or "RowSquareTpl" or "RowArtistTpl";
-        var rows = new List<EntryRow>();
-        if (tiles)
-        {
-            for (int i = 0; i < _visibleEntries.Count; i += 4)
-                rows.Add(new EntryRow(_visibleEntries.Skip(i).Take(4).ToList()));
-        }
-        else
-        {
-            foreach (var entry in _visibleEntries) rows.Add(new EntryRow(new List<BrowserEntry> { entry }));
-        }
+        _tileCols = tiles ? TileColumns(key) : 0;
 
-        LibraryList.MaxWidth = tiles ? 1100 : double.PositiveInfinity;
+        LibraryList.MaxWidth = double.PositiveInfinity;   // the number of columns follows the width instead of a fixed cap
         LibraryList.ItemTemplate = (DataTemplate)FindResource(key);
-        LibraryList.ItemsSource = rows;
+        LibraryList.ItemsSource = BuildRows(tiles ? _tileCols : 0);
 
         CountText.Text = _mode == LibMode.Music && _musicScope == null && _musicTab == 1 ? ItemWord(_visibleEntries.Count, "album")
                        : _mode == LibMode.Music && _musicScope == null && _musicTab == 2 ? ItemWord(_visibleEntries.Count, "artist")
@@ -690,6 +682,66 @@ public partial class MainWindow
         SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
         UpdateEmptyState();
         UpdateSelectionBar();
+    }
+
+    // ------------------------------------------------------------------ responsive tile columns
+
+    private int _tileCols;
+    private System.Windows.Threading.DispatcherTimer? _regroupTimer;
+
+    private List<EntryRow> BuildRows(int columns)
+    {
+        var rows = new List<EntryRow>();
+        if (columns > 0)
+        {
+            for (int i = 0; i < _visibleEntries.Count; i += columns)
+                rows.Add(new EntryRow(_visibleEntries.Skip(i).Take(columns).ToList(), columns));
+        }
+        else
+        {
+            foreach (var entry in _visibleEntries) rows.Add(new EntryRow(new List<BrowserEntry> { entry }));
+        }
+        return rows;
+    }
+
+    /// <summary>As many tiles per row as fit the list's width (never fewer than two, never cropped).</summary>
+    private int TileColumns(string key)
+    {
+        double width = LibraryList.ActualWidth;
+        if (FindScrollViewer(LibraryList) is { ViewportWidth: > 0 } viewer) width = viewer.ViewportWidth;
+        if (width <= 0) width = 960;
+
+        double minCell = key == "RowGridTpl" ? 236 : key == "RowSquareTpl" ? 200 : 180;
+        return Math.Clamp((int)Math.Floor(width / minCell), 2, 8);
+    }
+
+    private void LibraryList_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_tileCols <= 0 || !e.WidthChanged) return;
+        _regroupTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _regroupTimer.Tick -= RegroupTimer_Tick;
+        _regroupTimer.Tick += RegroupTimer_Tick;
+        _regroupTimer.Stop();
+        _regroupTimer.Start();
+    }
+
+    private void RegroupTimer_Tick(object? sender, EventArgs e)
+    {
+        _regroupTimer?.Stop();
+        if (_tileCols <= 0 || !_libraryVisible) return;
+
+        var key = RowTemplateKey();
+        if (key is not ("RowGridTpl" or "RowSquareTpl" or "RowArtistTpl")) return;
+        int cols = TileColumns(key);
+        if (cols == _tileCols) return;
+        _tileCols = cols;
+
+        // same tiles (selection stays), new grouping; keep roughly the same place in the list
+        var viewer = FindScrollViewer(LibraryList);
+        double ratio = viewer != null && viewer.ExtentHeight > 0 ? viewer.VerticalOffset / viewer.ExtentHeight : 0;
+        LibraryList.ItemsSource = BuildRows(cols);
+        if (viewer != null && ratio > 0)
+            Dispatcher.InvokeAsync(() => viewer.ScrollToVerticalOffset(ratio * viewer.ExtentHeight), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void UpdateEmptyState()

@@ -348,6 +348,16 @@ public partial class MainWindow
     /// Covers the video (a native window) while a side panel changes the layout next to it. The picture is hidden for those
     /// few moments instead of flashing white, squeezing or showing a black strip.
     /// </summary>
+    private DispatcherTimer? _curtainWatchdog;
+
+    /// <summary>
+    /// The video area slides smoothly only while nothing is loaded. With media loaded, the native video window and the overlay
+    /// window on top of it would be resized on every animation frame, which is what made the picture drop out to black (and lose
+    /// its rounded corners) for seconds, for songs as well as videos. Then the layout changes once, under the curtain, while the
+    /// panel itself still fades and slides.
+    /// </summary>
+    private bool SmoothPanels => AppSettings.Current.SmoothResize && !_hasMedia;
+
     private void CurtainOn()
     {
         if (_libraryVisible || VideoSurface.Visibility != Visibility.Visible) return;
@@ -356,10 +366,26 @@ public partial class MainWindow
         UiAnim.Cancel(VideoCurtain);
         VideoCurtain.Opacity = 1;
         VideoCurtain.Visibility = Visibility.Visible;
+        Visualizer.Frozen = true;   // nothing to redraw while the layout is changing
+
+        // safety net: whatever happens to the transition, the curtain never stays down
+        _curtainWatchdog ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        _curtainWatchdog.Tick -= CurtainWatchdog_Tick;
+        _curtainWatchdog.Tick += CurtainWatchdog_Tick;
+        _curtainWatchdog.Stop();
+        _curtainWatchdog.Start();
+    }
+
+    private void CurtainWatchdog_Tick(object? sender, EventArgs e)
+    {
+        _curtainWatchdog?.Stop();
+        CurtainOff();
     }
 
     private void CurtainOff()
     {
+        _curtainWatchdog?.Stop();
+        Visualizer.Frozen = false;
         if (VideoCurtain.Visibility != Visibility.Visible) return;
 
         // make sure the overlay is laid out at its final size before the picture comes back

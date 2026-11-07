@@ -30,9 +30,19 @@ public partial class MainWindow
         MiniPlayer.MouseRightButtonDown += (_, e) => e.Handled = true;
         MiniPlayer.MouseRightButtonUp += (_, e) => e.Handled = true;
 
+        MiniOverlay.MouseEnter += (_, _) => FadeMiniControls(1);
+        MiniOverlay.MouseLeave += (_, _) => FadeMiniControls(0);
+
         if (MiniHost is { } host) host.SizeChanged += (_, _) => PositionMini(animate: false);
         Rail.SizeChanged += (_, _) => PositionMini(animate: false);
         Rail.IsVisibleChanged += (_, _) => PositionMini(animate: false);
+    }
+
+    /// <summary>The previous / pause / next and open / close buttons on the small video appear while the pointer is over it.</summary>
+    private void FadeMiniControls(double to)
+    {
+        if (to > 0 && MiniOverlay.Visibility != Visibility.Visible) return;
+        UiAnim.Tween(MiniControls, MiniControls.Opacity, to, to > 0 ? 160 : 220, v => MiniControls.Opacity = v, () => MiniControls.Opacity = to);
     }
 
     /// <summary>The x range (in the mini player's parent) between the two docks.</summary>
@@ -148,6 +158,7 @@ public partial class MainWindow
     // ------------------------------------------------------------------ popups above the control bar
 
     private readonly HashSet<Popup> _closingPopups = new();
+    private readonly Dictionary<Popup, (FrameworkElement Anchor, bool AlignRight)> _popupAnchors = new();
 
     private void InitPopups()
     {
@@ -162,35 +173,70 @@ public partial class MainWindow
             ClosePopup(VolumePopup);
             ClosePopup(QuickPopup);
         };
+        ControlBar.SizeChanged += (_, _) =>
+        {
+            if (VolumePopup.IsOpen) PlacePopup(VolumePopup);
+            if (QuickPopup.IsOpen) PlacePopup(QuickPopup);
+        };
 
         void Setup(Popup pop, FrameworkElement anchor, bool alignRight)
         {
-            pop.PlacementTarget = anchor;
-            pop.Placement = PlacementMode.Custom;
+            _popupAnchors[pop] = (anchor, alignRight);
+            pop.PlacementTarget = ControlBar;            // the whole bar: the popup's bottom edge sits on the bar's top edge
+            pop.Placement = PlacementMode.Top;
             pop.HorizontalOffset = 0;
             pop.VerticalOffset = 0;
             pop.StaysOpen = true;                        // closed by us, so the close can be animated
             pop.PopupAnimation = PopupAnimation.None;    // the slide + fade below replaces the built-in fade
-            pop.CustomPopupPlacementCallback = (popupSize, targetSize, _) => PlaceAboveBar(anchor, popupSize, targetSize, alignRight);
+            pop.Opened += (_, _) => PlacePopup(pop);
             pop.Opened += Popup_Opened;
         }
     }
 
-    /// <summary>
-    /// Over its own button horizontally, and entirely above the control bar vertically (it never overlaps the bar),
-    /// leaving the same gap as the "continue" card.
-    /// </summary>
-    private CustomPopupPlacement[] PlaceAboveBar(FrameworkElement anchor, Size popupSize, Size targetSize, bool alignRight)
-    {
-        double clearance = 0;
-        try { clearance = anchor.TranslatePoint(new Point(0, 0), ControlBar).Y; }   // how far the button sits below the bar's top edge
-        catch { /* not in the same tree yet */ }
+    private const double PopupGap = 10;   // visible space between a popup card and the control bar (device-independent px)
 
-        const double shadowMargin = 14;   // the popup's own transparent margin (it holds the drop shadow)
-        const double gap = 10;            // visible space between the card and the bar
-        double y = -clearance - popupSize.Height + shadowMargin - gap;
-        double x = alignRight ? targetSize.Width - popupSize.Width + shadowMargin : (targetSize.Width - popupSize.Width) / 2;
-        return new[] { new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.None) };
+    /// <summary>
+    /// Sideways: over its own button. Upwards: WPF's own "Top" placement puts the popup directly above the bar, then the real
+    /// on-screen position of the card is measured and corrected, so the card can never overlap the bar whatever the DPI.
+    /// </summary>
+    private void PlacePopup(Popup pop)
+    {
+        if (!_popupAnchors.TryGetValue(pop, out var info) || pop.Child is not FrameworkElement card) return;
+
+        try
+        {
+            card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double popupWidth = card.DesiredSize.Width;                 // includes the card's own margin (room for the shadow)
+            var topLeft = info.Anchor.TranslatePoint(new Point(0, 0), ControlBar);
+
+            double x = info.AlignRight
+                ? topLeft.X + info.Anchor.ActualWidth - popupWidth + card.Margin.Right   // card's right edge on the tools' right edge
+                : topLeft.X + (info.Anchor.ActualWidth - popupWidth) / 2;                // centred over the speaker
+            double maxX = ControlBar.ActualWidth - popupWidth + card.Margin.Right;
+            pop.HorizontalOffset = Math.Max(-card.Margin.Left + 4, Math.Min(x, maxX));
+            pop.VerticalOffset = 0;
+        }
+        catch { /* layout not ready: the correction below still runs */ }
+
+        Dispatcher.BeginInvoke(new Action(() => CorrectPopupHeight(pop)), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void CorrectPopupHeight(Popup pop)
+    {
+        if (!pop.IsOpen || pop.Child is not FrameworkElement card || !card.IsVisible || card.ActualHeight <= 0) return;
+
+        try
+        {
+            double scale = VisualTreeHelper.GetDpi(this).DpiScaleY;
+            double slide = (card.RenderTransform as TranslateTransform)?.Y ?? 0;           // the opening animation may still be sliding it
+            double cardBottom = card.PointToScreen(new Point(0, card.ActualHeight)).Y - slide * scale;
+            double barTop = ControlBar.PointToScreen(new Point(0, 0)).Y;
+            double wanted = barTop - PopupGap * scale;
+
+            double deltaPx = wanted - cardBottom;      // negative: too low (overlapping the bar), positive: too high
+            if (Math.Abs(deltaPx) > 0.5) pop.VerticalOffset += deltaPx / scale;
+        }
+        catch { /* popup closed meanwhile */ }
     }
 
     private void DismissPopups(DependencyObject? source)

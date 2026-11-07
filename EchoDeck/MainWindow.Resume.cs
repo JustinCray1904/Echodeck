@@ -11,6 +11,7 @@ public partial class MainWindow
     private long _resumeOfferMs;
     private DateTime _resumeLastWrite = DateTime.MinValue;
     private DispatcherTimer? _resumeTimer;
+    private bool _resumeOfferActive;      // an offer is waiting for an answer (shown only on the full player, never in the mini player)
 
     /// <summary>A new item starts: save the old one's spot, then track the new one if it is a video.</summary>
     private void BeginResumeTracking(string? path, bool isAudio)
@@ -53,10 +54,9 @@ public partial class MainWindow
         if (entry == null) return;
 
         _resumeOfferMs = entry.Pos;
+        _resumeOfferActive = true;
         ResumeText.Text = "Continue from " + Fmt(entry.Pos) + "?";
-        // above the control bar: a bit higher when the floating bar is up in fullscreen
-        ResumeCard.Margin = new Thickness(0, 0, 0, _isFullscreen ? 120 : 26);
-        UiAnim.FadeIn(ResumeCard, 200);
+        SyncResumeCard();
 
         _resumeTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
         _resumeTimer.Tick -= ResumeTimer_Tick;
@@ -70,9 +70,32 @@ public partial class MainWindow
     private void HideResumePrompt(bool animate)
     {
         _resumeTimer?.Stop();
+        _resumeOfferActive = false;
         if (ResumeCard.Visibility != Visibility.Visible) return;
         if (animate) UiAnim.FadeOut(ResumeCard, 220);
         else { UiAnim.Cancel(ResumeCard); ResumeCard.Visibility = Visibility.Collapsed; ResumeCard.Opacity = 1; }
+    }
+
+    /// <summary>
+    /// The card lives on the video overlay, which becomes the small player while browsing: there only the hover controls
+    /// belong. So it is shown on the full player only, and comes back when the player is opened again (if still unanswered).
+    /// </summary>
+    private void SyncResumeCard()
+    {
+        bool show = _resumeOfferActive && !_libraryVisible;
+        if (show)
+        {
+            if (ResumeCard.Visibility == Visibility.Visible) return;
+            // above the control bar: a bit higher when the floating bar is up in fullscreen
+            ResumeCard.Margin = new Thickness(0, 0, 0, _isFullscreen ? 120 : 26);
+            UiAnim.FadeIn(ResumeCard, 200);
+        }
+        else if (ResumeCard.Visibility == Visibility.Visible)
+        {
+            UiAnim.Cancel(ResumeCard);
+            ResumeCard.Visibility = Visibility.Collapsed;
+            ResumeCard.Opacity = 1;
+        }
     }
 
     private void ResumeContinue_Click(object sender, RoutedEventArgs e)

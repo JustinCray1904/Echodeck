@@ -191,6 +191,10 @@ internal static class WhisperService
                 // short lines (about one sung line each) give far better highlight timing; no carried-over context stops the
                 // "gets stuck and skips the rest of the song" repetition loops whisper is prone to on music
                 "-ml", "45", "-sow", "-mc", "0",
+                // whisper.cpp drops a WHOLE 30 s window when it judges it "no speech" (no-speech probability above 0.6 and a low
+                // average confidence). Singing over a beat often scores like that, so the opening of a song went missing and the
+                // lyrics only began 30 s or more in. 1.0 = never skip a window; instrumental parts are cleaned up afterwards.
+                "-nth", "1.0",
                 "-l", lang, "-t", Math.Clamp(Environment.ProcessorCount - 2, 2, 8).ToString(CultureInfo.InvariantCulture)   // leave two cores for playback and the UI
             })
                 psi.ArgumentList.Add(a);
@@ -296,14 +300,47 @@ internal static class WhisperService
             }
 
             var text = await File.ReadAllTextAsync(lrc, Encoding.UTF8, ct).ConfigureAwait(false);
-            if (!LyricsParser.Parse(text).Lines.Any(l => l.Text.Length > 0))
+            text = RemoveJunkLines(text);
+            var parsed = LyricsParser.Parse(text);
+            var firstLine = parsed.Lines.FirstOrDefault(l => l.Text.Length > 0 && l.TimeMs >= 0);
+            if (firstLine == null)
                 throw new WhisperException("Whisper didn't hear any words in this song.");
+            AppLog.Write("Whisper", null, "first lyric line at " + LyricsParser.FormatTime(firstLine.TimeMs) + ", " + parsed.Lines.Count + " lines");
             return text;
         }
         finally
         {
             try { Directory.Delete(work, recursive: true); } catch { /* temp folder; the OS cleans it eventually */ }
         }
+    }
+
+    private static readonly Regex JunkText = new(
+        @"^\s*(?:[\[\(\{<*♪♫#\-–—\s].*[\]\)\}>*♪♫#\-–—\s]|[♪♫\s.,!?…-]*|(?:thanks? for watching\.?|thank you\.?|subtitles? by .*|you)\s*)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// With "never skip" whisper sometimes fills instrumental parts with markers like [Music], (music), ♪ or a stray
+    /// "Thank you.". Those lines are dropped (their timing carries no lyrics); real sung lines are untouched.
+    /// </summary>
+    internal static string RemoveJunkLines(string lrc)
+    {
+        var kept = new List<string>();
+        foreach (var raw in lrc.Replace("\r\n", "\n").Split('\n'))
+        {
+            var line = raw.TrimEnd();
+            if (line.Length == 0) continue;
+            int end = 0;
+            while (end < line.Length && line[end] == '[')
+            {
+                int close = line.IndexOf(']', end);
+                if (close < 0) break;
+                end = close + 1;
+            }
+            var body = line.Substring(end).Trim();
+            if (end > 0 && JunkText.IsMatch(body)) continue;
+            kept.Add(line);
+        }
+        return string.Join("\n", kept) + "\n";
     }
 
     internal static void ConvertTo16kMono(string source, string wavPath)

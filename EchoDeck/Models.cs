@@ -147,8 +147,16 @@ public sealed class BrowserEntry : INotifyPropertyChanged
 /// <summary>A row of up to four tiles (grid view) or a single entry (list view): this is what the virtualised list holds.</summary>
 public sealed class EntryRow
 {
-    public EntryRow(List<BrowserEntry> items) => Items = items;
+    public EntryRow(List<BrowserEntry> items, int columns = 4)
+    {
+        Items = items;
+        Columns = Math.Max(1, columns);
+    }
+
     public List<BrowserEntry> Items { get; }
+
+    /// <summary>How many tiles share the width of this row (responsive: it follows the window width).</summary>
+    public int Columns { get; }
 }
 
 /// <summary>One row in the play queue.</summary>

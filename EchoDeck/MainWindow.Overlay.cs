@@ -48,6 +48,7 @@ public partial class MainWindow
     private void ApplyPlayerLayout()
     {
         bool mini = _libraryVisible && _hasMedia && !_currentIsAudio;
+        SyncResumeCard();   // never inside the small player
 
         // a song shows just a pause button (and tools on hover); a video's controls sit on the video itself
         MiniAudioPause.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
@@ -61,6 +62,7 @@ public partial class MainWindow
             ClosePopup(QuickPopup, animate: false);
             // the overlay window sits on the small video and carries only the previous / next buttons
             MiniOverlay.Visibility = Visibility.Visible;
+            if (!MiniOverlay.IsMouseOver) { UiAnim.Cancel(MiniControls); MiniControls.Opacity = 0; }
             VideoSurface.Visibility = Visibility.Visible;
             PositionMiniVideo();
             return;
