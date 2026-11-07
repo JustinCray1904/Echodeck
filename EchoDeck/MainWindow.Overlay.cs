@@ -49,12 +49,16 @@ public partial class MainWindow
     {
         bool mini = _libraryVisible && _hasMedia && !_currentIsAudio;
 
+        // a song shows just a pause button (and tools on hover); a video's controls sit on the video itself
+        MiniAudioPause.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
+        MiniAudioTools.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
+
         if (mini)
         {
             PlayerView.Visibility = Visibility.Visible;
             MiniVideoSpacer.Visibility = Visibility.Visible;
             ApplySidebar(animate: false);
-            QuickPopup.IsOpen = false;
+            ClosePopup(QuickPopup, animate: false);
             // the overlay window sits on the small video and carries only the previous / next buttons
             MiniOverlay.Visibility = Visibility.Visible;
             VideoSurface.Visibility = Visibility.Visible;
@@ -186,7 +190,7 @@ public partial class MainWindow
 
     private void QuickEq_Click(object sender, RoutedEventArgs e)
     {
-        QuickPopup.IsOpen = false;
+        ClosePopup(QuickPopup, animate: false);
         OpenEqualizer();
     }
 

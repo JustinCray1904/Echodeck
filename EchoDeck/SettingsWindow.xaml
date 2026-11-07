@@ -186,6 +186,14 @@
                             </StackPanel>
                             <CheckBox x:Name="TaskbarSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Smooth panel resizing"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The video area slides when the side bar or the queue opens and closes. Turn it off if you ever see flicker: the layout then changes in one quick step."/>
+                            </StackPanel>
+                            <CheckBox x:Name="SmoothResizeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
 </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="PagePrivacy" VerticalScrollBarVisibility="Auto" Padding="30,24,30,24" Visibility="Collapsed">

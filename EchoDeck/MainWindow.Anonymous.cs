@@ -563,7 +563,7 @@ public partial class MainWindow
     {
         ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex, anonymous: on);
         AnonButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        QuickPopup.IsOpen = false;
+        ClosePopup(QuickPopup, animate: false);
         WaveBar.InvalidateVisual();
 
         if (on)

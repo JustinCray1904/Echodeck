@@ -22,6 +22,9 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
     private double _fraction;
     private double _lengthSeconds;
     private bool _playing;
+    private double _liveSensitivity = 1.0;
+    private double _liveIntensity = 1.0;
+    private double _average = 0.5;   // slow-moving average of the waveform level around the current position
     private double _level = 0.1;   // eased 0.1 (idle) .. 1 (playing)
     private int _style;
     private bool _subscribed;
@@ -92,6 +95,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         _fraction = 0;
         _lengthSeconds = 0;
         Array.Clear(_smooth, 0, _smooth.Length);
+        _average = 0.5;
     }
 
     private void Subscribe()
@@ -162,18 +166,29 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
 
         _level += ((_playing ? 1.0 : 0.1) - _level) * 0.08;
 
+        // the two sliders in Settings > Interface are read live, so moving them changes the picture on the spot
+        _liveSensitivity = Math.Clamp(AppSettings.Current.VisualizerSensitivity, 0.4, 2.5);
+        _liveIntensity = Math.Clamp(AppSettings.Current.VisualizerIntensity, 0.4, 2.0);
+
         // how far one bar steps through the song (a few seconds across the whole half ring)
         double span = _lengthSeconds > 0 ? Math.Min(0.25, 14.0 / _lengthSeconds) : 0.05;
         int half = BarCount / 2;
+
+        // Most songs are mastered loud, so their waveform peaks all sit near the top and a plain gain barely shows.
+        // Sensitivity therefore scales how much a moment stands out from the song's recent average level.
+        double now = Math.Clamp(PeakAt(frac, t, 0), 0, 1);
+        _average += (now - _average) * 0.03;
+        double contrast = 1.0 + 4.0 * _liveSensitivity;   // 2.6 (calm) .. 11 (jumpy)
+
         for (int d = 0; d <= half; d++)
         {
-            double target = Math.Clamp(PeakAt(frac + span * d / half, t, d), 0, 1);
-            // sensitivity bends the response: above 1 quiet passages are lifted, below 1 only loud ones show
-            target = Math.Pow(target, 1.0 / Math.Max(0.2, Sensitivity));
+            double peak = Math.Clamp(PeakAt(frac + span * d / half, t, d), 0, 1);
+            double target = 0.28 + 0.35 * peak + (peak - _average) * contrast;
             // a little life on top so quiet passages still breathe
-            target *= 0.8 + 0.2 * Math.Sin(t * 7.5 + d * 0.8);
+            target *= 0.85 + 0.15 * Math.Sin(t * 7.5 + d * 0.8);
+            target = Math.Clamp(target, 0.02, 1.15);
             // and a more sensitive visualiser also follows changes more quickly
-            _smooth[d] += (target - _smooth[d]) * Math.Clamp(0.22 + 0.13 * Sensitivity, 0.15, 0.7);
+            _smooth[d] += (target - _smooth[d]) * Math.Clamp(0.22 + 0.13 * _liveSensitivity, 0.15, 0.7);
         }
 
         var brush = Tint ?? TryFindResource("AccentBrush") as Brush ?? Brushes.White;
@@ -193,7 +208,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
             // bar 0 sits at the top; left and right halves mirror each other
             int d = i <= BarCount / 2 ? i : BarCount - i;
             double angle = 2 * Math.PI * i / BarCount - Math.PI / 2;
-            double len = Math.Min(3 + MaxBar * Intensity * _smooth[d] * _level, MaxBar * 1.6);
+            double len = Math.Min(3 + MaxBar * _liveIntensity * _smooth[d] * _level, MaxBar * 1.6);
 
             double cos = Math.Cos(angle), sin = Math.Sin(angle);
             dc.DrawLine(pen,
@@ -221,7 +236,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
                 int hi = Math.Min(BarCount / 2, lo + 1);
                 double a = _smooth[lo] * (1 - (pos - lo)) + _smooth[hi] * (pos - lo);
 
-                double r = baseR + Math.Clamp((a * _level - 0.25) * MaxBar * 0.9 * Intensity, -MaxBar * 0.6, MaxBar * 1.4);
+                double r = baseR + Math.Clamp((a * _level - 0.25) * MaxBar * 0.9 * _liveIntensity, -MaxBar * 0.6, MaxBar * 1.4);
                 var pt = new Point(c.X + Math.Cos(angle) * r, c.Y + Math.Sin(angle) * r);
                 if (i == 0) ctx.BeginFigure(pt, false, true); else ctx.LineTo(pt, true, true);
             }

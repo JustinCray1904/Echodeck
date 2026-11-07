@@ -302,7 +302,7 @@ public partial class MainWindow : Window
         NavPlaylists.Content = on ? "Playlists" : null;
         NavAdd.Content = on ? "Add item" : null;
 
-        if (on) { QuickPopup.IsOpen = false; HighlightNav(); }
+        if (on) { ClosePopup(QuickPopup, animate: false); HighlightNav(); }
         else SetNavChecked(null);
 
         ApplySidebar();
@@ -517,6 +517,7 @@ public partial class MainWindow : Window
         var data = (System.Windows.Media.Geometry)FindResource(playing ? "IcoPause" : "IcoPlay");
         PlayPauseIcon.Data = data;
         MiniPlayIcon.Data = data;
+        MiniOvPlayIcon.Data = data;
         SyncPlayingState(playing);
     }
 
@@ -877,7 +878,7 @@ public partial class MainWindow : Window
 
         if (QuickPopup.IsOpen)
         {
-            if (!forceOpen && tab.IsChecked == true) { QuickPopup.IsOpen = false; return; }
+            if (!forceOpen && tab.IsChecked == true) { ClosePopup(QuickPopup); return; }
         }
         else if (!forceOpen && (DateTime.UtcNow - _quickClosedAt).TotalMilliseconds < 250)
         {
@@ -889,7 +890,7 @@ public partial class MainWindow : Window
         RefreshQuick();
     }
 
-    private void QuickClose_Click(object sender, RoutedEventArgs e) => QuickPopup.IsOpen = false;
+    private void QuickClose_Click(object sender, RoutedEventArgs e) => ClosePopup(QuickPopup);
 
     private void QTab_Checked(object sender, RoutedEventArgs e)
     {
@@ -1114,7 +1115,7 @@ public partial class MainWindow : Window
     /// <summary>The speaker opens the volume slider (a popup), a second click closes it.</summary>
     private void Volume_Click(object sender, RoutedEventArgs e)
     {
-        if (VolumePopup.IsOpen) { VolumePopup.IsOpen = false; return; }
+        if (VolumePopup.IsOpen) { ClosePopup(VolumePopup); return; }
         if ((DateTime.UtcNow - _volumePopupClosedAt).TotalMilliseconds < 250) return; // the click that just closed it
         VolumePopup.IsOpen = true;
     }
@@ -1171,7 +1172,7 @@ public partial class MainWindow : Window
         ApplyRail(animate: false);
         if (visible) ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
         ApplySidebar(animate: false);
-        if (!visible) QuickPopup.IsOpen = false;
+        if (!visible) ClosePopup(QuickPopup, animate: false);
         ContentGrid.Margin = visible ? new Thickness(8, 0, 8, 8) : new Thickness(0);
 
         if (_chrome != null)

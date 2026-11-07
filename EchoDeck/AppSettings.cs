@@ -72,6 +72,7 @@ public sealed class AppSettings
 
     // ---- system-wide keys
     public string MiniDock { get; set; } = "right";        // small player docks to the "left" or "right" while browsing
+    public bool SmoothResize { get; set; } = true;          // the video area slides when the side bar / queue opens (otherwise one quick step)
     public double VisualizerIntensity { get; set; } = 1.0;   // how tall / bold the visualiser moves (0.4 - 2.0)
     public double VisualizerSensitivity { get; set; } = 1.0; // how strongly it reacts to the song (0.4 - 2.5)
     public string LyricsEngine { get; set; } = "local";      // "local" (whisper.cpp on this PC) or "cloud" (OpenAI-compatible service)

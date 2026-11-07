@@ -85,13 +85,33 @@ internal static class UiAnim
         });
     }
 
+    /// <summary>True while a tween is running for this element (used to ignore key-mashing instead of stacking transitions).</summary>
+    public static bool IsRunning(object key) => Running.ContainsKey(key);
+
+    private static Thickness Scale(Thickness t, double f) => new(t.Left * f, t.Top * f, t.Right * f, t.Bottom * f);
+
+    private static void After(int ms, Action? action)
+    {
+        if (action == null) return;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            action();
+        };
+        timer.Start();
+    }
+
     /// <summary>
-    /// Opens or closes a panel that sits beside the video. The video lives in a separate native window, which cannot follow a
-    /// layout that changes on every frame (it flickers, loses its rounded corners and shows a black strip). So the layout
-    /// changes ONCE, at the start of opening / end of closing, and only the panel itself fades and slides.
+    /// Opens or closes a panel that sits beside the video.
+    /// <para>The video is a native window. A layout that changes while it is being resized can flash white, squeeze, or show a
+    /// black strip, so <paramref name="beforeLayout"/> / <paramref name="afterLayout"/> let the caller cover the video with a
+    /// curtain for exactly the time the layout is changing.</para>
+    /// <para>With <paramref name="smooth"/> the panel's width is animated, so the video area slides. Without it the layout
+    /// changes once and only the panel fades and slides.</para>
     /// </summary>
-    /// <param name="slideFrom">How far the panel travels while fading (negative = from the left).</param>
-    public static void SlidePanel(FrameworkElement panel, bool show, double openWidth, Thickness openMargin, int ms = 210, double slideFrom = -26)
+    public static void SlidePanel(FrameworkElement panel, bool show, double openWidth, Thickness openMargin,
+        bool smooth = false, Action? beforeLayout = null, Action? afterLayout = null, int ms = 210, double slideFrom = -26)
     {
         if (panel.RenderTransform is not TranslateTransform move)
         {
@@ -99,18 +119,48 @@ internal static class UiAnim
             panel.RenderTransform = move;
         }
 
+        bool visible = panel.Visibility == Visibility.Visible;
+
         if (show)
         {
-            if (panel.Visibility == Visibility.Visible && panel.Opacity >= 0.999 && !Running.ContainsKey(panel)) return;
+            if (visible && panel.Opacity >= 0.999 && !Running.ContainsKey(panel)) return;
 
-            double start = panel.Visibility == Visibility.Visible ? panel.Opacity : 0;
+            beforeLayout?.Invoke();
+            double startOpacity = visible ? panel.Opacity : 0;
+
+            if (smooth)
+            {
+                double startW = visible && !double.IsNaN(panel.Width) ? Math.Min(panel.Width, openWidth) : 0;
+                double f0 = openWidth <= 0 ? 1 : startW / openWidth;
+                panel.Width = startW;
+                panel.Margin = Scale(openMargin, f0);
+                panel.Opacity = Math.Min(1, f0 * 1.5);
+                move.X = 0;
+                panel.Visibility = Visibility.Visible;
+
+                Tween(panel, startW, openWidth, 260, w =>
+                {
+                    double f = openWidth <= 0 ? 1 : w / openWidth;
+                    panel.Width = w;
+                    panel.Margin = Scale(openMargin, f);
+                    panel.Opacity = Math.Min(1, f * 1.5);
+                }, () =>
+                {
+                    panel.Width = openWidth;
+                    panel.Margin = openMargin;
+                    panel.Opacity = 1;
+                    afterLayout?.Invoke();
+                });
+                return;
+            }
+
             panel.Width = openWidth;
             panel.Margin = openMargin;
-            panel.Opacity = start;
-            move.X = slideFrom * (1 - start);
+            panel.Opacity = startOpacity;
+            move.X = slideFrom * (1 - startOpacity);
             panel.Visibility = Visibility.Visible;
 
-            Tween(panel, start, 1, ms, v =>
+            Tween(panel, startOpacity, 1, ms, v =>
             {
                 panel.Opacity = v;
                 move.X = slideFrom * (1 - v);
@@ -119,22 +169,45 @@ internal static class UiAnim
                 panel.Opacity = 1;
                 move.X = 0;
             });
+            After(110, afterLayout);
+            return;
         }
-        else
-        {
-            if (panel.Visibility != Visibility.Visible) return;
 
-            Tween(panel, panel.Opacity, 0, (int)(ms * 0.75), v =>
+        if (!visible) return;
+
+        if (smooth)
+        {
+            beforeLayout?.Invoke();
+            double startW = double.IsNaN(panel.Width) ? panel.ActualWidth : panel.Width;
+            Tween(panel, startW, 0, 230, w =>
             {
-                panel.Opacity = v;
-                move.X = slideFrom * (1 - v);
+                double f = openWidth <= 0 ? 0 : Math.Clamp(w / openWidth, 0, 1);
+                panel.Width = w;
+                panel.Margin = Scale(openMargin, f);
+                panel.Opacity = Math.Min(1, f * 1.5);
             }, () =>
             {
-                // the one and only layout change: the panel's space is given back in a single step
                 panel.Visibility = Visibility.Collapsed;
+                panel.Width = openWidth;
+                panel.Margin = openMargin;
                 panel.Opacity = 1;
-                move.X = 0;
+                afterLayout?.Invoke();
             });
+            return;
         }
+
+        Tween(panel, panel.Opacity, 0, (int)(ms * 0.75), v =>
+        {
+            panel.Opacity = v;
+            move.X = slideFrom * (1 - v);
+        }, () =>
+        {
+            // the one and only layout change: cover the video, give the space back in a single step, then uncover
+            beforeLayout?.Invoke();
+            panel.Visibility = Visibility.Collapsed;
+            panel.Opacity = 1;
+            move.X = 0;
+            After(110, afterLayout);
+        });
     }
 }

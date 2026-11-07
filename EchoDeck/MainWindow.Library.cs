@@ -160,14 +160,18 @@ public partial class MainWindow
     private void RailToggle_Click(object sender, RoutedEventArgs e)
     {
         if (_libraryVisible) { ApplyRail(); return; }   // the pages always keep their side bar
+        if (PanelsBusy) { TopSidebarToggle.IsChecked = !_railHidden; return; }
         _railHidden = TopSidebarToggle.IsChecked != true;
         ApplyRail();
     }
 
     /// <summary>B: show / hide the side bar next to the player. On the Recent, Home, Videos, Music and Playlists pages it stays.</summary>
+    /// <summary>A side panel is mid-transition: key presses are ignored until it settles, so mashing the shortcuts can't stack transitions.</summary>
+    private bool PanelsBusy => UiAnim.IsRunning(SidebarPanel) || UiAnim.IsRunning(Rail);
+
     private void ToggleRail()
     {
-        if (_libraryVisible || _isFullscreen) return;
+        if (_libraryVisible || _isFullscreen || PanelsBusy) return;
         _railHidden = !_railHidden;
         ApplyRail();
     }
@@ -196,7 +200,7 @@ public partial class MainWindow
 
         if (collapsed)
         {
-            UiAnim.SlidePanel(Rail, false, RailWidth, _railMargin);
+            UiAnim.SlidePanel(Rail, false, RailWidth, _railMargin, AppSettings.Current.SmoothResize, CurtainOn, CurtainOff);
         }
         else if (Rail.Visibility == Visibility.Visible)
         {
@@ -208,7 +212,7 @@ public partial class MainWindow
         }
         else
         {
-            UiAnim.SlidePanel(Rail, true, RailWidth, _railMargin);
+            UiAnim.SlidePanel(Rail, true, RailWidth, _railMargin, AppSettings.Current.SmoothResize, CurtainOn, CurtainOff);
         }
     }
 
@@ -226,7 +230,7 @@ public partial class MainWindow
             SidebarPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
-        UiAnim.SlidePanel(SidebarPanel, show, 330, margin);
+        UiAnim.SlidePanel(SidebarPanel, show, 330, margin, AppSettings.Current.SmoothResize, CurtainOn, CurtainOff);
     }
 
     // ------------------------------------------------------------------ page content
@@ -1496,6 +1500,7 @@ public partial class MainWindow
     /// <summary>Q / P: show the queue or the playlists panel (press again to hide it). Only the shortcuts and the control-bar button open it.</summary>
     private void ShowSide(SideMode mode)
     {
+        if (PanelsBusy) return;
         if (_libraryVisible) ShowLibrary(false);
 
         if (_sidebarVisible && _sideMode == mode)
@@ -1513,6 +1518,11 @@ public partial class MainWindow
     private void SidebarToggle_Click(object sender, RoutedEventArgs e)
     {
         bool on = (sender as ToggleButton)?.IsChecked == true;
+        if (PanelsBusy)
+        {
+            if (sender is ToggleButton busyToggle) busyToggle.IsChecked = _sidebarVisible;
+            return;
+        }
         if (_libraryVisible) ShowLibrary(false);
         if (on) RefreshSide();
         SetSidebarVisible(on);

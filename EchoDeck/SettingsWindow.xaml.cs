@@ -74,6 +74,7 @@ public partial class SettingsWindow : Window
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
         SubsOnSwitch.IsChecked = _cfg.SubtitlesOnByDefault;
         ResumeSwitch.IsChecked = _cfg.RememberPosition;
+        SmoothResizeSwitch.IsChecked = _cfg.SmoothResize;
         VizIntensitySlider.Value = Math.Clamp(_cfg.VisualizerIntensity, 0.4, 2.0);
         VizSensitivitySlider.Value = Math.Clamp(_cfg.VisualizerSensitivity, 0.4, 2.5);
         VizIntensityText.Text = VizIntensitySlider.Value.ToString("0.0") + "×";
@@ -328,6 +329,7 @@ public partial class SettingsWindow : Window
             case nameof(HwSwitch): _cfg.HardwareDecoding = on; HwModeCombo.IsEnabled = on; break;
             case nameof(SubsOnSwitch): _cfg.SubtitlesOnByDefault = on; break;
             case nameof(ResumeSwitch): _cfg.RememberPosition = on; break;
+            case nameof(SmoothResizeSwitch): _cfg.SmoothResize = on; break;
             case nameof(GlobalKeysSwitch): _cfg.GlobalMediaKeys = on; GlobalVolSwitch.IsEnabled = on; break;
             case nameof(GlobalVolSwitch): _cfg.GlobalVolumeKeys = on; break;
             case nameof(TaskbarSwitch): _cfg.TaskbarControls = on; break;

@@ -147,27 +147,75 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ popups above the control bar
 
+    private readonly HashSet<Popup> _closingPopups = new();
+
     private void InitPopups()
     {
-        foreach (var pop in new[] { VolumePopup, QuickPopup })
+        Setup(VolumePopup, VolumeButton, alignRight: false);
+        Setup(QuickPopup, ToolsBundle, alignRight: true);
+
+        // clicking anywhere else (or leaving the window) closes them, with the same slide + fade as opening
+        PreviewMouseDown += (_, e) => DismissPopups(e.OriginalSource as DependencyObject);
+        VideoSurface.PreviewMouseDown += (_, e) => DismissPopups(e.OriginalSource as DependencyObject);
+        Deactivated += (_, _) =>
         {
-            pop.PlacementTarget = ControlBar;
+            ClosePopup(VolumePopup);
+            ClosePopup(QuickPopup);
+        };
+
+        void Setup(Popup pop, FrameworkElement anchor, bool alignRight)
+        {
+            pop.PlacementTarget = anchor;
             pop.Placement = PlacementMode.Custom;
             pop.HorizontalOffset = 0;
             pop.VerticalOffset = 0;
-            pop.PopupAnimation = PopupAnimation.None;   // replaced by the slide + fade below
-            pop.CustomPopupPlacementCallback = CenterAboveBar;
+            pop.StaysOpen = true;                        // closed by us, so the close can be animated
+            pop.PopupAnimation = PopupAnimation.None;    // the slide + fade below replaces the built-in fade
+            pop.CustomPopupPlacementCallback = (popupSize, targetSize, _) => PlaceAboveBar(anchor, popupSize, targetSize, alignRight);
             pop.Opened += Popup_Opened;
         }
     }
 
-    /// <summary>Centred above the control bar, like the "continue" card.</summary>
-    private static CustomPopupPlacement[] CenterAboveBar(Size popupSize, Size targetSize, Point offset) =>
-        new[] { new CustomPopupPlacement(new Point((targetSize.Width - popupSize.Width) / 2, -popupSize.Height - 2), PopupPrimaryAxis.None) };
+    /// <summary>
+    /// Over its own button horizontally, and entirely above the control bar vertically (it never overlaps the bar),
+    /// leaving the same gap as the "continue" card.
+    /// </summary>
+    private CustomPopupPlacement[] PlaceAboveBar(FrameworkElement anchor, Size popupSize, Size targetSize, bool alignRight)
+    {
+        double clearance = 0;
+        try { clearance = anchor.TranslatePoint(new Point(0, 0), ControlBar).Y; }   // how far the button sits below the bar's top edge
+        catch { /* not in the same tree yet */ }
+
+        const double shadowMargin = 14;   // the popup's own transparent margin (it holds the drop shadow)
+        const double gap = 10;            // visible space between the card and the bar
+        double y = -clearance - popupSize.Height + shadowMargin - gap;
+        double x = alignRight ? targetSize.Width - popupSize.Width + shadowMargin : (targetSize.Width - popupSize.Width) / 2;
+        return new[] { new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.None) };
+    }
+
+    private void DismissPopups(DependencyObject? source)
+    {
+        if (VolumePopup.IsOpen && !IsInside(source, VolumePopup.Child) && !IsInside(source, VolumeButton)) ClosePopup(VolumePopup);
+        if (QuickPopup.IsOpen && !IsInside(source, QuickPopup.Child) && !IsInside(source, ToolsBundle)) ClosePopup(QuickPopup);
+    }
+
+    private static bool IsInside(DependencyObject? node, DependencyObject? ancestor)
+    {
+        while (node != null)
+        {
+            if (ReferenceEquals(node, ancestor)) return true;
+            bool visual = node is Visual || node is System.Windows.Media.Media3D.Visual3D;
+            node = visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
+        }
+        return false;
+    }
 
     private void Popup_Opened(object? sender, EventArgs e)
     {
         if (sender is not Popup pop || pop.Child is not FrameworkElement card) return;
+
+        UiAnim.Cancel(pop);
+        _closingPopups.Remove(pop);
 
         var move = new TranslateTransform(0, 16);
         card.RenderTransform = move;
@@ -178,6 +226,37 @@ public partial class MainWindow
             move.Y = 16 * (1 - v);
         }, () =>
         {
+            card.Opacity = 1;
+            move.Y = 0;
+        });
+    }
+
+    /// <summary>Closes a popup with a slide + fade (or at once when <paramref name="animate"/> is false).</summary>
+    private void ClosePopup(Popup pop, bool animate = true)
+    {
+        if (!pop.IsOpen) return;
+
+        if (!animate || pop.Child is not FrameworkElement card)
+        {
+            UiAnim.Cancel(pop);
+            _closingPopups.Remove(pop);
+            pop.IsOpen = false;
+            return;
+        }
+
+        if (!_closingPopups.Add(pop)) return;   // already on its way out
+
+        var move = card.RenderTransform as TranslateTransform ?? new TranslateTransform();
+        card.RenderTransform = move;
+        UiAnim.Cancel(card);
+        UiAnim.Tween(pop, card.Opacity, 0, 150, v =>
+        {
+            card.Opacity = v;
+            move.Y = 12 * (1 - v);
+        }, () =>
+        {
+            pop.IsOpen = false;
+            _closingPopups.Remove(pop);
             card.Opacity = 1;
             move.Y = 0;
         });

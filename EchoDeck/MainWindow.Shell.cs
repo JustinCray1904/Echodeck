@@ -342,6 +342,33 @@ public partial class MainWindow
         }
     }
 
+    // ------------------------------------------------------------------ video curtain
+
+    /// <summary>
+    /// Covers the video (a native window) while a side panel changes the layout next to it. The picture is hidden for those
+    /// few moments instead of flashing white, squeezing or showing a black strip.
+    /// </summary>
+    private void CurtainOn()
+    {
+        if (_libraryVisible || VideoSurface.Visibility != Visibility.Visible) return;
+
+        VideoCurtain.Background = _currentIsAudio && TryFindResource("PanelBrush") is Brush panel ? panel : Brushes.Black;
+        UiAnim.Cancel(VideoCurtain);
+        VideoCurtain.Opacity = 1;
+        VideoCurtain.Visibility = Visibility.Visible;
+    }
+
+    private void CurtainOff()
+    {
+        if (VideoCurtain.Visibility != Visibility.Visible) return;
+
+        // make sure the overlay is laid out at its final size before the picture comes back
+        PlayerView.InvalidateMeasure();
+        PlayerView.UpdateLayout();
+        VideoSurface.InvalidateVisual();
+        UiAnim.FadeOut(VideoCurtain, 170);
+    }
+
     private void ReleaseShell()
     {
         foreach (var id in _hotkeys) NativeShell.UnregisterHotKey(_hwnd, id);
