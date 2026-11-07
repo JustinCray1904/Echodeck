@@ -195,19 +195,10 @@ public partial class MainWindow
 
     private void DismissPopups(DependencyObject? source)
     {
-        if (VolumePopup.IsOpen && !IsInside(source, VolumePopup.Child) && !IsInside(source, VolumeButton)) ClosePopup(VolumePopup);
-        if (QuickPopup.IsOpen && !IsInside(source, QuickPopup.Child) && !IsInside(source, ToolsBundle)) ClosePopup(QuickPopup);
-    }
-
-    private static bool IsInside(DependencyObject? node, DependencyObject? ancestor)
-    {
-        while (node != null)
-        {
-            if (ReferenceEquals(node, ancestor)) return true;
-            bool visual = node is Visual || node is System.Windows.Media.Media3D.Visual3D;
-            node = visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
-        }
-        return false;
+        if (VolumePopup.IsOpen && VolumePopup.Child is { } volumeCard && !IsInside(source, volumeCard) && !IsInside(source, VolumeButton))
+            ClosePopup(VolumePopup);
+        if (QuickPopup.IsOpen && QuickPopup.Child is { } quickCard && !IsInside(source, quickCard) && !IsInside(source, ToolsBundle))
+            ClosePopup(QuickPopup);
     }
 
     private void Popup_Opened(object? sender, EventArgs e)
