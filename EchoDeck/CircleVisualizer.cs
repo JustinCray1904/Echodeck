@@ -13,10 +13,10 @@ namespace EchoDeck;
 public sealed class CircleVisualizer : FrameworkElement, IDisposable
 {
     private bool _disposed;
-    private const int BarCount = 72;              // 36 per side, mirrored left / right (bass at the bottom, treble at the top)
+    private const int BarCount = 64;              // 32 per side, mirrored left / right (bass at the bottom, treble at the top)
     private const int Half = BarCount / 2;
-    private const double InnerRadius = 164;
-    private const double MaxBar = 34;
+    private const double InnerRadius = 166;       // the cover is 155: a clear gap between cover and bars
+    private const double MaxBar = 40;             // longest bar (the visualiser is 440 wide: 220 - 166 - margin)
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Stopwatch _sincePosition = Stopwatch.StartNew();
@@ -32,6 +32,9 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
     private double _lastFrameTime;
     private readonly double[] _bands = new double[Half + 1];     // smoothed, 0..1, index 0 = bass
     private readonly double[] _shaped = new double[Half + 3];    // spatially smoothed copy (with padding for interpolation)
+    private readonly double[] _peakValue = new double[Half + 1]; // peak caps: they hold for a moment, then fall
+    private readonly double[] _peakHold = new double[Half + 1];
+    private double _breath;                                       // slow overall swell with the bass (wave ring)
 
     public CircleVisualizer()
     {
@@ -238,63 +241,125 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
 
     private double Shaped(int d) => _shaped[Math.Clamp(d, 0, Half) + 1];
 
+    /// <summary>
+    /// Radial bars, the way spectrum analysers draw them (audioMotion-analyzer's radial mode): bars grow outward from a fixed
+    /// circle, bass at the bottom, mirrored left and right, with a small cap that holds each peak and then falls.
+    /// </summary>
     private void DrawBars(DrawingContext dc, Brush brush, Point c, double intensity)
     {
-        var pen = new Pen(brush, 4.2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        var pen = new Pen(brush, 4.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
         if (pen.CanFreeze) pen.Freeze();
+        var capPen = new Pen(brush, 3.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        if (capPen.CanFreeze) capPen.Freeze();
+
+        double dt = Math.Clamp(_clock.Elapsed.TotalSeconds - _lastPeakTime, 0.001, 0.1);
+        _lastPeakTime = _clock.Elapsed.TotalSeconds;
+
+        for (int d = 0; d <= Half; d++)
+        {
+            double v = Shaped(d) * (0.2 + 0.8 * _level);
+            if (v >= _peakValue[d]) { _peakValue[d] = v; _peakHold[d] = 0.35; }
+            else if (_peakHold[d] > 0) _peakHold[d] -= dt;
+            else _peakValue[d] = Math.Max(v, _peakValue[d] - dt * 0.9);
+        }
 
         for (int i = 0; i < BarCount; i++)
         {
             int d = i <= Half ? i : BarCount - i;                  // mirrored: bar 0 is the bass at the bottom
             double angle = Math.PI / 2 + 2 * Math.PI * i / BarCount;
-            double len = 3 + MaxBar * 1.5 * intensity * Shaped(d) * (0.25 + 0.75 * _level);
-            len = Math.Min(len, MaxBar * 1.6);
-
             double cos = Math.Cos(angle), sin = Math.Sin(angle);
+
+            double len = 3 + MaxBar * Math.Min(1.0, Shaped(d) * (0.2 + 0.8 * _level) * intensity);
             dc.DrawLine(pen,
                 new Point(c.X + cos * InnerRadius, c.Y + sin * InnerRadius),
                 new Point(c.X + cos * (InnerRadius + len), c.Y + sin * (InnerRadius + len)));
+
+            double capLen = 3 + MaxBar * Math.Min(1.0, _peakValue[d] * intensity);
+            if (capLen > len + 4)
+            {
+                double r0 = InnerRadius + capLen + 3, r1 = r0 + 2;
+                dc.PushOpacity(0.7);
+                dc.DrawLine(capPen, new Point(c.X + cos * r0, c.Y + sin * r0), new Point(c.X + cos * r1, c.Y + sin * r1));
+                dc.Pop();
+            }
         }
     }
 
-    /// <summary>Catmull-Rom curve through four neighbouring values: a smooth line instead of straight segments.</summary>
-    private static double Cubic(double p0, double p1, double p2, double p3, double t) =>
-        p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+    private double _lastPeakTime;
 
+    /// <summary>
+    /// Wave ring: one smooth closed curve. The music only ever nudges it a little (the level of each frequency relative to the
+    /// average, blurred along the ring) and the bass makes the whole ring swell slowly, so it can never go lopsided or spiky.
+    /// </summary>
     private void DrawRing(DrawingContext dc, Brush brush, Point c, double intensity)
     {
-        const int points = 240;
-        double baseR = InnerRadius + 8;
+        const int n = 128;
+        double baseR = InnerRadius + 20;       // 186: well clear of the cover (155) and inside the 220 px visualiser
+
+        // the ring's values: mirrored left / right, bass at the bottom
+        var ring = new double[n];
+        double mean = 0;
+        for (int j = 0; j < n; j++)
+        {
+            double u = (double)j / n;
+            double m = (u <= 0.5 ? u * 2 : (1 - u) * 2) * Half;
+            int lo = (int)Math.Floor(m);
+            ring[j] = Cubic(Shaped(lo - 1), Shaped(lo), Shaped(lo + 1), Shaped(lo + 2), m - lo);
+            mean += ring[j];
+        }
+        mean /= n;
+        for (int j = 0; j < n; j++) ring[j] -= mean;          // only the differences move the shape: no lopsided ring
+
+        // blur along the ring (it wraps round), so neighbouring points flow into each other
+        var tmp = new double[n];
+        for (int pass = 0; pass < 6; pass++)
+        {
+            for (int j = 0; j < n; j++)
+                tmp[j] = ring[(j + n - 1) % n] * 0.25 + ring[j] * 0.5 + ring[(j + 1) % n] * 0.25;
+            Array.Copy(tmp, ring, n);
+        }
+
+        // slow swell with the low end
+        double bass = (_bands[0] + _bands[1] + _bands[2] + _bands[3]) / 4;
+        _breath += (bass - _breath) * 0.18;
+        double swell = _breath * 7 * intensity * (0.25 + 0.75 * _level);
+        double amp = 44 * intensity * (0.25 + 0.75 * _level);
+
+        var pts = new Point[n];
+        for (int j = 0; j < n; j++)
+        {
+            double angle = Math.PI / 2 + 2 * Math.PI * j / n;
+            double r = baseR + swell + Math.Clamp(ring[j] * amp, -16, 16);
+            pts[j] = new Point(c.X + Math.Cos(angle) * r, c.Y + Math.Sin(angle) * r);
+        }
 
         var geo = new StreamGeometry();
         using (var ctx = geo.Open())
         {
-            for (int i = 0; i < points; i++)
-            {
-                double u = (double)i / points;                     // 0..1 round the ring
-                double angle = Math.PI / 2 + 2 * Math.PI * u;      // starts at the bottom (bass)
-                double m = (u <= 0.5 ? u * 2 : (1 - u) * 2) * Half;
-                int lo = (int)Math.Floor(m);
-                double f = m - lo;
-                double a = Cubic(Shaped(lo - 1), Shaped(lo), Shaped(lo + 1), Shaped(lo + 2), f);
-
-                double r = baseR + Math.Clamp(a * MaxBar * 1.25 * intensity * (0.25 + 0.75 * _level), 0, MaxBar * 1.45);
-                var pt = new Point(c.X + Math.Cos(angle) * r, c.Y + Math.Sin(angle) * r);
-                if (i == 0) ctx.BeginFigure(pt, false, true); else ctx.LineTo(pt, true, true);
-            }
+            // quadratic curves through the midpoints: a smooth closed line, no corners
+            var start = Mid(pts[n - 1], pts[0]);
+            ctx.BeginFigure(start, false, true);
+            for (int j = 0; j < n; j++)
+                ctx.QuadraticBezierTo(pts[j], Mid(pts[j], pts[(j + 1) % n]), true, true);
         }
         geo.Freeze();
 
         var thick = new Pen(brush, 3.0) { LineJoin = PenLineJoin.Round };
-        var glow = new Pen(brush, 9) { LineJoin = PenLineJoin.Round };
-        var thin = new Pen(brush, 1.2) { LineJoin = PenLineJoin.Round };
+        var glow = new Pen(brush, 10) { LineJoin = PenLineJoin.Round };
+        var thin = new Pen(brush, 1.2);
 
-        dc.PushOpacity(0.25);
-        dc.DrawEllipse(null, thin, c, baseR + MaxBar * 1.5, baseR + MaxBar * 1.5);
+        dc.PushOpacity(0.22);
+        dc.DrawEllipse(null, thin, c, baseR + 30, baseR + 30);   // a still outer ring for depth
         dc.Pop();
         dc.PushOpacity(0.16);
         dc.DrawGeometry(null, glow, geo);
         dc.Pop();
         dc.DrawGeometry(null, thick, geo);
     }
+
+    private static Point Mid(Point a, Point b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
+
+    /// <summary>Catmull-Rom curve through four neighbouring values.</summary>
+    private static double Cubic(double p0, double p1, double p2, double p3, double t) =>
+        p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
 }

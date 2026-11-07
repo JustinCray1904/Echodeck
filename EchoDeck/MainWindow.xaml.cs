@@ -374,7 +374,7 @@ public partial class MainWindow : Window
     private void SetTitles(string name)
     {
         TitleText.Text = name;
-        Title = name == AppName ? AppName : name + " - " + AppName;
+        Title = AppName;   // the taskbar preview and Alt+Tab show just "Tempo", never what is playing (the title bar above the video still shows it)
         MiniTitle.Text = name == AppName ? "" : name;
     }
 
@@ -544,9 +544,7 @@ public partial class MainWindow : Window
     {
         if (_player is null) return;
         _player.Mute = !_player.Mute;
-        double o = _player.Mute ? 0.4 : 1.0;
-        VolumeIcon.Opacity = o;
-        PopupVolumeIcon.Opacity = o;
+        UpdateVolumeGlyphs(animate: true);
         ShowOsd(_player.Mute ? "Muted" : "Volume " + (int)VolumeSlider.Value + "%", _player.Mute ? 0.0 : VolumeSlider.Value / 100.0);
     }
 
@@ -1207,10 +1205,21 @@ public partial class MainWindow : Window
         PlayNormal(files[0]);
     }
 
+    /// <summary>Speaker icons (bar and popup): waves follow the level, a cross shows when muted, a pulse on every change.</summary>
+    private void UpdateVolumeGlyphs(bool animate)
+    {
+        if (VolumeIcon is null || PopupVolumeIcon is null || VolumeSlider is null) return;
+        double level = VolumeSlider.Value / 100.0;
+        bool muted = _player?.Mute ?? false;
+        VolumeIcon.SetState(level, muted, animate);
+        PopupVolumeIcon.SetState(level, muted, animate);
+    }
+
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_player != null) _player.Volume = (int)e.NewValue;
         VolumeText.Text = (int)e.NewValue + "%";
+        UpdateVolumeGlyphs(IsLoaded);
         if (IsLoaded && !_anon && !_transition)
         {
             _cfg.Volume = (int)e.NewValue;

@@ -751,7 +751,7 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <!-- a song only: just the pause button (the rest appears on hover) -->
+                                    <!-- a song only: pause button, title, and the open / close buttons (always visible) -->
                                     <Button x:Name="MiniAudioPause" Grid.Column="0" Style="{StaticResource PlayPillButton}" Width="30" Height="22"
                                             Margin="0,0,8,0" Click="PlayPause_Click">
                                         <Path x:Name="MiniPlayIcon" Style="{StaticResource IcoFilled}" Data="{StaticResource IcoPlay}" Width="10" Height="10" Stretch="Uniform"/>
@@ -759,16 +759,6 @@
                                     <TextBlock x:Name="MiniTitle" Grid.Column="1" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                Cursor="SizeWE" Background="Transparent"/>
                                     <StackPanel x:Name="MiniAudioTools" Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Opacity" Value="0"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsMouseOver, ElementName=MiniPlayer}" Value="True">
-                                                        <Setter Property="Opacity" Value="1"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
                                         <Button Style="{StaticResource FigmaIconButton}" Width="22" Height="22" ToolTip="Open player" Click="MiniExpand_Click">
                                             <Path Style="{StaticResource Ico}" Data="{StaticResource IcoFullscreen}" Width="11" Height="11" Stretch="Uniform"/>
                                         </Button>
@@ -797,7 +787,7 @@
                     <!-- queue / playlists panel -->
                     <Border x:Name="SidebarPanel" Grid.Column="0" Width="330" Margin="0,0,8,0"
                             Background="{DynamicResource PanelBrush}" CornerRadius="12" Visibility="Collapsed">
-                        <Grid Margin="14,12,14,0">
+                        <Grid Margin="14,12,14,14">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -958,7 +948,7 @@
                                             HorizontalAlignment="Left" VerticalAlignment="Top" Margin="22,20,0,0" Padding="14,7"
                                             Click="LyricsToggle_Click"/>
 
-                                    <Border x:Name="LyricsPanel" Grid.Column="1" Width="480" Margin="0,70,28,28" Visibility="Collapsed"
+                                    <Border x:Name="LyricsPanel" Grid.Column="1" Margin="0,70,28,28" Visibility="Collapsed"
 CornerRadius="18" Padding="4" Background="Transparent">
                                         <Grid>
                                             <Grid.RowDefinitions>
@@ -969,19 +959,40 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                             <Border Grid.RowSpan="2" CornerRadius="16" IsHitTestVisible="False" Opacity="0.5"
                                                     Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1"/>
                                             <Grid Margin="16,10,8,4">
-                                                <TextBlock Text="Lyrics" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="Lyrics" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                                                     <Button Content="Edit" Style="{StaticResource FlatButton}" Padding="12,5" Margin="0,0,6,0" Click="LyricsEdit_Click"/>
                                                     <Button x:Name="LyricsAiButton" Content="Generate with AI" Style="{StaticResource FlatButton}" Padding="12,5" Margin="0,0,6,0" Click="LyricsAi_Click"/>
                                                     <Button Content="Close" Style="{StaticResource FlatButton}" Padding="12,5" Click="LyricsClose_Click"/>
                                                 </StackPanel>
                                             </Grid>
                                             <Grid Grid.Row="1">
+                                                <!-- no Padding here: a ListBox's padding shrinks its viewport and cut the lines off hard; the breathing room is
+                                                     inside the list instead, and the lines fade out softly at the top and bottom -->
                                                 <ListBox x:Name="LyricsList" Background="Transparent" BorderThickness="0" Focusable="False"
-                                                         Padding="0,150" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                         Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                          ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False"
                                                          VirtualizingPanel.IsVirtualizing="False" ItemContainerStyle="{StaticResource LyricItemStyle}"
-                                                         ItemTemplate="{StaticResource LyricTpl}" MouseDoubleClick="LyricsList_MouseDoubleClick"/>
+                                                         ItemTemplate="{StaticResource LyricTpl}" MouseDoubleClick="LyricsList_MouseDoubleClick">
+                                                    <ListBox.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Margin="0,130,0,190"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ListBox.ItemsPanel>
+                                                    <ListBox.OpacityMask>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                            <GradientStop Color="#00000000" Offset="0"/>
+                                                            <GradientStop Color="#FF000000" Offset="0.15"/>
+                                                            <GradientStop Color="#FF000000" Offset="0.82"/>
+                                                            <GradientStop Color="#00000000" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </ListBox.OpacityMask>
+                                                </ListBox>
                                                 <StackPanel x:Name="LyricsEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,0">
                                                     <TextBlock x:Name="LyricsEmptyText" TextWrapping="Wrap" TextAlignment="Center" FontSize="14"
                                                                Foreground="{DynamicResource Fg3Brush}" MaxWidth="360"
@@ -1160,7 +1171,7 @@ CornerRadius="18" Padding="4" Background="Transparent">
                 <!-- volume: click the speaker for the slider -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
                     <Button x:Name="VolumeButton" Style="{StaticResource FigmaIconButton}" ToolTip="Volume (M mutes)" Click="Volume_Click">
-                        <Path x:Name="VolumeIcon" Style="{StaticResource IcoFilled}" Data="{StaticResource IcoVolumeFill}"/>
+                        <local:VolumeGlyph x:Name="VolumeIcon" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}"/>
                     </Button>
                     <TextBlock x:Name="VolumeText" Width="38" FontSize="12" Foreground="{DynamicResource Fg3Brush}"
                                VerticalAlignment="Center" TextAlignment="Left" Margin="2,0,0,0"/>
@@ -1173,7 +1184,7 @@ CornerRadius="18" Padding="4" Background="Transparent">
                             </Border.Effect>
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="MuteButton" Style="{StaticResource FigmaIconButton}" ToolTip="Mute" Click="Mute_Click">
-                                    <Path x:Name="PopupVolumeIcon" Style="{StaticResource IcoFilled}" Data="{StaticResource IcoVolumeFill}"/>
+                                    <local:VolumeGlyph x:Name="PopupVolumeIcon" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}"/>
                                 </Button>
                                 <Slider x:Name="VolumeSlider" Style="{StaticResource ModernSlider}" Width="150" Margin="10,0,2,0" VerticalAlignment="Center"
                                         Minimum="0" Maximum="100" Value="80" IsMoveToPointEnabled="True"

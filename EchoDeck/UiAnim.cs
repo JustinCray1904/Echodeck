@@ -169,7 +169,7 @@ internal static class UiAnim
                 panel.Opacity = 1;
                 move.X = 0;
             });
-            After(110, afterLayout);
+            After(70, afterLayout);
             return;
         }
 
@@ -207,7 +207,7 @@ internal static class UiAnim
             panel.Visibility = Visibility.Collapsed;
             panel.Opacity = 1;
             move.X = 0;
-            After(110, afterLayout);
+            After(70, afterLayout);
         });
     }
 }

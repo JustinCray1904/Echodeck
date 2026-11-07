@@ -392,7 +392,7 @@ public partial class MainWindow
         PlayerView.InvalidateMeasure();
         PlayerView.UpdateLayout();
         VideoSurface.InvalidateVisual();
-        UiAnim.FadeOut(VideoCurtain, 170);
+        UiAnim.FadeOut(VideoCurtain, 110);
     }
 
     private void ReleaseShell()

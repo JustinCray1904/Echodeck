@@ -11,7 +11,19 @@ namespace EchoDeck;
 // Lyrics: auto-loaded .lrc / .txt next to the song, editor + paste, local Whisper generation, and the synced display.
 public partial class MainWindow
 {
-    private const double LyricsColumnWidth = 508;   // panel (480) + its right margin (28)
+    private const double LyricsPanelMargin = 28;
+
+    /// <summary>
+    /// The cover and the visualiser keep their size; the lyrics take what is left beside them (at most 480 wide, at least 320).
+    /// Only when even that does not fit does the cover scale down.
+    /// </summary>
+    private double ComputeLyricsColumn()
+    {
+        double avail = MusicPanel.ActualWidth;
+        if (avail <= 0) return 480 + LyricsPanelMargin;
+        const double coverNeeds = 500;
+        return Math.Clamp(avail - coverNeeds - LyricsPanelMargin, 320, 480) + LyricsPanelMargin;
+    }
 
     private readonly ObservableCollection<LyricLine> _lyricLines = new();
     private readonly Dictionary<string, string> _sessionLyrics = new(StringComparer.OrdinalIgnoreCase);   // generated / edited this session
@@ -64,13 +76,14 @@ public partial class MainWindow
         }
 
         double from = LyricsCol.Width.Value;
-        double to = open ? LyricsColumnWidth : 0;
+        double full = ComputeLyricsColumn();
+        double to = open ? full : 0;
         if (open) LyricsPanel.Visibility = Visibility.Visible;
 
         void Apply(double w)
         {
             LyricsCol.Width = new GridLength(w);
-            LyricsPanel.Opacity = Math.Clamp(w / LyricsColumnWidth * 1.3, 0, 1);
+            LyricsPanel.Opacity = Math.Clamp(w / full * 1.3, 0, 1);
         }
 
         UiAnim.Tween(LyricsCol, from, to, animate ? 260 : 0, Apply, () =>

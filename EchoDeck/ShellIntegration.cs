@@ -273,7 +273,7 @@ internal sealed class TaskbarController : IDisposable
         iId = (uint)id,
         iBitmap = (uint)image,
         szTip = tip,
-        dwFlags = (enabled ? THBF_ENABLED : THBF_DISABLED) | THBF_NOBACKGROUND
+        dwFlags = enabled ? THBF_ENABLED : THBF_DISABLED   // with the standard button background, like other players
     };
 
     /// <summary>Updates the three buttons: <paramref name="playing"/> chooses the Play or Pause picture.</summary>

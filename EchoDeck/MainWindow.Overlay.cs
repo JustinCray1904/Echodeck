@@ -54,6 +54,21 @@ public partial class MainWindow
         MiniAudioPause.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
         MiniAudioTools.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
 
+        // a small video fills the card edge to edge on a black card (no grey frame or corners around the picture);
+        // a song's card keeps the normal panel look
+        if (mini)
+        {
+            MiniPlayer.Background = System.Windows.Media.Brushes.Black;
+            MiniVideoSpacer.Margin = new Thickness(-5, 1, -5, 6);
+            VideoCorners.Radius = 0;
+        }
+        else
+        {
+            MiniPlayer.SetResourceReference(Border.BackgroundProperty, "PanelBrush");
+            MiniVideoSpacer.Margin = new Thickness(0, 1, 0, 6);
+            VideoCorners.Radius = _isFullscreen ? 0 : 14;
+        }
+
         if (mini)
         {
             PlayerView.Visibility = Visibility.Visible;

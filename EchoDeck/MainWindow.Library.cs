@@ -36,6 +36,11 @@ public partial class MainWindow
         SmoothScroll.Attach(LibraryList);
         SmoothScroll.Attach(SideList);
         LibraryList.SizeChanged += LibraryList_SizeChanged;
+        // the lyrics box follows the room left beside the cover when the window or the side panels change
+        MusicPanel.SizeChanged += (_, _) =>
+        {
+            if (_lyricsOpen && !UiAnim.IsRunning(LyricsCol)) LyricsCol.Width = new GridLength(ComputeLyricsColumn());
+        };
         LibraryScanner.Progress += p => Dispatcher.InvokeAsync(() => OnScanProgress(p));
     }
 
