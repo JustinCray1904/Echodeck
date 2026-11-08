@@ -78,6 +78,9 @@ public partial class MainWindow
         double from = LyricsCol.Width.Value;
         double full = ComputeLyricsColumn();
         double to = open ? full : 0;
+        // the panel keeps its full width while the column grows / shrinks (the host clips it): the text slides in and out instead
+        // of being squeezed into a narrowing box, which made it cramped on closing
+        if (open) LyricsPanel.Width = full - LyricsPanelMargin;
         if (open) LyricsPanel.Visibility = Visibility.Visible;
 
         void Apply(double w)

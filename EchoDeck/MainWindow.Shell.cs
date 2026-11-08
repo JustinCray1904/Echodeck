@@ -352,28 +352,48 @@ public partial class MainWindow
 
     /// <summary>
     /// The video area slides smoothly only while nothing is loaded. With media loaded, the native video window and the overlay
-    /// window on top of it would be resized on every animation frame, which is what made the picture drop out to black (and lose
-    /// its rounded corners) for seconds, for songs as well as videos. Then the layout changes once, under the curtain, while the
-    /// panel itself still fades and slides.
+    /// window on top of it would be resized on every animation frame (heavy, and they never move in the same frame), so the
+    /// layout changes once while the panel itself still fades and slides.
     /// </summary>
     private bool SmoothPanels => AppSettings.Current.SmoothResize && !_hasMedia;
 
+    private bool _nativeHeld;   // the native video window is hidden for the moment the layout changes
+
+    /// <summary>
+    /// The native video window (a separate Win32 window, drawn above everything in the main window) is only shown while a video
+    /// or nothing is playing. A song never needs it, so the music view can't be disturbed by it: no flat grey / black window
+    /// peeking out where the sidebar is about to appear.
+    /// </summary>
+    private void SyncNativeSurface() =>
+        VideoView.Visibility = _currentIsAudio || _nativeHeld ? Visibility.Hidden : Visibility.Visible;
+
+    /// <summary>
+    /// Layout change with a video on screen. The video window and the overlay window on top of it are resized in different frames:
+    /// for a moment the old video window covered the place of the new panel (a flat light-grey block) and, afterwards, a black
+    /// strip stayed behind. So the video window is hidden while the layout changes (the overlay curtain covers the picture),
+    /// and shown again at its final size, under the curtain, before the picture fades back in.
+    /// </summary>
     private void CurtainOn()
     {
         if (_libraryVisible || VideoSurface.Visibility != Visibility.Visible) return;
 
-        VideoCurtain.Background = _currentIsAudio && TryFindResource("PanelBrush") is Brush panel ? panel : Brushes.Black;
-        UiAnim.Cancel(VideoCurtain);
-        VideoCurtain.Opacity = 1;
-        VideoCurtain.Visibility = Visibility.Visible;
         Visualizer.Frozen = true;   // nothing to redraw while the layout is changing
 
-        // safety net: whatever happens to the transition, the curtain never stays down
+        // safety net: whatever happens to the transition, everything comes back
         _curtainWatchdog ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
         _curtainWatchdog.Tick -= CurtainWatchdog_Tick;
         _curtainWatchdog.Tick += CurtainWatchdog_Tick;
         _curtainWatchdog.Stop();
         _curtainWatchdog.Start();
+
+        if (_currentIsAudio) return;   // a song has no video window underneath: nothing to hide
+
+        VideoCurtain.Background = Brushes.Black;
+        UiAnim.Cancel(VideoCurtain);
+        VideoCurtain.Opacity = 1;
+        VideoCurtain.Visibility = Visibility.Visible;
+        _nativeHeld = true;
+        SyncNativeSurface();
     }
 
     private void CurtainWatchdog_Tick(object? sender, EventArgs e)
@@ -386,11 +406,17 @@ public partial class MainWindow
     {
         _curtainWatchdog?.Stop();
         Visualizer.Frozen = false;
-        if (VideoCurtain.Visibility != Visibility.Visible) return;
 
-        // make sure the overlay is laid out at its final size before the picture comes back
-        PlayerView.InvalidateMeasure();
-        PlayerView.UpdateLayout();
+        if (_nativeHeld)
+        {
+            // the video window comes back at its final size, while the curtain still covers the picture
+            _nativeHeld = false;
+            SyncNativeSurface();
+            PlayerView.InvalidateMeasure();
+            PlayerView.UpdateLayout();
+        }
+
+        if (VideoCurtain.Visibility != Visibility.Visible) return;
         VideoSurface.InvalidateVisual();
         UiAnim.FadeOut(VideoCurtain, 110);
     }

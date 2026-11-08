@@ -36,10 +36,16 @@ public partial class MainWindow
         SmoothScroll.Attach(LibraryList);
         SmoothScroll.Attach(SideList);
         LibraryList.SizeChanged += LibraryList_SizeChanged;
+        Visualizer.CoverPulse = CoverScale;   // the cover swells a little with the bass
         // the lyrics box follows the room left beside the cover when the window or the side panels change
         MusicPanel.SizeChanged += (_, _) =>
         {
-            if (_lyricsOpen && !UiAnim.IsRunning(LyricsCol)) LyricsCol.Width = new GridLength(ComputeLyricsColumn());
+            if (_lyricsOpen && !UiAnim.IsRunning(LyricsCol))
+            {
+                double column = ComputeLyricsColumn();
+                LyricsCol.Width = new GridLength(column);
+                LyricsPanel.Width = column - LyricsPanelMargin;
+            }
         };
         LibraryScanner.Progress += p => Dispatcher.InvokeAsync(() => OnScanProgress(p));
     }

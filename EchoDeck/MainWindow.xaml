@@ -929,7 +929,11 @@
                                             </Ellipse>
                                             <local:CircleVisualizer x:Name="Visualizer" Width="440" Height="440" HorizontalAlignment="Center"
                                                                     VerticalAlignment="Center" Visibility="Collapsed"/>
-                                            <Ellipse x:Name="CoverCircle" Width="310" Height="310" Fill="{StaticResource CoverFallback}"/>
+                                            <Ellipse x:Name="CoverCircle" Width="310" Height="310" Fill="{StaticResource CoverFallback}" RenderTransformOrigin="0.5,0.5">
+                                                <Ellipse.RenderTransform>
+                                                    <ScaleTransform x:Name="CoverScale" ScaleX="1" ScaleY="1"/>
+                                                </Ellipse.RenderTransform>
+                                            </Ellipse>
                                             <Path x:Name="MusicGlyph" Data="{StaticResource IcoMusic}" Stretch="Uniform" Width="90" Height="90"
                                                   Stroke="White" StrokeThickness="1.6" StrokeStartLineCap="Round"
                                                   StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
@@ -948,7 +952,8 @@
                                             HorizontalAlignment="Left" VerticalAlignment="Top" Margin="22,20,0,0" Padding="14,7"
                                             Click="LyricsToggle_Click"/>
 
-                                    <Border x:Name="LyricsPanel" Grid.Column="1" Margin="0,70,28,28" Visibility="Collapsed"
+                                    <Grid x:Name="LyricsHost" Grid.Column="1" ClipToBounds="True">
+<Border x:Name="LyricsPanel" HorizontalAlignment="Left" Margin="0,70,28,28" Visibility="Collapsed"
 CornerRadius="18" Padding="4" Background="Transparent">
                                         <Grid>
                                             <Grid.RowDefinitions>
@@ -1022,6 +1027,7 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                             </Grid>
                                         </Grid>
                                     </Border>
+</Grid>
                                 </Grid>
 
                                 <!-- rounded video corners (the picture itself can't be clipped) -->

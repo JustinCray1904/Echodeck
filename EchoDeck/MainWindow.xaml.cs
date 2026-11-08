@@ -588,6 +588,7 @@ public partial class MainWindow : Window
     private void ShowMusic(bool on, string title, string subtitle)
     {
         _currentIsAudio = on;
+        SyncNativeSurface();   // a song never needs the native video window
         MusicPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Visibility = Visibility.Collapsed;
         MusicTitle.Text = title;

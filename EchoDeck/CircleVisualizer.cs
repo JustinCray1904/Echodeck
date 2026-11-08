@@ -5,18 +5,18 @@ using System.Windows.Media;
 namespace EchoDeck;
 
 /// <summary>
-/// Music-view visualiser drawn around the round cover. Mode 1 = radial bars, mode 2 = wave ring (style 0, the ripples, is
-/// separate XAML). It shows the song's real spectrum (bass .. treble, analysed from the file at the current position), so it
-/// moves with the music; each band rises quickly and falls slowly, and the shape is smoothed so it never looks jagged.
+/// Music-view visualiser drawn around the round cover. Mode 1 = radial bars, mode 2 = aura (style 0, the ripples, is separate
+/// XAML). It shows the song's real spectrum (bass .. treble, analysed from the file at the current position): each band rises
+/// quickly and falls slowly, the bass makes the bars and the cover breathe, and the colours drift from the cover's own colour.
 /// Songs whose spectrum is not available (very long mixes) fall back to the waveform level.
 /// </summary>
 public sealed class CircleVisualizer : FrameworkElement, IDisposable
 {
     private bool _disposed;
-    private const int BarCount = 64;              // 32 per side, mirrored left / right (bass at the bottom, treble at the top)
-    private const int Half = BarCount / 2;
-    private const double InnerRadius = 166;       // the cover is 155: a clear gap between cover and bars
-    private const double MaxBar = 40;             // longest bar (the visualiser is 440 wide: 220 - 166 - margin)
+    private const int Half = 48;                  // bars per side; mirrored left / right, bass at the bottom, treble at the top
+    private const int BarCount = Half * 2;
+    private const double InnerRadius = 166;       // the cover is 155: a clear gap between cover and visualiser
+    private const int HistoryLength = 10;
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Stopwatch _sincePosition = Stopwatch.StartNew();
@@ -30,21 +30,27 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
     private bool _subscribed;
     private double _lastRender;
     private double _lastFrameTime;
-    private readonly double[] _bands = new double[Half + 1];     // smoothed, 0..1, index 0 = bass
-    private readonly double[] _shaped = new double[Half + 3];    // spatially smoothed copy (with padding for interpolation)
-    private readonly double[] _peakValue = new double[Half + 1]; // peak caps: they hold for a moment, then fall
-    private readonly double[] _peakHold = new double[Half + 1];
-    private double _breath;                                       // slow overall swell with the bass (wave ring)
+    private double _pulse;
+    private readonly double[] _bands = new double[Half + 1];      // smoothed, 0..1, index 0 = bass
+    private readonly double[] _shaped = new double[Half + 3];     // spatially smoothed copy (with padding)
+    private readonly double[][] _history = new double[HistoryLength][];   // recent frames: the aura's trailing echoes
+    private int _historyPos;
+
+    // colours are prepared once per tint, not per frame
+    private Color _paletteTint;
+    private Pen[]? _barCore, _barGlow;
+    private Pen? _stillRing;
 
     public CircleVisualizer()
     {
         IsHitTestVisible = false;
+        for (int i = 0; i < HistoryLength; i++) _history[i] = new double[Half + 3];
         Loaded += (_, _) => Sync();
         Unloaded += (_, _) => Unsubscribe();
         IsVisibleChanged += (_, _) => Sync();
     }
 
-    /// <summary>How tall / bold the bars and the ring move (Settings > Interface). 1 = default.</summary>
+    /// <summary>How tall / bold the bars and the aura move (Settings > Interface). 1 = default.</summary>
     public double Intensity { get; set; } = 1.0;
 
     /// <summary>How strongly it reacts to the music: low ignores quiet parts, high lifts them. 1 = default.</summary>
@@ -53,10 +59,13 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
     /// <summary>The colour of the visualiser (the cover's own colour); null = the accent colour.</summary>
     public Brush? Tint { get; set; }
 
+    /// <summary>The cover's scale transform: it swells a little with the bass.</summary>
+    public ScaleTransform? CoverPulse { get; set; }
+
     /// <summary>True while the window layout is changing: no frames are drawn (keeps the overlay window quiet).</summary>
     public bool Frozen { get; set; }
 
-    /// <summary>0 = off (ripples are used), 1 = radial bars, 2 = wave ring. (Not called "Style": that name belongs to WPF.)</summary>
+    /// <summary>0 = off (ripples are used), 1 = radial bars, 2 = aura. (Not called "Style": that name belongs to WPF.)</summary>
     public int Mode
     {
         get => _style;
@@ -96,6 +105,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         _spectrum = null;
         _playing = false;
         Tint = null;
+        CoverPulse = null;
     }
 
     /// <summary>Back to rest between songs: no analysis, no motion (the frame loop itself stays tied to visibility).</summary>
@@ -107,6 +117,8 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         _fraction = 0;
         _lengthSeconds = 0;
         Array.Clear(_bands, 0, _bands.Length);
+        if (CoverPulse != null) { CoverPulse.ScaleX = 1; CoverPulse.ScaleY = 1; }
+        _pulse = 0;
     }
 
     private void Subscribe()
@@ -198,8 +210,8 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         double gamma = 1.0 / sensitivity;     // high sensitivity lifts quiet parts, low sensitivity keeps only the loud ones
 
         bool haveSpectrum = _spectrum != null && _lengthSeconds > 0;
-        double attack = 1 - Math.Exp(-dt / 0.045);     // rises within a few frames
-        double release = 1 - Math.Exp(-dt / 0.20);     // falls gently
+        double attack = 1 - Math.Exp(-dt / 0.04);      // rises within a couple of frames
+        double release = 1 - Math.Exp(-dt / 0.22);     // falls gently
 
         for (int d = 0; d <= Half; d++)
         {
@@ -207,12 +219,12 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
             if (!_playing) target = 0;
             else if (haveSpectrum)
             {
-                // d = 0 is the bass (bottom of the ring); each ring position averages two neighbouring bands
+                // d = 0 is the bass (bottom of the ring); each position blends two neighbouring bands
                 double u = (double)d / Half * (SpectrumData.Bands - 1);
                 int b0 = (int)Math.Floor(u);
                 int b1 = Math.Min(SpectrumData.Bands - 1, b0 + 1);
                 double v = SpectrumAt(seconds, b0) * (1 - (u - b0)) + SpectrumAt(seconds, b1) * (u - b0);
-                target = Math.Pow(Math.Clamp(v, 0, 1), gamma * 1.15);
+                target = Math.Pow(Math.Clamp(v, 0, 1), gamma * 1.1);
             }
             else
             {
@@ -222,46 +234,123 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
             _bands[d] += (target - _bands[d]) * (target > _bands[d] ? attack : release);
         }
 
-        // spatial smoothing so neighbouring bars flow into each other (index 0 and Half are mirrored: no seam at the ends)
+        // spatial smoothing so neighbouring bars flow into each other (mirrored at both ends: no seam)
         for (int d = 0; d <= Half; d++)
         {
             double prev = _bands[Math.Max(0, d - 1)];
             double next = _bands[Math.Min(Half, d + 1)];
             _shaped[d + 1] = prev * 0.25 + _bands[d] * 0.5 + next * 0.25;
         }
-        _shaped[0] = _shaped[2];             // mirror padding for the curve below
+        _shaped[0] = _shaped[2];
         _shaped[Half + 2] = _shaped[Half];
 
-        var brush = Tint ?? TryFindResource("AccentBrush") as Brush ?? Brushes.White;
-        var center = new Point(ActualWidth / 2, ActualHeight / 2);
+        // remember this frame for the aura's echoes
+        _history[_historyPos] = (double[])_shaped.Clone();
+        _historyPos = (_historyPos + 1) % HistoryLength;
 
-        if (_style == 1) DrawBars(dc, brush, center, intensity);
-        else DrawRing(dc, brush, center, intensity);
+        double bass = (_bands[0] + _bands[1] + _bands[2] + _bands[3] + _bands[4]) / 5;
+        double live = 0.2 + 0.8 * _level;
+
+        // the cover swells a little with the bass
+        if (CoverPulse != null)
+        {
+            _pulse += (bass * live * Math.Min(intensity, 1.5) - _pulse) * 0.35;
+            double scale = 1 + 0.032 * _pulse;
+            CoverPulse.ScaleX = scale;
+            CoverPulse.ScaleY = scale;
+        }
+
+        var center = new Point(ActualWidth / 2, ActualHeight / 2);
+        if (_style == 1) DrawBars(dc, center, intensity, bass, live);
+        else DrawAura(dc, center, intensity, live);
     }
 
-    private double Shaped(int d) => _shaped[Math.Clamp(d, 0, Half) + 1];
+    private static double At(double[] arr, int d) => arr[Math.Clamp(d, 0, Half) + 1];
 
-    /// <summary>
-    /// Radial bars, the way spectrum analysers draw them (audioMotion-analyzer's radial mode): bars grow outward from a fixed
-    /// circle, bass at the bottom, mirrored left and right, with a small cap that holds each peak and then falls.
-    /// </summary>
-    private void DrawBars(DrawingContext dc, Brush brush, Point c, double intensity)
+    private double[] Delayed(int frames) => _history[(_historyPos - 1 - frames + 2 * HistoryLength) % HistoryLength];
+
+    // ---------------------------------------------------------------- colours
+
+    private Color TintColor()
     {
-        var pen = new Pen(brush, 4.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
-        if (pen.CanFreeze) pen.Freeze();
-        var capPen = new Pen(brush, 3.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
-        if (capPen.CanFreeze) capPen.Freeze();
+        if (Tint is SolidColorBrush own) return own.Color;
+        if (TryFindResource("AccentBrush") is SolidColorBrush accent) return accent.Color;
+        return Colors.White;
+    }
 
-        double dt = Math.Clamp(_clock.Elapsed.TotalSeconds - _lastPeakTime, 0.001, 0.1);
-        _lastPeakTime = _clock.Elapsed.TotalSeconds;
+    private static SolidColorBrush Solid(Color c, double alpha)
+    {
+        var b = new SolidColorBrush(Color.FromArgb((byte)Math.Clamp((int)Math.Round(alpha * 255), 0, 255), c.R, c.G, c.B));
+        b.Freeze();
+        return b;
+    }
 
+    /// <summary>Rotates the hue (degrees) and scales saturation / brightness: the colours drift gently away from the cover's colour.</summary>
+    private static Color HueShift(Color c, double degrees, double satMul, double valMul)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), delta = max - min;
+        double h = 0;
+        if (delta > 1e-9)
+        {
+            if (max == r) h = ((g - b) / delta) % 6;
+            else if (max == g) h = (b - r) / delta + 2;
+            else h = (r - g) / delta + 4;
+            h *= 60;
+            if (h < 0) h += 360;
+        }
+        double s = max <= 0 ? 0 : delta / max;
+        double v = max;
+
+        h = (h + degrees) % 360;
+        if (h < 0) h += 360;
+        s = Math.Min(1, s * satMul);
+        v = Math.Min(1, v * valMul);
+
+        double cc = v * s;
+        double x = cc * (1 - Math.Abs((h / 60) % 2 - 1));
+        double m = v - cc;
+        double r1, g1, b1;
+        switch ((int)(h / 60) % 6)
+        {
+            case 0: r1 = cc; g1 = x; b1 = 0; break;
+            case 1: r1 = x; g1 = cc; b1 = 0; break;
+            case 2: r1 = 0; g1 = cc; b1 = x; break;
+            case 3: r1 = 0; g1 = x; b1 = cc; break;
+            case 4: r1 = x; g1 = 0; b1 = cc; break;
+            default: r1 = cc; g1 = 0; b1 = x; break;
+        }
+        return Color.FromRgb((byte)Math.Round((r1 + m) * 255), (byte)Math.Round((g1 + m) * 255), (byte)Math.Round((b1 + m) * 255));
+    }
+
+    private void EnsureBarPalette(Color tint)
+    {
+        if (_barCore != null && tint == _paletteTint) return;
+        _paletteTint = tint;
+        _barCore = new Pen[Half + 1];
+        _barGlow = new Pen[Half + 1];
         for (int d = 0; d <= Half; d++)
         {
-            double v = Shaped(d) * (0.2 + 0.8 * _level);
-            if (v >= _peakValue[d]) { _peakValue[d] = v; _peakHold[d] = 0.35; }
-            else if (_peakHold[d] > 0) _peakHold[d] -= dt;
-            else _peakValue[d] = Math.Max(v, _peakValue[d] - dt * 0.9);
+            var col = HueShift(tint, -18 + 36.0 * d / Half, 1.15, 1.1);   // bass .. treble
+            _barCore[d] = new Pen(Solid(col, 1.0), 3.6) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            _barGlow[d] = new Pen(Solid(col, 0.18), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            _barCore[d].Freeze();
+            _barGlow[d].Freeze();
         }
+        _stillRing = new Pen(Solid(tint, 0.28), 1.2);
+        _stillRing.Freeze();
+    }
+
+    // ---------------------------------------------------------------- bars
+
+    /// <summary>
+    /// Radial bars, the way spectrum analysers draw them: bars grow outward from a circle that swells with the bass, bass at the
+    /// bottom, mirrored left and right, each with a soft glow.
+    /// </summary>
+    private void DrawBars(DrawingContext dc, Point c, double intensity, double bass, double live)
+    {
+        EnsureBarPalette(TintColor());
+        double r0 = InnerRadius + bass * live * 5;
 
         for (int i = 0; i < BarCount; i++)
         {
@@ -269,67 +358,57 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
             double angle = Math.PI / 2 + 2 * Math.PI * i / BarCount;
             double cos = Math.Cos(angle), sin = Math.Sin(angle);
 
-            double len = 3 + MaxBar * Math.Min(1.0, Shaped(d) * (0.2 + 0.8 * _level) * intensity);
-            dc.DrawLine(pen,
-                new Point(c.X + cos * InnerRadius, c.Y + sin * InnerRadius),
-                new Point(c.X + cos * (InnerRadius + len), c.Y + sin * (InnerRadius + len)));
-
-            double capLen = 3 + MaxBar * Math.Min(1.0, _peakValue[d] * intensity);
-            if (capLen > len + 4)
-            {
-                double r0 = InnerRadius + capLen + 3, r1 = r0 + 2;
-                dc.PushOpacity(0.7);
-                dc.DrawLine(capPen, new Point(c.X + cos * r0, c.Y + sin * r0), new Point(c.X + cos * r1, c.Y + sin * r1));
-                dc.Pop();
-            }
+            double len = 4 + 44 * Math.Min(1.0, At(_shaped, d) * intensity * live);
+            var p0 = new Point(c.X + cos * r0, c.Y + sin * r0);
+            var p1 = new Point(c.X + cos * (r0 + len), c.Y + sin * (r0 + len));
+            dc.DrawLine(_barGlow![d], p0, p1);
+            dc.DrawLine(_barCore![d], p0, p1);
         }
+
+        dc.DrawEllipse(null, _stillRing, c, InnerRadius - 7, InnerRadius - 7);
     }
 
-    private double _lastPeakTime;
+    // ---------------------------------------------------------------- aura
 
     /// <summary>
-    /// Wave ring: one smooth closed curve. The music only ever nudges it a little (the level of each frequency relative to the
-    /// average, blurred along the ring) and the bass makes the whole ring swell slowly, so it can never go lopsided or spiky.
+    /// A glowing, filled shape around the cover: always outside the cover, smooth, symmetrical; two fainter copies of the last
+    /// moments trail behind it, so the shape seems to flow with the music.
     /// </summary>
-    private void DrawRing(DrawingContext dc, Brush brush, Point c, double intensity)
+    private void DrawAura(DrawingContext dc, Point c, double intensity, double live)
     {
-        const int n = 128;
-        double baseR = InnerRadius + 20;       // 186: well clear of the cover (155) and inside the 220 px visualiser
+        var tint = TintColor();
+        DrawAuraLayer(dc, c, Delayed(6), HueShift(tint, 22, 1.1, 1.05), 0.30, 1.4, false, intensity, live);
+        DrawAuraLayer(dc, c, Delayed(3), HueShift(tint, 11, 1.1, 1.05), 0.55, 1.8, false, intensity, live);
+        DrawAuraLayer(dc, c, _shaped, HueShift(tint, 0, 1.15, 1.1), 1.0, 2.6, true, intensity, live);
+    }
 
-        // the ring's values: mirrored left / right, bass at the bottom
+    private static void DrawAuraLayer(DrawingContext dc, Point c, double[] arr, Color col, double alpha, double width,
+        bool filled, double intensity, double live)
+    {
+        const int n = 192;
+
+        // the level round the ring (mirrored: bass at the bottom), blurred along the ring so it flows
         var ring = new double[n];
-        double mean = 0;
         for (int j = 0; j < n; j++)
         {
             double u = (double)j / n;
             double m = (u <= 0.5 ? u * 2 : (1 - u) * 2) * Half;
             int lo = (int)Math.Floor(m);
-            ring[j] = Cubic(Shaped(lo - 1), Shaped(lo), Shaped(lo + 1), Shaped(lo + 2), m - lo);
-            mean += ring[j];
+            ring[j] = Cubic(At(arr, lo - 1), At(arr, lo), At(arr, lo + 1), At(arr, lo + 2), m - lo);
         }
-        mean /= n;
-        for (int j = 0; j < n; j++) ring[j] -= mean;          // only the differences move the shape: no lopsided ring
-
-        // blur along the ring (it wraps round), so neighbouring points flow into each other
         var tmp = new double[n];
-        for (int pass = 0; pass < 6; pass++)
+        for (int pass = 0; pass < 3; pass++)
         {
             for (int j = 0; j < n; j++)
                 tmp[j] = ring[(j + n - 1) % n] * 0.25 + ring[j] * 0.5 + ring[(j + 1) % n] * 0.25;
             Array.Copy(tmp, ring, n);
         }
 
-        // slow swell with the low end
-        double bass = (_bands[0] + _bands[1] + _bands[2] + _bands[3]) / 4;
-        _breath += (bass - _breath) * 0.18;
-        double swell = _breath * 7 * intensity * (0.25 + 0.75 * _level);
-        double amp = 44 * intensity * (0.25 + 0.75 * _level);
-
         var pts = new Point[n];
         for (int j = 0; j < n; j++)
         {
             double angle = Math.PI / 2 + 2 * Math.PI * j / n;
-            double r = baseR + swell + Math.Clamp(ring[j] * amp, -16, 16);
+            double r = InnerRadius + 5 + 44 * intensity * live * Math.Clamp(ring[j], 0, 1.05);
             pts[j] = new Point(c.X + Math.Cos(angle) * r, c.Y + Math.Sin(angle) * r);
         }
 
@@ -337,24 +416,25 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         using (var ctx = geo.Open())
         {
             // quadratic curves through the midpoints: a smooth closed line, no corners
-            var start = Mid(pts[n - 1], pts[0]);
-            ctx.BeginFigure(start, false, true);
+            ctx.BeginFigure(Mid(pts[n - 1], pts[0]), false, true);
             for (int j = 0; j < n; j++)
                 ctx.QuadraticBezierTo(pts[j], Mid(pts[j], pts[(j + 1) % n]), true, true);
         }
         geo.Freeze();
 
-        var thick = new Pen(brush, 3.0) { LineJoin = PenLineJoin.Round };
-        var glow = new Pen(brush, 10) { LineJoin = PenLineJoin.Round };
-        var thin = new Pen(brush, 1.2);
+        if (filled)
+        {
+            // the area between the cover's circle and the shape (even-odd: the circle punches the hole)
+            var area = new GeometryGroup { FillRule = FillRule.EvenOdd };
+            area.Children.Add(geo);
+            area.Children.Add(new EllipseGeometry(c, InnerRadius, InnerRadius));
+            dc.DrawGeometry(Solid(col, 0.27), null, area);
+        }
 
-        dc.PushOpacity(0.22);
-        dc.DrawEllipse(null, thin, c, baseR + 30, baseR + 30);   // a still outer ring for depth
-        dc.Pop();
-        dc.PushOpacity(0.16);
+        var glow = new Pen(Solid(col, 0.22 * alpha), 9) { LineJoin = PenLineJoin.Round };
+        var core = new Pen(Solid(col, alpha), width) { LineJoin = PenLineJoin.Round };
         dc.DrawGeometry(null, glow, geo);
-        dc.Pop();
-        dc.DrawGeometry(null, thick, geo);
+        dc.DrawGeometry(null, core, geo);
     }
 
     private static Point Mid(Point a, Point b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
