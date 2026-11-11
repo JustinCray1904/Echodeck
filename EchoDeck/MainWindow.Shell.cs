@@ -364,8 +364,24 @@ public partial class MainWindow
     /// or nothing is playing. A song never needs it, so the music view can't be disturbed by it: no flat grey / black window
     /// peeking out where the sidebar is about to appear.
     /// </summary>
-    private void SyncNativeSurface() =>
+    private void SyncNativeSurface()
+    {
         VideoView.Visibility = _currentIsAudio || _nativeHeld ? Visibility.Hidden : Visibility.Visible;
+
+        // a song is shown by the main window itself (MusicLayer): the overlay window above it must let the mouse through
+        // (a fully transparent layered window passes clicks on) and must not draw its corner mask
+        VideoSurface.Background = _currentIsAudio ? Brushes.Transparent : VideoSurfaceHit;
+        VideoCorners.Visibility = _currentIsAudio ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static readonly Brush VideoSurfaceHit = MakeHitBrush();
+
+    private static Brush MakeHitBrush()
+    {
+        var b = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0));   // almost invisible, but not click-through
+        b.Freeze();
+        return b;
+    }
 
     /// <summary>
     /// Layout change with a video on screen. The video window and the overlay window on top of it are resized in different frames:
@@ -405,6 +421,7 @@ public partial class MainWindow
     private void CurtainOff()
     {
         _curtainWatchdog?.Stop();
+        QueueMiniReposition();
         Visualizer.Frozen = false;
 
         if (_nativeHeld)

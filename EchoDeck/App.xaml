@@ -1132,6 +1132,20 @@
                 </Setter>
             </Style>
 
-        </ResourceDictionary>
+        
+    <!-- A greyed-out Tempo mark for empty places, the way Visual Studio shows its logo when nothing is open -->
+    <Style x:Key="Watermark" TargetType="Rectangle">
+        <Setter Property="Fill" Value="{DynamicResource Fg3Brush}"/>
+        <Setter Property="Opacity" Value="0.16"/>
+        <Setter Property="IsHitTestVisible" Value="False"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="OpacityMask">
+            <Setter.Value>
+                <ImageBrush ImageSource="Assets/logo-mark.png" Stretch="Uniform"/>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>
     </Application.Resources>
 </Application>

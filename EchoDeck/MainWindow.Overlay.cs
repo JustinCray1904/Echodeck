@@ -136,6 +136,7 @@ public partial class MainWindow
         FloatingBar.Child = null;
         FloatingBar.Visibility = Visibility.Collapsed;
         VideoSurface.Cursor = Cursors.Arrow;
+        MusicLayer.Cursor = Cursors.Arrow;
         ControlBar.SetResourceReference(Border.BackgroundProperty, "BgBrush");
         RootGrid.Children.Add(ControlBar);
         Grid.SetRow(ControlBar, 2);
@@ -152,6 +153,7 @@ public partial class MainWindow
         FloatingBar.Opacity = 1;
         FloatingBar.IsHitTestVisible = true;
         VideoSurface.Cursor = Cursors.Arrow;
+        MusicLayer.Cursor = Cursors.Arrow;
 
         if (_barTimer == null)
         {
@@ -179,6 +181,7 @@ public partial class MainWindow
         };
         FloatingBar.BeginAnimation(OpacityProperty, fade);
         VideoSurface.Cursor = Cursors.None;
+        MusicLayer.Cursor = Cursors.None;
     }
 
     private void VideoSurface_MouseMove(object sender, MouseEventArgs e) => RevealFloatingBar();
@@ -219,18 +222,52 @@ public partial class MainWindow
         finally { _modalOpen = false; }
     }
 
+    /// <summary>
+    /// "Off" removes the equalizer from the audio path. A flat equalizer (all bands 0 dB) is not the same: LibVLC's filter stays
+    /// in the signal and makes everything quieter than it was before the equalizer was ever switched on, even with the volume at
+    /// 100 %. VLC's own flat preset therefore carries a 12 dB preamp; the same is used here, reduced by the biggest boost so the
+    /// peaks stay where they were.
+    /// </summary>
     private void ApplyEq(bool enabled, float[] gains)
     {
         if (_player is null) return;
         try
         {
+            if (!enabled)
+            {
+                if (TryUnsetEqualizer())
+                {
+                    _equalizer?.Dispose();
+                    _equalizer = null;
+                    return;
+                }
+            }
+
+            float boost = 0f;
+            if (enabled)
+                for (int band = 0; band < 10; band++) boost = Math.Max(boost, gains[band]);
+
             var next = new Equalizer();
-            next.SetPreamp(0f);
+            next.SetPreamp(Math.Clamp(12f - boost, 0f, 12f));
             for (uint band = 0; band < 10; band++) next.SetAmp(enabled ? gains[band] : 0f, band);
             _player.SetEqualizer(next);
             _equalizer?.Dispose();
             _equalizer = next;
         }
         catch { /* not available for this media */ }
+    }
+
+    /// <summary>libvlc_media_player_set_equalizer(NULL): looked up by name so a different LibVLCSharp build can't break the build.</summary>
+    private bool TryUnsetEqualizer()
+    {
+        if (_player is null) return false;
+        try
+        {
+            var method = typeof(MediaPlayer).GetMethod("UnsetEqualizer", Type.EmptyTypes);
+            if (method == null) return false;
+            method.Invoke(_player, null);
+            return true;
+        }
+        catch { return false; }
     }
 }

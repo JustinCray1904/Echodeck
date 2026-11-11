@@ -35,6 +35,7 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
     private readonly double[] _shaped = new double[Half + 3];     // spatially smoothed copy (with padding)
     private readonly double[][] _history = new double[HistoryLength][];   // recent frames: the aura's trailing echoes
     private int _historyPos;
+    private double _lastHistory;
 
     // colours are prepared once per tint, not per frame
     private Color _paletteTint;
@@ -140,9 +141,9 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         if (_disposed) { Unsubscribe(); return; }
         if (Frozen) return;
 
-        // 30 fps matches the analysis and keeps the CPU quiet
+        // drawn by the graphics card now (the music view is in the main window): up to 60 fps, the analysis is blended between frames
         double now = _clock.Elapsed.TotalSeconds;
-        if (now - _lastRender < 0.030) return;
+        if (now - _lastRender < 0.015) return;
         _lastRender = now;
         InvalidateVisual();
     }
@@ -244,9 +245,13 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         _shaped[0] = _shaped[2];
         _shaped[Half + 2] = _shaped[Half];
 
-        // remember this frame for the aura's echoes
-        _history[_historyPos] = (double[])_shaped.Clone();
-        _historyPos = (_historyPos + 1) % HistoryLength;
+        // remember a frame every 33 ms for the aura's echoes (by time, so the echoes trail the same at any frame rate)
+        if (t - _lastHistory >= 0.033)
+        {
+            _lastHistory = t;
+            _history[_historyPos] = (double[])_shaped.Clone();
+            _historyPos = (_historyPos + 1) % HistoryLength;
+        }
 
         double bass = (_bands[0] + _bands[1] + _bands[2] + _bands[3] + _bands[4]) / 5;
         double live = 0.2 + 0.8 * _level;

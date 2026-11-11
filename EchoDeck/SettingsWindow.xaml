@@ -696,7 +696,7 @@
 
                         <Border Background="{DynamicResource RaisedBrush}" CornerRadius="16" Padding="26">
                             <StackPanel Orientation="Horizontal">
-                                <Image Source="Assets/app.ico" Width="84" Height="84" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <Image Source="Assets/logo.png" Width="84" Height="84" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 <StackPanel Margin="22,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Tempo" FontSize="28" FontWeight="SemiBold"/>
                                     <TextBlock x:Name="VersionText" Style="{StaticResource HintText}" Margin="0,4,0,0"/>

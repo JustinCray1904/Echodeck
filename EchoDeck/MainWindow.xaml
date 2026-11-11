@@ -716,6 +716,7 @@
 
                     <Grid Grid.Row="3">
                         <Border Height="1" VerticalAlignment="Top" Background="{DynamicResource RaisedBrush}"/>
+                        <Rectangle x:Name="LibWatermark" Style="{StaticResource Watermark}" Width="190" Height="190"/>
                         <ListBox x:Name="LibraryList" Style="{StaticResource PlaylistList}"
                                  ItemContainerStyle="{StaticResource TileRowItem}" Margin="0,10,0,0"
                                  HorizontalAlignment="Stretch" MaxWidth="1100"
@@ -872,7 +873,8 @@
                             </Border>
 
                             <Grid Grid.Row="3">
-                                <ListBox x:Name="SideList" Style="{StaticResource PlaylistList}" VirtualizingPanel.ScrollUnit="Pixel"
+                                <Rectangle x:Name="SideWatermark" Style="{StaticResource Watermark}" Width="96" Height="96"/>
+                            <ListBox x:Name="SideList" Style="{StaticResource PlaylistList}" VirtualizingPanel.ScrollUnit="Pixel"
                                          ItemContainerStyle="{StaticResource PlaylistItem}" ItemTemplate="{StaticResource SideTpl}"
                                          MouseDoubleClick="SideList_MouseDoubleClick"/>
                                 <StackPanel x:Name="SideEmptyPanel" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,34,0,0">
@@ -895,8 +897,7 @@
                                   MouseMove="VideoSurface_MouseMove">
                                 <StackPanel x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center"
                                             IsHitTestVisible="False">
-                                    <Image Source="Assets/app.ico" Width="84" Height="84"
-                                           RenderOptions.BitmapScalingMode="HighQuality" Opacity="0.9"/>
+                                    <Rectangle Style="{StaticResource Watermark}" Width="104" Height="104" Opacity="0.30"/>
                                     <TextBlock Text="Tempo" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,0"
                                                Foreground="{DynamicResource TextBrush}" HorizontalAlignment="Center"/>
                                     <TextBlock Text="Pick something from the library to start playing"
@@ -904,7 +905,89 @@
                                                Foreground="{DynamicResource Fg3Brush}"/>
                                 </StackPanel>
 
-                                <Grid x:Name="MusicPanel" Visibility="Collapsed" Background="{DynamicResource PanelBrush}">
+                                
+
+                                <!-- rounded video corners (the picture itself can't be clipped) -->
+                                <!-- covers the video for the instant its window is resized, so no flash or squeeze is ever visible -->
+                                <Border x:Name="VideoCurtain" Visibility="Collapsed" IsHitTestVisible="False" Background="Black" CornerRadius="14"/>
+                                <local:CornerMask x:Name="VideoCorners" Radius="14"/>
+
+                                <!-- on-screen indicator (volume, seek, speed ...) -->
+                                <Border x:Name="OsdBox" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="0,22,22,0" Padding="16,10" CornerRadius="12" Background="#D8101010"
+                                        IsHitTestVisible="False">
+                                    <StackPanel>
+                                        <TextBlock x:Name="OsdText" Foreground="White" FontSize="14" FontWeight="SemiBold"
+                                                   HorizontalAlignment="Center"/>
+                                        <Border x:Name="OsdBarHost" Width="140" Height="5" CornerRadius="3" Margin="0,8,0,0"
+                                                Background="#44FFFFFF" Visibility="Collapsed">
+                                            <Border x:Name="OsdBarFill" HorizontalAlignment="Left" CornerRadius="3" Width="0"
+                                                    Background="{DynamicResource AccentBrush}"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- controls on the small video while browsing (appear on hover): open / close at the top, previous / pause / next at the bottom -->
+                                <Grid x:Name="MiniOverlay" Visibility="Collapsed" Background="#01000000">
+                                    <!-- faded in / out from code (MainWindow.Mini.cs): this overlay lives in LibVLC's own window, where
+                                         XAML "ElementName" hover triggers can't find MiniOverlay, so the icons never became visible -->
+                                    <Grid x:Name="MiniControls" Opacity="0">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0">
+                                            <Button Style="{StaticResource MiniOverlayButton}" Width="24" Height="24" Margin="0,0,4,0" ToolTip="Open player" Click="MiniExpand_Click">
+                                                <Path Style="{StaticResource Ico}" Data="{StaticResource IcoFullscreen}" Width="11" Height="11" Stretch="Uniform"/>
+                                            </Button>
+                                            <Button Style="{StaticResource MiniOverlayButton}" Width="24" Height="24" ToolTip="Close" Click="MiniClose_Click">
+                                                <Path Style="{StaticResource Ico}" Data="{StaticResource IcoClose}" Width="10" Height="10" Stretch="Uniform"/>
+                                            </Button>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8">
+                                            <Button Style="{StaticResource MiniOverlayButton}" Width="26" Height="26" ToolTip="Previous" Click="Previous_Click">
+                                                <Path Style="{StaticResource IcoFilled}" Data="{StaticResource IcoPrevious}" Width="10" Height="10" Stretch="Uniform"/>
+                                            </Button>
+                                            <Button Style="{StaticResource MiniOverlayButton}" Width="32" Height="32" Margin="6,0" ToolTip="Pause / play" Click="PlayPause_Click">
+                                                <Path x:Name="MiniOvPlayIcon" Style="{StaticResource IcoFilled}" Data="{StaticResource IcoPlay}" Width="12" Height="12" Stretch="Uniform"/>
+                                            </Button>
+                                            <Button Style="{StaticResource MiniOverlayButton}" Width="26" Height="26" ToolTip="Next" Click="Next_Click">
+                                                <Path Style="{StaticResource IcoFilled}" Data="{StaticResource IcoNext}" Width="10" Height="10" Stretch="Uniform"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
+
+                                <!-- "continue where you left off": small, just above the control bar -->
+                                <Border x:Name="ResumeCard" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                        Margin="0,0,0,26" Padding="14,8,8,8" CornerRadius="14"
+                                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black"/>
+                                    </Border.Effect>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="ResumeText" FontSize="13" VerticalAlignment="Center" Margin="0,0,14,0"
+                                                   Foreground="{DynamicResource TextBrush}"/>
+                                        <Button Content="Continue" Style="{StaticResource AccentButton}" Padding="14,5" FontSize="12"
+                                                Click="ResumeContinue_Click"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- the control bar floats here in fullscreen -->
+                                <Border x:Name="FloatingBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+                                        Margin="40,0,40,30" MaxWidth="1280" CornerRadius="20"
+                                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}"
+                                        BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+                                    </Border.Effect>
+                                </Border>
+                            </Grid>
+                        </vlc:VideoView>
+                        <!-- The music view lives in the main window, not in the video's overlay window: that window is repainted slowly (and went blank for
+                             a moment whenever the layout changed), while this one is drawn by the graphics card. The video window is hidden for songs. -->
+                        <Border x:Name="MusicLayer" CornerRadius="14" Background="{DynamicResource PanelBrush}"
+                                Visibility="{Binding Visibility, ElementName=MusicPanel}"
+                                MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown"
+                                MouseRightButtonUp="VideoSurface_MouseRightButtonUp"
+                                MouseMove="VideoSurface_MouseMove">
+                            <Grid x:Name="MusicPanel" Visibility="Collapsed">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition x:Name="LyricsCol" Width="0"/>
@@ -1029,80 +1112,8 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                     </Border>
 </Grid>
                                 </Grid>
+                        </Border>
 
-                                <!-- rounded video corners (the picture itself can't be clipped) -->
-                                <!-- covers the video for the instant its window is resized, so no flash or squeeze is ever visible -->
-                                <Border x:Name="VideoCurtain" Visibility="Collapsed" IsHitTestVisible="False" Background="Black" CornerRadius="14"/>
-                                <local:CornerMask x:Name="VideoCorners" Radius="14"/>
-
-                                <!-- on-screen indicator (volume, seek, speed ...) -->
-                                <Border x:Name="OsdBox" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                        Margin="0,22,22,0" Padding="16,10" CornerRadius="12" Background="#D8101010"
-                                        IsHitTestVisible="False">
-                                    <StackPanel>
-                                        <TextBlock x:Name="OsdText" Foreground="White" FontSize="14" FontWeight="SemiBold"
-                                                   HorizontalAlignment="Center"/>
-                                        <Border x:Name="OsdBarHost" Width="140" Height="5" CornerRadius="3" Margin="0,8,0,0"
-                                                Background="#44FFFFFF" Visibility="Collapsed">
-                                            <Border x:Name="OsdBarFill" HorizontalAlignment="Left" CornerRadius="3" Width="0"
-                                                    Background="{DynamicResource AccentBrush}"/>
-                                        </Border>
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- controls on the small video while browsing (appear on hover): open / close at the top, previous / pause / next at the bottom -->
-                                <Grid x:Name="MiniOverlay" Visibility="Collapsed" Background="#01000000">
-                                    <!-- faded in / out from code (MainWindow.Mini.cs): this overlay lives in LibVLC's own window, where
-                                         XAML "ElementName" hover triggers can't find MiniOverlay, so the icons never became visible -->
-                                    <Grid x:Name="MiniControls" Opacity="0">
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0">
-                                            <Button Style="{StaticResource MiniOverlayButton}" Width="24" Height="24" Margin="0,0,4,0" ToolTip="Open player" Click="MiniExpand_Click">
-                                                <Path Style="{StaticResource Ico}" Data="{StaticResource IcoFullscreen}" Width="11" Height="11" Stretch="Uniform"/>
-                                            </Button>
-                                            <Button Style="{StaticResource MiniOverlayButton}" Width="24" Height="24" ToolTip="Close" Click="MiniClose_Click">
-                                                <Path Style="{StaticResource Ico}" Data="{StaticResource IcoClose}" Width="10" Height="10" Stretch="Uniform"/>
-                                            </Button>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8">
-                                            <Button Style="{StaticResource MiniOverlayButton}" Width="26" Height="26" ToolTip="Previous" Click="Previous_Click">
-                                                <Path Style="{StaticResource IcoFilled}" Data="{StaticResource IcoPrevious}" Width="10" Height="10" Stretch="Uniform"/>
-                                            </Button>
-                                            <Button Style="{StaticResource MiniOverlayButton}" Width="32" Height="32" Margin="6,0" ToolTip="Pause / play" Click="PlayPause_Click">
-                                                <Path x:Name="MiniOvPlayIcon" Style="{StaticResource IcoFilled}" Data="{StaticResource IcoPlay}" Width="12" Height="12" Stretch="Uniform"/>
-                                            </Button>
-                                            <Button Style="{StaticResource MiniOverlayButton}" Width="26" Height="26" ToolTip="Next" Click="Next_Click">
-                                                <Path Style="{StaticResource IcoFilled}" Data="{StaticResource IcoNext}" Width="10" Height="10" Stretch="Uniform"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </Grid>
-                                </Grid>
-
-                                <!-- "continue where you left off": small, just above the control bar -->
-                                <Border x:Name="ResumeCard" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                        Margin="0,0,0,26" Padding="14,8,8,8" CornerRadius="14"
-                                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black"/>
-                                    </Border.Effect>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock x:Name="ResumeText" FontSize="13" VerticalAlignment="Center" Margin="0,0,14,0"
-                                                   Foreground="{DynamicResource TextBrush}"/>
-                                        <Button Content="Continue" Style="{StaticResource AccentButton}" Padding="14,5" FontSize="12"
-                                                Click="ResumeContinue_Click"/>
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- the control bar floats here in fullscreen -->
-                                <Border x:Name="FloatingBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
-                                        Margin="40,0,40,30" MaxWidth="1280" CornerRadius="20"
-                                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}"
-                                        BorderThickness="1">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.55" Color="Black"/>
-                                    </Border.Effect>
-                                </Border>
-                            </Grid>
-                        </vlc:VideoView>
                     </Grid>
                 </Grid>
             </Grid>

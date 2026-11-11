@@ -36,6 +36,25 @@ public partial class MainWindow
         if (MiniHost is { } host) host.SizeChanged += (_, _) => PositionMini(animate: false);
         Rail.SizeChanged += (_, _) => PositionMini(animate: false);
         Rail.IsVisibleChanged += (_, _) => PositionMini(animate: false);
+        Rail.LayoutUpdated += (_, _) => { if (_libraryVisible && MiniPlayer.Visibility == Visibility.Visible && !UiAnim.IsRunning(MiniPlayer) && Math.Abs(MiniPlayer.Margin.Left - MiniDockX(_cfg.MiniDock)) > 1 && !_miniDragging) QueueMiniReposition(); };
+    }
+
+    private bool _miniRepositionQueued;
+
+    /// <summary>
+    /// Puts the small player at its dock once the layout has settled. The side bar slides in by margin and width, so a position
+    /// measured in the middle of that slide can be off by the distance it still had to travel (the card then sat a little left of
+    /// the side bar); this runs again after every transition.
+    /// </summary>
+    private void QueueMiniReposition()
+    {
+        if (_miniRepositionQueued) return;
+        _miniRepositionQueued = true;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _miniRepositionQueued = false;
+            if (MiniPlayer.Visibility == Visibility.Visible) PositionMini(animate: false);
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     /// <summary>The previous / pause / next and open / close buttons on the small video appear while the pointer is over it.</summary>
@@ -168,6 +187,7 @@ public partial class MainWindow
         // clicking anywhere else (or leaving the window) closes them, with the same slide + fade as opening
         PreviewMouseDown += (_, e) => DismissPopups(e.OriginalSource as DependencyObject);
         VideoSurface.PreviewMouseDown += (_, e) => DismissPopups(e.OriginalSource as DependencyObject);
+        MusicLayer.PreviewMouseDown += (_, e) => DismissPopups(e.OriginalSource as DependencyObject);
         Deactivated += (_, _) =>
         {
             ClosePopup(VolumePopup);

@@ -70,7 +70,7 @@
         <Grid Grid.Row="0">
             <!-- ============ 1. Welcome ============ -->
             <StackPanel x:Name="Page0" HorizontalAlignment="Center" VerticalAlignment="Center" Width="560">
-                <Image Source="Assets/app.ico" Width="104" Height="104" HorizontalAlignment="Center"
+                <Image Source="Assets/logo.png" Width="104" Height="104" HorizontalAlignment="Center"
                        RenderOptions.BitmapScalingMode="HighQuality"/>
                 <TextBlock Text="Welcome to Tempo!" FontSize="32" FontWeight="Light" HorizontalAlignment="Center"
                            Margin="0,26,0,0" Foreground="{DynamicResource TextBrush}"/>
@@ -138,7 +138,7 @@
                                 </StackPanel>
                             </Border>
                             <Border Grid.Column="2" Background="{DynamicResource BgBrush}">
-                                <Image Source="Assets/app.ico" Width="54" Height="54" Opacity="0.85"/>
+                                <Image Source="Assets/logo.png" Width="54" Height="54" Opacity="0.85" RenderOptions.BitmapScalingMode="HighQuality"/>
                             </Border>
                         </Grid>
                         <Grid Grid.Row="2" Margin="14,0">
