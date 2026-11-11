@@ -1,3 +1,7 @@
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 using System.Windows;
 using LibVLCSharp.Shared;
 
@@ -61,8 +65,135 @@ public partial class App : Application
         catch { /* UI not available */ }
     }
 
+    // ------------------------------------------------------------------ one Tempo at a time
+
+    private static Mutex? _instanceMutex;                         // held for as long as this Tempo runs
+    private static readonly List<string> PendingOpens = new();    // files that arrived before the window was ready
+
+    /// <summary>A file (or "" = just come to the front) was handed over by another Tempo that was started from Explorer.</summary>
+    internal static event Action<string>? ExternalOpenRequested;
+
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int processId);
+
+    private static string UserTag
+    {
+        get
+        {
+            var tag = new StringBuilder();
+            foreach (var c in Environment.UserName) tag.Append(char.IsLetterOrDigit(c) ? c : '_');
+            return tag.ToString();
+        }
+    }
+
+    private static string MutexName => @"Local\Tempo.SingleInstance." + UserTag;
+    private static string PipeName => "Tempo.Open." + UserTag;
+
+    /// <summary>
+    /// True when this is the only Tempo (it keeps running). False when another one is already open: the files from the command
+    /// line were handed to it, so opening a file from Explorer plays it in the window that is already open, not in a new one.
+    /// </summary>
+    private static bool BecomeTheOnlyInstance(string[] args)
+    {
+        try
+        {
+            _instanceMutex = new Mutex(true, MutexName, out bool first);
+            if (first)
+            {
+                StartListening();
+                return true;
+            }
+        }
+        catch
+        {
+            return true;   // couldn't tell: just run normally
+        }
+
+        var files = new List<string>();
+        foreach (var arg in args)
+        {
+            try
+            {
+                if (MediaTypes.IsSupportedFile(arg)) files.Add(Path.GetFullPath(arg));
+            }
+            catch { /* a path that can't be resolved is ignored */ }
+        }
+
+        try
+        {
+            AllowSetForegroundWindow(-1);   // lets the running Tempo come to the front over Explorer
+            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+            client.Connect(3000);
+            using var writer = new StreamWriter(client, new UTF8Encoding(false));
+            if (files.Count == 0) writer.WriteLine("SHOW");
+            foreach (var file in files) writer.WriteLine("OPEN\t" + file);
+            writer.Flush();
+            return false;
+        }
+        catch
+        {
+            return true;   // the other Tempo is not answering (starting up or stuck): run on our own rather than do nothing
+        }
+    }
+
+    private static void StartListening()
+    {
+        var listener = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    using var server = new NamedPipeServerStream(PipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte);
+                    server.WaitForConnection();
+                    using var reader = new StreamReader(server, new UTF8Encoding(false));
+                    string? line;
+                    while ((line = reader.ReadLine()) != null) HandleHandover(line);
+                }
+                catch (IOException) { /* the other side went away: wait for the next one */ }
+                catch (ObjectDisposedException) { return; }
+                catch (Exception ex)
+                {
+                    LogCrash("Single instance", ex);
+                    Thread.Sleep(500);
+                }
+            }
+        })
+        { IsBackground = true, Name = "Tempo single-instance listener" };
+        listener.Start();
+    }
+
+    private static void HandleHandover(string line)
+    {
+        string path;
+        if (line == "SHOW") path = "";
+        else if (line.StartsWith("OPEN\t", StringComparison.Ordinal)) path = line.Substring(5);
+        else return;
+
+        if (path.Length > 0 && !MediaTypes.IsSupportedFile(path)) return;
+
+        Current?.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (ExternalOpenRequested != null) ExternalOpenRequested.Invoke(path);
+            else if (path.Length > 0) PendingOpens.Add(path);
+        }));
+    }
+
+    /// <summary>Files that were handed over before the main window was ready (taken once).</summary>
+    internal static List<string> TakePendingOpens()
+    {
+        var list = new List<string>(PendingOpens);
+        PendingOpens.Clear();
+        return list;
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (!BecomeTheOnlyInstance(e.Args))
+        {
+            Shutdown(0);   // the running Tempo has the files now
+            return;
+        }
+
         AppPaths.MigrateLegacyData();
         AppSettings.Load();
         ApplyFreshInstallFlag();

@@ -207,6 +207,39 @@ public partial class MainWindow : Window
         // Command line / "Open with": Tempo.exe "C:\path\video.mp4"
         var file = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(MediaTypes.IsSupportedFile);
         if (file != null) PlayNormal(file);
+
+        // from now on, files opened from Explorer arrive here instead of starting another Tempo
+        App.ExternalOpenRequested += OnExternalOpen;
+        foreach (var pending in App.TakePendingOpens()) OnExternalOpen(pending);
+    }
+
+    private DateTime _lastExternalOpen = DateTime.MinValue;
+
+    /// <summary>A file was opened from Explorer while this Tempo was already running (or "" = Tempo was started again).</summary>
+    private void OnExternalOpen(string path)
+    {
+        BringToFront();
+        if (path.Length == 0 || _libVlc is null) return;
+
+        // Anonymous Mode never plays outside files: nothing is opened or recorded; the window is just brought forward
+        if (_anon) return;
+
+        // Explorer starts one Tempo per selected file: the first one plays, the ones right after it join the queue
+        bool burst = (DateTime.UtcNow - _lastExternalOpen).TotalMilliseconds < 1500;
+        _lastExternalOpen = DateTime.UtcNow;
+        if (burst) Enqueue(path, next: false);
+        else PlayNormal(path);
+    }
+
+    private void BringToFront()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Show();
+        Activate();
+        bool wasTopmost = Topmost;
+        Topmost = true;          // in front of the Explorer window...
+        Topmost = wasTopmost;    // ...without staying on top
+        Focus();
     }
 
     private void ShowOnboarding()
@@ -222,6 +255,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         AppSettings.Changed -= OnSettingsChanged;
+        App.ExternalOpenRequested -= OnExternalOpen;
         NativeMethods.KeepAwake(false);
         _waveCts?.Cancel();
         _equalizer?.Dispose();
