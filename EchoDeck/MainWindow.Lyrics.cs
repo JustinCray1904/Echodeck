@@ -1,9 +1,13 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 
 namespace EchoDeck;
@@ -68,7 +72,9 @@ public partial class MainWindow
         if (open == _lyricsOpen && LyricsPanel.Visibility == (open ? Visibility.Visible : Visibility.Collapsed) && !animate) return;
         _lyricsOpen = open;
 
-        LyricsToggle.SetResourceReference(Control.ForegroundProperty, open ? "AccentBrush" : "TextBrush");
+        // the Lyrics button sits on the cover-coloured background: white when the lyrics are open, softer white when not
+        LyricsToggle.Foreground = open ? Brushes.White : LyricsToggleIdle;
+        if (open) EnsureLyricTimer().Start(); else _lyricTimer?.Stop();
         if (persist)
         {
             _cfg.LyricsOpen = open;
@@ -136,6 +142,9 @@ public partial class MainWindow
     private void ShowLyrics(LyricsDocument? doc)
     {
         _lyrics = doc != null && !doc.IsEmpty ? doc : null;
+        _wordBlock = null;   // its container is about to go away
+        _words.Clear();
+        _wordsLit = -1;
         _lyricLines.Clear();
         _lyricIndex = -1;
 
@@ -162,19 +171,176 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ following the song
 
+    private static readonly Brush LyricsToggleIdle = MakeBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush WordLit = Brushes.White;
+    private static readonly Brush WordDim = MakeBrush(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF));
+
+    private static Brush MakeBrush(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
+    private DispatcherTimer? _lyricTimer;
+    private long _lyricRefMs;
+    private long _lyricRefTicks;
+
+    private DispatcherTimer EnsureLyricTimer()
+    {
+        if (_lyricTimer == null)
+        {
+            _lyricTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            _lyricTimer.Tick += (_, _) =>
+            {
+                // the player reports the time a few times a second; between two reports the clock runs on by itself, so the
+                // words light up smoothly instead of in jumps
+                if (_player is not { IsPlaying: true }) return;
+                double elapsed = (Stopwatch.GetTimestamp() - _lyricRefTicks) * 1000.0 / Stopwatch.Frequency;
+                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 600));
+            };
+        }
+        return _lyricTimer;
+    }
+
     /// <summary>Highlights the line being sung and glides the list to it. Called from the player's time updates.</summary>
     private void UpdateLyrics(long timeMs)
+    {
+        _lyricRefMs = timeMs;
+        _lyricRefTicks = Stopwatch.GetTimestamp();
+        UpdateLyricsCore(timeMs);
+    }
+
+    private void UpdateLyricsCore(long timeMs)
     {
         if (!_lyricsOpen || _lyrics is not { Synced: true } || _lyricLines.Count == 0) return;
 
         int idx = FindLyricIndex(timeMs + 120);   // a hair early reads better than a hair late
-        if (idx == _lyricIndex) return;
+        if (idx != _lyricIndex)
+        {
+            if (_lyricIndex >= 0 && _lyricIndex < _lyricLines.Count) _lyricLines[_lyricIndex].IsActive = false;
+            _lyricIndex = idx;
+            if (idx >= 0) _lyricLines[idx].IsActive = true;
 
-        if (_lyricIndex >= 0 && _lyricIndex < _lyricLines.Count) _lyricLines[_lyricIndex].IsActive = false;
-        _lyricIndex = idx;
-        if (idx >= 0) _lyricLines[idx].IsActive = true;
+            ApplyLyricFocus(idx);
+            if (idx >= 0 && DateTime.UtcNow >= _lyricManualUntil) ScrollToLyric(idx, immediate: false);
+        }
 
-        if (idx >= 0 && DateTime.UtcNow >= _lyricManualUntil) ScrollToLyric(idx, immediate: false);
+        UpdateLyricWords(timeMs);
+    }
+
+    // ---- Apple-Music-style focus: the line being sung is bright, the others fade and blur with their distance from it
+
+    private TextBlock? _wordBlock;                                  // the text of the active line while its words are lit one by one
+    private readonly List<(Run Run, double Start)> _words = new();
+    private int _wordsLit = -1;
+
+    private static T? FindChild<T>(DependencyObject root) where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T hit) return hit;
+            if (FindChild<T>(child) is { } deeper) return deeper;
+        }
+        return null;
+    }
+
+    private TextBlock? LyricTextAt(int index) =>
+        LyricsList.ItemContainerGenerator.ContainerFromIndex(index) is DependencyObject item ? FindChild<TextBlock>(item) : null;
+
+    private void ApplyLyricFocus(int active)
+    {
+        // the previous line's lit words go back to plain text (it fades with the others now)
+        if (_wordBlock != null)
+        {
+            _wordBlock.Inlines.Clear();
+            _wordBlock.Text = _wordBlock.Tag as string ?? "";
+            _wordBlock = null;
+            _words.Clear();
+            _wordsLit = -1;
+        }
+
+        for (int i = 0; i < _lyricLines.Count; i++)
+        {
+            var text = LyricTextAt(i);
+            if (text == null) continue;
+
+            int d = active < 0 ? 3 : Math.Abs(i - active);
+            double opacity = d == 0 ? 1.0 : Math.Max(0.16, 0.55 - 0.09 * (d - 1));
+            double blur = d == 0 ? 0 : Math.Min(5.5, 1.1 + 0.9 * (d - 1));
+
+            if (d <= 7)
+            {
+                // the lines near the active one change gently; the far ones simply jump
+                text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(320))
+                    { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+                if (text.Effect is BlurEffect existing)
+                {
+                    if (blur < 0.3) text.Effect = null;
+                    else existing.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(blur, TimeSpan.FromMilliseconds(320)));
+                }
+                else if (blur >= 0.3)
+                {
+                    var effect = new BlurEffect { Radius = 0 };
+                    text.Effect = effect;
+                    effect.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(blur, TimeSpan.FromMilliseconds(320)));
+                }
+            }
+            else
+            {
+                text.BeginAnimation(UIElement.OpacityProperty, null);
+                text.Opacity = opacity;
+                if (text.Effect is not BlurEffect far || Math.Abs(far.Radius - blur) > 0.2)
+                {
+                    text.Effect = new BlurEffect { Radius = blur };
+                }
+            }
+        }
+
+        if (active >= 0 && LyricTextAt(active) is { } activeText) PrepareWords(_lyricLines[active], activeText);
+    }
+
+    /// <summary>The active line is split into words, so they can light up as they are sung.</summary>
+    private void PrepareWords(LyricLine line, TextBlock text)
+    {
+        _wordBlock = text;
+        _wordsLit = -1;
+        _words.Clear();
+        text.Tag = line.Text;
+
+        var parts = line.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return;
+
+        double total = parts.Sum(p => p.Length + 1);
+        double acc = 0;
+        text.Inlines.Clear();
+        for (int i = 0; i < parts.Length; i++)
+        {
+            var run = new Run(parts[i] + (i < parts.Length - 1 ? " " : "")) { Foreground = WordDim };
+            text.Inlines.Add(run);
+            _words.Add((run, acc / total));
+            acc += parts[i].Length + 1;
+        }
+    }
+
+    private void UpdateLyricWords(long timeMs)
+    {
+        if (_wordBlock == null || _words.Count == 0 || _lyricIndex < 0 || _lyricIndex >= _lyricLines.Count) return;
+
+        var line = _lyricLines[_lyricIndex];
+        long next = _lyricIndex + 1 < _lyricLines.Count ? _lyricLines[_lyricIndex + 1].TimeMs : line.TimeMs + 4000;
+        // sung in about as long as the words take; a long pause after the line doesn't stretch it
+        double span = Math.Clamp(Math.Min(next - line.TimeMs, Math.Max(1500, line.Text.Length * 85)), 400, 12000);
+        double progress = Math.Clamp((timeMs - line.TimeMs) / span, 0, 1);
+
+        int lit = 0;
+        while (lit < _words.Count && _words[lit].Start <= progress + 0.015) lit++;
+        if (lit == _wordsLit) return;
+
+        for (int i = 0; i < _words.Count; i++) _words[i].Run.Foreground = i < lit ? WordLit : WordDim;
+        _wordsLit = lit;
     }
 
     private void SyncLyricsNow()
@@ -401,6 +567,76 @@ public partial class MainWindow
             _lyricsCts = null;
             _lyricsBusyPath = null;
             UpdateLyricsBusyVisibility();
+        }
+    }
+
+    // ------------------------------------------------------------------ online (lrclib.net)
+
+    private bool _lyricsOnlineBusy;
+
+    private async void LyricsOnline_Click(object sender, RoutedEventArgs e)
+    {
+        if (_anon)
+        {
+            Notify("Online lookup isn't available in Anonymous Mode: it would send the song's name over the internet.");
+            return;
+        }
+
+        var path = _lyricsMediaPath;
+        if (path == null || !_hasMedia || !MediaTypes.IsAudio(path))
+        {
+            Notify("Play a song first, then look up its lyrics.");
+            return;
+        }
+        if (_lyricsOnlineBusy) return;
+
+        if (_lyrics != null && MessageBox.Show(this, "Replace the lyrics shown for this song with the ones found online?", "Find lyrics online",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        _lyricsOnlineBusy = true;
+        LyricsOnlineButton.IsEnabled = false;
+        Notify("Searching lrclib.net…");
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+            var tags = await Task.Run(() => LibraryScanner.ReadTags(path), cts.Token);
+            var found = await OnlineLyrics.FindAsync(path, tags, cts.Token);
+            if (found == null)
+            {
+                Notify("No lyrics found online for this song.");
+                return;
+            }
+
+            // same path as pasted lyrics: saved next to the song (.lrc when timed, .txt when plain) and shown straight away
+            string? error = SaveLyrics(path, found.Text);
+            if (error != null)
+            {
+                LyricStore[path] = found.Text;
+                if (string.Equals(_lyricsMediaPath, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowLyrics(LyricsParser.Parse(found.Text, null));
+                    SetLyricsOpen(true);
+                }
+                Notify("Lyrics found, but they couldn't be saved next to the song");
+            }
+            else if (!found.Synced)
+            {
+                Notify("Found lyrics without timing: they can't follow the song");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Notify("The lyrics search took too long");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Online lyrics", ex);
+            Notify("Couldn't reach the lyrics service (" + ex.Message + ")");
+        }
+        finally
+        {
+            _lyricsOnlineBusy = false;
+            LyricsOnlineButton.IsEnabled = true;
         }
     }
 

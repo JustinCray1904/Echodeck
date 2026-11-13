@@ -636,6 +636,7 @@ public partial class MainWindow : Window
         SetPulse(false); // the ripples only run while something is actually playing
         Visualizer.Tint = null;
         Visualizer.Reset();   // new song / stopped: no waveform, no motion
+        Aurora.SetPalette(CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor")), null);   // until the cover's colours are known
         OnMusicViewChanged(on);
         if (!on) ClearLyrics();
 
@@ -683,6 +684,9 @@ public partial class MainWindow : Window
                 StringComparison.OrdinalIgnoreCase)) return;
         CoverCircle.Fill = new System.Windows.Media.ImageBrush(bmp) { Stretch = System.Windows.Media.Stretch.UniformToFill };
         MusicGlyph.Visibility = Visibility.Collapsed;
+
+        // the whole music view takes the cover's colours: a blurred copy of it, with its colours drifting over it
+        Aurora.SetPalette(CoverPalette.From(bmp), bmp);
 
         // the ripples and glow take the colour of the cover
         if (ShellThumbnail.DominantColor(bmp) is { } color)

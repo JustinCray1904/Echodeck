@@ -318,31 +318,15 @@
             </Setter>
         </Style>
         <DataTemplate x:Key="LyricTpl">
-            <TextBlock Text="{Binding Text}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" Margin="18,9">
+            <!-- Apple Music style: large bold lines; the one being sung is bright and its words light up as they are sung, the lines
+                 around it fade and blur with their distance (set from code, see MainWindow.Lyrics.cs) -->
+            <TextBlock Text="{Binding Text}" FontSize="30" FontWeight="Bold" TextWrapping="Wrap" Margin="6,12,12,12" Foreground="White">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
-                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-                        <Setter Property="Opacity" Value="0.36"/>
+                        <Setter Property="Opacity" Value="0.38"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsPlain}" Value="True">
                                 <Setter Property="Opacity" Value="0.92"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
-                                <DataTrigger.EnterActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.30"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </DataTrigger.EnterActions>
-                                <DataTrigger.ExitActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0.36" Duration="0:0:0.30"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </DataTrigger.ExitActions>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -987,6 +971,8 @@
                                 MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown"
                                 MouseRightButtonUp="VideoSurface_MouseRightButtonUp"
                                 MouseMove="VideoSurface_MouseMove">
+                            <Grid>
+                            <local:AuroraBackground x:Name="Aurora"/>
                             <Grid x:Name="MusicPanel" Visibility="Collapsed">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -1023,10 +1009,10 @@
                                         </Grid>
                                         <TextBlock x:Name="MusicTitle" FontSize="20" FontWeight="SemiBold" Margin="0,10,0,0"
                                                    MaxWidth="560" TextAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource TextBrush}" HorizontalAlignment="Center"/>
+                                                   Foreground="White" HorizontalAlignment="Center"/>
                                         <TextBlock x:Name="MusicSubtitle" FontSize="14" Margin="0,6,0,0" MaxWidth="560"
                                                    TextAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"/>
+                                                   Foreground="#CCFFFFFF" HorizontalAlignment="Center"/>
                                     </StackPanel>
                                     </Viewbox>
 
@@ -1043,21 +1029,14 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
-                                            <!-- a see-through layer, so the song's colours show behind the lyrics -->
-                                            <Border Grid.RowSpan="2" CornerRadius="16" IsHitTestVisible="False" Opacity="0.5"
-                                                    Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1"/>
-                                            <Grid Margin="16,10,8,4">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="Lyrics" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis"/>
-                                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                                                    <Button Content="Edit" Style="{StaticResource FlatButton}" Padding="12,5" Margin="0,0,6,0" Click="LyricsEdit_Click"/>
-                                                    <Button x:Name="LyricsAiButton" Content="Generate with AI" Style="{StaticResource FlatButton}" Padding="12,5" Margin="0,0,6,0" Click="LyricsAi_Click"/>
-                                                    <Button Content="Close" Style="{StaticResource FlatButton}" Padding="12,5" Click="LyricsClose_Click"/>
-                                                </StackPanel>
+                                            <Grid Margin="4,6,8,0">
+                                                <WrapPanel HorizontalAlignment="Right">
+                                                    <Button Content="Edit" Style="{StaticResource GlassButton}" Margin="0,0,6,6" Click="LyricsEdit_Click"/>
+                                                    <Button x:Name="LyricsOnlineButton" Content="Find online" Style="{StaticResource GlassButton}" Margin="0,0,6,6"
+                                                            ToolTip="Look the song up at lrclib.net (only its title, artist and length are sent)" Click="LyricsOnline_Click"/>
+                                                    <Button x:Name="LyricsAiButton" Content="Generate with AI" Style="{StaticResource GlassButton}" Margin="0,0,6,6" Click="LyricsAi_Click"/>
+                                                    <Button Content="Close" Style="{StaticResource GlassButton}" Margin="0,0,0,6" Click="LyricsClose_Click"/>
+                                                </WrapPanel>
                                             </Grid>
                                             <Grid Grid.Row="1">
                                                 <!-- no Padding here: a ListBox's padding shrinks its viewport and cut the lines off hard; the breathing room is
@@ -1082,29 +1061,30 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                                     </ListBox.OpacityMask>
                                                 </ListBox>
                                                 <StackPanel x:Name="LyricsEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,0">
-                                                    <TextBlock x:Name="LyricsEmptyText" TextWrapping="Wrap" TextAlignment="Center" FontSize="14"
-                                                               Foreground="{DynamicResource Fg3Brush}" MaxWidth="360"
+                                                    <TextBlock x:Name="LyricsEmptyText" TextWrapping="Wrap" TextAlignment="Center" FontSize="15"
+                                                               Foreground="#C8FFFFFF" MaxWidth="380"
                                                                Text="No lyrics for this song yet."/>
                                                     <WrapPanel HorizontalAlignment="Center" Margin="0,16,0,0">
-                                                        <Button Content="Paste lyrics" Style="{StaticResource FlatButton}" Padding="14,8" Margin="0,0,8,0" Click="LyricsEdit_Click"/>
-                                                        <Button Content="Generate with AI" Style="{StaticResource FlatButton}" Padding="14,8" Click="LyricsAi_Click"/>
+                                                        <Button Content="Find online" Style="{StaticResource GlassButton}" Margin="0,0,8,8" Click="LyricsOnline_Click"/>
+                                                        <Button Content="Paste lyrics" Style="{StaticResource GlassButton}" Margin="0,0,8,8" Click="LyricsEdit_Click"/>
+                                                        <Button Content="Generate with AI" Style="{StaticResource GlassButton}" Margin="0,0,0,8" Click="LyricsAi_Click"/>
                                                     </WrapPanel>
                                                 </StackPanel>
                                                 <Border x:Name="LyricsBusy" Visibility="Collapsed" VerticalAlignment="Bottom" Margin="16,0,16,14" Padding="14,10"
-                                                        CornerRadius="12" Background="{DynamicResource PanelBrush}">
+                                                        CornerRadius="12" Background="#B3000000">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel>
-                                                            <TextBlock x:Name="LyricsBusyText" FontSize="12" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6"/>
+                                                            <TextBlock x:Name="LyricsBusyText" FontSize="12" Foreground="#D0FFFFFF" Margin="0,0,0,6"/>
                                                             <Border x:Name="LyricsBusyTrack" Height="4" CornerRadius="2" Background="{DynamicResource RaisedBrush}" ClipToBounds="True">
                                                                 <Border x:Name="LyricsBusyFill" Width="0" HorizontalAlignment="Left" CornerRadius="2"
                                                                         Background="{DynamicResource AccentBrush}"/>
                                                             </Border>
                                                         </StackPanel>
-                                                        <Button Grid.Column="1" Content="Cancel" Style="{StaticResource FlatButton}" Padding="12,5" Margin="12,0,0,0" Click="LyricsCancel_Click"/>
+                                                        <Button Grid.Column="1" Content="Cancel" Style="{StaticResource GlassButton}" Margin="12,0,0,0" Click="LyricsCancel_Click"/>
                                                     </Grid>
                                                 </Border>
                                             </Grid>
@@ -1112,6 +1092,7 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                     </Border>
 </Grid>
                                 </Grid>
+                            </Grid>
                         </Border>
 
                     </Grid>
