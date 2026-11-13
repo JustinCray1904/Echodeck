@@ -7,7 +7,6 @@ using System.Windows.Input;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using System.Windows.Threading;
 
 namespace EchoDeck;
@@ -196,8 +195,15 @@ public partial class MainWindow
                 // the player reports the time a few times a second; between two reports the clock runs on by itself, so the
                 // words light up smoothly instead of in jumps
                 if (_player is not { IsPlaying: true }) return;
+
+                long reported = _player.Time;
+                if (reported != _lyricRefMs)
+                {
+                    _lyricRefMs = reported;
+                    _lyricRefTicks = Stopwatch.GetTimestamp();
+                }
                 double elapsed = (Stopwatch.GetTimestamp() - _lyricRefTicks) * 1000.0 / Stopwatch.Frequency;
-                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 600));
+                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 300));
             };
         }
         return _lyricTimer;
@@ -267,35 +273,20 @@ public partial class MainWindow
             var text = LyricTextAt(i);
             if (text == null) continue;
 
+            // lines further from the one being sung are dimmer (a blur effect looked better still, but it made the whole view lag)
             int d = active < 0 ? 3 : Math.Abs(i - active);
             double opacity = d == 0 ? 1.0 : Math.Max(0.16, 0.55 - 0.09 * (d - 1));
-            double blur = d == 0 ? 0 : Math.Min(5.5, 1.1 + 0.9 * (d - 1));
 
-            if (d <= 7)
+            if (d <= 5)
             {
-                // the lines near the active one change gently; the far ones simply jump
-                text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(320))
+                // the lines near the active one change gently
+                text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(300))
                     { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-                if (text.Effect is BlurEffect existing)
-                {
-                    if (blur < 0.3) text.Effect = null;
-                    else existing.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(blur, TimeSpan.FromMilliseconds(320)));
-                }
-                else if (blur >= 0.3)
-                {
-                    var effect = new BlurEffect { Radius = 0 };
-                    text.Effect = effect;
-                    effect.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(blur, TimeSpan.FromMilliseconds(320)));
-                }
             }
-            else
+            else if (Math.Abs(text.Opacity - opacity) > 0.01)
             {
                 text.BeginAnimation(UIElement.OpacityProperty, null);
-                text.Opacity = opacity;
-                if (text.Effect is not BlurEffect far || Math.Abs(far.Radius - blur) > 0.2)
-                {
-                    text.Effect = new BlurEffect { Radius = blur };
-                }
+                text.Opacity = opacity;   // the far ones simply jump, and only when they really change
             }
         }
 

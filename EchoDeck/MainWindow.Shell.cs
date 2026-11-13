@@ -348,6 +348,52 @@ public partial class MainWindow
     /// Covers the video (a native window) while a side panel changes the layout next to it. The picture is hidden for those
     /// few moments instead of flashing white, squeezing or showing a black strip.
     /// </summary>
+    private bool _ambience;
+
+    private static readonly Brush GlassRail = FrozenBrush(Color.FromArgb(0x2C, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush GlassBar = FrozenBrush(Color.FromArgb(0x38, 0x00, 0x00, 0x00));
+    private static readonly Brush MusicVeil = FrozenBrush(Color.FromArgb(0x1C, 0x00, 0x00, 0x00));
+
+    private static Brush FrozenBrush(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
+    /// <summary>
+    /// While a song's music view is showing, its colours fill the whole window (dark themes): the side bar, the queue and the
+    /// bottom bar become translucent glass over them instead of flat panels that looked like part of another app. Light themes
+    /// keep the colours behind the music view only (white text on a light window would not be readable).
+    /// </summary>
+    private void SyncAmbience()
+    {
+        bool music = _currentIsAudio && !_libraryVisible && MusicPanel.Visibility == Visibility.Visible;
+        bool on = music && ThemeManager.IsDark;
+
+        WindowAurora.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        Aurora.Visibility = music && !on ? Visibility.Visible : Visibility.Collapsed;
+        if (on == _ambience) return;
+        _ambience = on;
+
+        if (on)
+        {
+            Rail.Background = GlassRail;
+            SidebarPanel.Background = GlassRail;
+            ControlBar.Background = GlassBar;
+            TopBar.Background = Brushes.Transparent;
+            MusicLayer.Background = MusicVeil;
+        }
+        else
+        {
+            Rail.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PanelBrush");
+            SidebarPanel.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PanelBrush");
+            ControlBar.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "BgBrush");
+            TopBar.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "BgBrush");
+            MusicLayer.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PanelBrush");
+        }
+    }
+
     private DispatcherTimer? _curtainWatchdog;
 
     /// <summary>

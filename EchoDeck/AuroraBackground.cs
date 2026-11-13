@@ -84,6 +84,61 @@ internal static class CoverPalette
         return found;
     }
 
+    /// <summary>
+    /// The cover as a tiny, already blurred picture (about 48 px, two box blurs). Shown stretched over the window it looks like a
+    /// heavily blurred cover, and costs nothing per frame: a real blur effect on a big picture is re-run by the graphics card on
+    /// every frame while anything moves above it, and that is what made the animation lag.
+    /// </summary>
+    internal static BitmapSource? Soft(BitmapSource source)
+    {
+        try
+        {
+            double scale = 48.0 / Math.Max(source.PixelWidth, source.PixelHeight);
+            var small = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+            var bgra = new FormatConvertedBitmap(small, PixelFormats.Bgra32, null, 0);
+            int w = bgra.PixelWidth, h = bgra.PixelHeight, stride = w * 4;
+            var px = new byte[stride * h];
+            bgra.CopyPixels(px, stride, 0);
+
+            var tmp = new byte[px.Length];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                BoxBlur(px, tmp, w, h, horizontal: true);
+                BoxBlur(tmp, px, w, h, horizontal: false);
+            }
+
+            var result = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
+            result.Freeze();
+            return result;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void BoxBlur(byte[] src, byte[] dst, int w, int h, bool horizontal)
+    {
+        const int radius = 2;
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int r = 0, g = 0, b = 0, a = 0, n = 0;
+                for (int k = -radius; k <= radius; k++)
+                {
+                    int xx = horizontal ? Math.Clamp(x + k, 0, w - 1) : x;
+                    int yy = horizontal ? y : Math.Clamp(y + k, 0, h - 1);
+                    int i = (yy * w + xx) * 4;
+                    b += src[i]; g += src[i + 1]; r += src[i + 2]; a += src[i + 3];
+                    n++;
+                }
+                int o = (y * w + x) * 4;
+                dst[o] = (byte)(b / n); dst[o + 1] = (byte)(g / n); dst[o + 2] = (byte)(r / n); dst[o + 3] = (byte)(a / n);
+            }
+        }
+    }
+
     /// <summary>Four colours around an accent colour (used while a song has no cover).</summary>
     internal static List<Color> Around(Color accent)
     {
@@ -153,10 +208,15 @@ public sealed class AuroraBackground : Grid
     private const int BlobCount = 4;
 
     private readonly Rectangle _base = new() { Fill = new SolidColorBrush(Color.FromRgb(16, 18, 30)) };
-    private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.5, Visibility = Visibility.Collapsed, RenderTransformOrigin = new Point(0.5, 0.5) };
+    private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.55, Visibility = Visibility.Collapsed };
+    private readonly Rectangle _veil = new() { IsHitTestVisible = false };
+
+    // a computer that draws everything in software (no graphics card acceleration) gets still colours instead of motion
+    private static readonly bool Accelerated = (RenderCapability.Tier >> 16) >= 1;
     private readonly Canvas _canvas = new() { IsHitTestVisible = false };
     private readonly Ellipse[] _blobs = new Ellipse[BlobCount];
     private readonly GradientStop[] _centreStops = new GradientStop[BlobCount];
+    private readonly GradientStop[] _midStops = new GradientStop[BlobCount];
     private readonly GradientStop[] _edgeStops = new GradientStop[BlobCount];
     private readonly TranslateTransform[] _moves = new TranslateTransform[BlobCount];
     private readonly ScaleTransform[] _scales = new ScaleTransform[BlobCount];
@@ -171,8 +231,7 @@ public sealed class AuroraBackground : Grid
         IsHitTestVisible = false;
         ClipToBounds = true;
 
-        _cover.RenderTransform = new ScaleTransform(1.35, 1.35);
-        _cover.Effect = new BlurEffect { Radius = 70, KernelType = KernelType.Gaussian };
+        RenderOptions.SetBitmapScalingMode(_cover, BitmapScalingMode.HighQuality);
 
         Children.Add(_base);
         Children.Add(_cover);
@@ -180,10 +239,12 @@ public sealed class AuroraBackground : Grid
 
         for (int i = 0; i < BlobCount; i++)
         {
-            _centreStops[i] = new GradientStop(Color.FromArgb(0xC0, 90, 100, 160), 0.0);
+            _centreStops[i] = new GradientStop(Color.FromArgb(0xF0, 90, 100, 160), 0.0);
             _edgeStops[i] = new GradientStop(Color.FromArgb(0x00, 90, 100, 160), 1.0);
+            _midStops[i] = new GradientStop(Color.FromArgb(0xA0, 90, 100, 160), 0.55);
             var glow = new RadialGradientBrush { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5), RadiusX = 0.5, RadiusY = 0.5 };
             glow.GradientStops.Add(_centreStops[i]);
+            glow.GradientStops.Add(_midStops[i]);
             glow.GradientStops.Add(_edgeStops[i]);
 
             _moves[i] = new TranslateTransform();
@@ -197,11 +258,8 @@ public sealed class AuroraBackground : Grid
         }
 
         // a dark veil: the lyrics and titles stay readable on any colours
-        Children.Add(new Rectangle
-        {
-            IsHitTestVisible = false,
-            Fill = new LinearGradientBrush(Color.FromArgb(0x50, 0, 0, 0), Color.FromArgb(0x8C, 0, 0, 0), 90),
-        });
+        _veil.Fill = new LinearGradientBrush(Color.FromArgb(0x26, 0, 0, 0), Color.FromArgb(0x62, 0, 0, 0), 90);
+        Children.Add(_veil);
 
         SizeChanged += (_, _) => Relayout();
         IsVisibleChanged += (_, _) => { if (IsVisible) StartMotion(); else StopMotion(); };
@@ -219,19 +277,24 @@ public sealed class AuroraBackground : Grid
 
         for (int i = 0; i < BlobCount; i++)
         {
+            // the glows are the vivid colours: bright and saturated, so they stand out from the darker base
             var c = colours[i % colours.Count];
-            _centreStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xC0, c.R, c.G, c.B), ms) { EasingFunction = ease });
+            CoverPalette.ToHsv(c.R, c.G, c.B, out double ch, out double cs, out double cv);
+            c = CoverPalette.FromHsv(ch, Math.Max(cs, 0.60), Math.Max(cv, 0.70));
+            _centreStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xF0, c.R, c.G, c.B), ms) { EasingFunction = ease });
+            _midStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xA0, c.R, c.G, c.B), ms) { EasingFunction = ease });
             _edgeStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0x00, c.R, c.G, c.B), ms) { EasingFunction = ease });
         }
 
         // the deep base colour: the first colour, darkened
         CoverPalette.ToHsv(colours[0].R, colours[0].G, colours[0].B, out double hue, out double sat, out double val);
-        var baseColour = CoverPalette.FromHsv(hue, Math.Clamp(sat * 0.9, 0, 1), Math.Clamp(val * 0.32, 0.10, 0.35));
+        var baseColour = CoverPalette.FromHsv(hue, Math.Clamp(sat * 0.95, 0, 1), Math.Clamp(val * 0.42, 0.14, 0.45));
         if (_base.Fill is SolidColorBrush brush)
             brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(baseColour, ms) { EasingFunction = ease });
 
-        _cover.Source = cover;
-        _cover.Visibility = cover != null ? Visibility.Visible : Visibility.Collapsed;
+        var soft = cover is BitmapSource bitmap ? CoverPalette.Soft(bitmap) : null;
+        _cover.Source = soft;
+        _cover.Visibility = soft != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Relayout()
@@ -239,7 +302,7 @@ public sealed class AuroraBackground : Grid
         double w = ActualWidth, h = ActualHeight;
         if (w <= 0 || h <= 0) return;
 
-        double size = Math.Max(320, Math.Max(w, h) * 0.85);
+        double size = Math.Max(360, Math.Max(w, h) * 0.95);
         for (int i = 0; i < BlobCount; i++)
         {
             _blobs[i].Width = size;
@@ -250,24 +313,32 @@ public sealed class AuroraBackground : Grid
         if (_moving) StartMotion();   // the drift distance follows the size
     }
 
+    /// <summary>How strong the dark veil over the colours is: 1 = as in the music panel, less when the colours also sit behind the side bar and bottom bar.</summary>
+    public double VeilStrength
+    {
+        get => _veil.Opacity;
+        set => _veil.Opacity = Math.Clamp(value, 0, 1);
+    }
+
     private void StartMotion()
     {
         double w = ActualWidth, h = ActualHeight;
         if (w <= 0 || h <= 0) return;
         _moving = true;
+        if (!Accelerated) return;   // software drawing: still colours
 
         for (int i = 0; i < BlobCount; i++)
         {
-            double dx = w * (i % 2 == 0 ? 0.22 : -0.22), dy = h * (i < 2 ? 0.20 : -0.20);
+            double dx = w * (i % 2 == 0 ? 0.30 : -0.30), dy = h * (i < 2 ? 0.28 : -0.28);
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
 
             _moves[i].BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-dx, dx, TimeSpan.FromSeconds(MoveSeconds[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
             _moves[i].BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(dy, -dy, TimeSpan.FromSeconds(MoveSeconds[(i + 2) % BlobCount] * 0.9))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
 
-            var breathe = new DoubleAnimation(0.85, 1.22, TimeSpan.FromSeconds(BreatheSeconds[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease };
+            var breathe = new DoubleAnimation(0.8, 1.3, TimeSpan.FromSeconds(BreatheSeconds[i]))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate();
             _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
             _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, breathe);
         }
@@ -283,5 +354,15 @@ public sealed class AuroraBackground : Grid
             _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, null);
         }
+    }
+}
+
+internal static class AnimationRate
+{
+    /// <summary>The slow background drift is drawn 24 times a second: nobody sees the difference, the graphics card does the work half as often.</summary>
+    internal static DoubleAnimation AtLowRate(this DoubleAnimation animation)
+    {
+        Timeline.SetDesiredFrameRate(animation, 24);
+        return animation;
     }
 }

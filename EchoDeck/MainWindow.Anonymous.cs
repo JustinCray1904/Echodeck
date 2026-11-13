@@ -562,6 +562,7 @@ public partial class MainWindow
     private void ApplyAnonymousUi(bool on)
     {
         ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex, anonymous: on);
+        SyncAmbience();
         AnonButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         ClosePopup(QuickPopup, animate: false);
         WaveBar.InvalidateVisual();

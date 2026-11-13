@@ -141,9 +141,9 @@ public sealed class CircleVisualizer : FrameworkElement, IDisposable
         if (_disposed) { Unsubscribe(); return; }
         if (Frozen) return;
 
-        // drawn by the graphics card now (the music view is in the main window): up to 60 fps, the analysis is blended between frames
+        // the analysis is blended between its frames, so about 40 drawings a second look as smooth as 60 and leave the rest to the UI
         double now = _clock.Elapsed.TotalSeconds;
-        if (now - _lastRender < 0.015) return;
+        if (now - _lastRender < 0.024) return;
         _lastRender = now;
         InvalidateVisual();
     }

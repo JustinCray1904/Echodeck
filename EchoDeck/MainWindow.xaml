@@ -396,6 +396,9 @@
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Background="{DynamicResource BgBrush}" Focusable="True">
+        <!-- the cover's colours also sit behind the side bar and the bottom bar while a song plays (dark themes), so the whole window
+             belongs together; they are glass over it, see SyncAmbience in MainWindow.Shell.cs -->
+        <local:AuroraBackground x:Name="WindowAurora" Grid.RowSpan="3" Visibility="Collapsed" VeilStrength="0.75"/>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -979,7 +982,7 @@
                                         <ColumnDefinition x:Name="LyricsCol" Width="0"/>
                                     </Grid.ColumnDefinitions>
                                     <Ellipse Width="760" Height="760" Opacity="0.24" HorizontalAlignment="Center"
-                                             VerticalAlignment="Center" IsHitTestVisible="False">
+                                             VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed">
                                         <Ellipse.Fill>
                                             <RadialGradientBrush>
                                                 <GradientStop x:Name="GlowStop" Color="{DynamicResource AccentColor}" Offset="0"/>

@@ -37,8 +37,7 @@ public partial class MainWindow
         SmoothScroll.Attach(SideList);
         LibraryList.SizeChanged += LibraryList_SizeChanged;
         Visualizer.CoverPulse = CoverScale;   // the cover swells a little with the bass
-        MusicLayer.SizeChanged += (_, e) =>
-            MusicLayer.Clip = new System.Windows.Media.RectangleGeometry(new Rect(0, 0, e.NewSize.Width, e.NewSize.Height), 14, 14);
+
         // the lyrics box follows the room left beside the cover when the window or the side panels change
         MusicPanel.SizeChanged += (_, _) =>
         {
