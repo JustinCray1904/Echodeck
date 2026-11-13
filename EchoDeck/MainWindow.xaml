@@ -398,13 +398,13 @@
     <Grid x:Name="RootGrid" Background="{DynamicResource BgBrush}" Focusable="True">
         <!-- the cover's colours also sit behind the side bar and the bottom bar while a song plays (dark themes), so the whole window
              belongs together; they are glass over it, see SyncAmbience in MainWindow.Shell.cs -->
-        <local:AuroraBackground x:Name="WindowAurora" Grid.RowSpan="3" Visibility="Collapsed" VeilStrength="0.75"/>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+          <local:AuroraBackground x:Name="WindowAurora" Grid.RowSpan="3" Visibility="Collapsed" VeilStrength="0.75"/>
         <!-- ===================== Top bar ===================== -->
         <Border x:Name="TopBar" Grid.Row="0" Height="40" Background="{DynamicResource BgBrush}">
             <Grid>
