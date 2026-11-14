@@ -190,6 +190,12 @@ internal interface ITaskbarList3
     [PreserveSig] int SetThumbnailClip(IntPtr hwnd, IntPtr prcClip);
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct ClipRect
+{
+    public int Left, Top, Right, Bottom;
+}
+
 /// <summary>
 /// Previous / Play-Pause / Next buttons in the taskbar preview and a progress bar on the taskbar icon.
 /// Every call is wrapped: the taskbar is a nicety and must never take the player down.
@@ -228,6 +234,27 @@ internal sealed class TaskbarController : IDisposable
     }
 
     public bool Available => _list != null;
+
+    /// <summary>Limits the taskbar preview to a part of the window (client pixels); null shows the whole window again.</summary>
+    public void SetClip(ClipRect? rect)
+    {
+        if (_list == null) return;
+        IntPtr ptr = IntPtr.Zero;
+        try
+        {
+            if (rect is { } r)
+            {
+                ptr = Marshal.AllocHGlobal(Marshal.SizeOf<ClipRect>());
+                Marshal.StructureToPtr(r, ptr, false);
+            }
+            _list.SetThumbnailClip(_hwnd, ptr);
+        }
+        catch { /* taskbar busy */ }
+        finally
+        {
+            if (ptr != IntPtr.Zero) Marshal.FreeHGlobal(ptr);
+        }
+    }
 
     /// <summary>Called when Windows says the taskbar button exists (TaskbarButtonCreated); safe to call again after an Explorer restart.</summary>
     public void CreateButtons(double dpiScale)

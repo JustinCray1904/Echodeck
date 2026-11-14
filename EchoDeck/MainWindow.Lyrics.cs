@@ -11,21 +11,27 @@ using System.Windows.Threading;
 
 namespace EchoDeck;
 
-// Lyrics: auto-loaded .lrc / .txt next to the song, editor + paste, local Whisper generation, and the synced display.
+// Lyrics: loaded from Tempo's hidden lyrics folder (or an .lrc / .txt next to the song), editor + paste, online lookup, local Whisper generation, and the synced display.
 public partial class MainWindow
 {
     private const double LyricsPanelMargin = 28;
 
     /// <summary>
-    /// The cover and the visualiser keep their size; the lyrics take what is left beside them (at most 480 wide, at least 320).
-    /// Only when even that does not fit does the cover scale down.
+    /// The cover and the visualiser keep their size while there is room; the lyrics take what is left beside them (at most 480 wide).
+    /// In a narrower music view (the queue and side bar are open, or the window is small) the cover scales down and the lyrics get
+    /// about half; when even that is too tight, the lyrics take the whole width and the cover steps aside until they are closed.
     /// </summary>
     private double ComputeLyricsColumn()
     {
         double avail = MusicPanel.ActualWidth;
         if (avail <= 0) return 480 + LyricsPanelMargin;
+        if (avail < 560) return avail;
+
         const double coverNeeds = 500;
-        return Math.Clamp(avail - coverNeeds - LyricsPanelMargin, 320, 480) + LyricsPanelMargin;
+        double lyrics = avail >= 900
+            ? Math.Clamp(avail - coverNeeds - LyricsPanelMargin, 320, 480)
+            : Math.Clamp(avail * 0.46, 250, 480);
+        return lyrics + LyricsPanelMargin;
     }
 
     private readonly ObservableCollection<LyricLine> _lyricLines = new();
@@ -98,6 +104,7 @@ public partial class MainWindow
         {
             if (!open) LyricsPanel.Visibility = Visibility.Collapsed;
             else SyncLyricsNow();
+            UpdateTaskbarClip();
         });
     }
 
@@ -106,10 +113,11 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ loading lyrics for a song
 
-    /// <summary>Called when a song starts: finds the .lrc / .txt with the same name next to it (or lyrics made earlier this session).</summary>
+    /// <summary>Called when a song starts: finds its lyrics in the hidden lyrics folder, or an .lrc / .txt next to it (or lyrics made earlier this session).</summary>
     private async void LoadLyricsFor(string path, bool isAudio)
     {
         _lyricsMediaPath = isAudio ? path : null;
+        _lyricClockValid = false;   // a new song: the lyrics clock starts again from the player's time
         UpdateLyricsBusyVisibility();
 
         if (!isAudio)
@@ -156,7 +164,7 @@ public partial class MainWindow
             ? "Automatic lyric loading is off (Settings > Lyrics). You can still paste lyrics or generate them."
             : _anon
                 ? "No lyrics for this song. Anything you add in Anonymous Mode is kept in memory only."
-                : "No .lrc or .txt file with this song's name was found next to it. Paste the lyrics, or generate them with AI.";
+                : "No lyrics for this song yet. Find them online, paste them, or generate them with AI.";
 
         if (any && _lyricsOpen)
             Dispatcher.InvokeAsync(() => { SyncLyricsNow(); ScrollToLyric(Math.Max(0, _lyricIndex), immediate: true); }, DispatcherPriority.Loaded);
@@ -182,8 +190,46 @@ public partial class MainWindow
     }
 
     private DispatcherTimer? _lyricTimer;
-    private long _lyricRefMs;
-    private long _lyricRefTicks;
+
+    // ---- the lyrics clock
+    // LibVLC reports the song's time only a few times a second, and each report is already a little old when it is read. Using the
+    // reports directly made the highlight jump ahead and fall behind. Instead the lyrics run on their own clock (the system's
+    // stopwatch) that is kept in step with the reports: a report is never ahead of the truth, only behind it, so the clock follows the
+    // highest value it has been given (the freshest report) and lets go of it very slowly. A jump of more than 0.6 s (a seek, or
+    // playing again after a pause) puts the clock straight on the report.
+    private double _lyricClockOffset;
+    private bool _lyricClockValid;
+
+    private static double NowMs() => Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
+
+    private long IngestLyricTime(long reported, bool allowSnap)
+    {
+        double now = NowMs();
+        double target = reported - now;
+        double estimate = now + _lyricClockOffset;
+
+        if (!_lyricClockValid || (allowSnap && Math.Abs(reported - estimate) > 600))
+        {
+            _lyricClockOffset = target;
+            _lyricClockValid = true;
+        }
+        else if (target > _lyricClockOffset) _lyricClockOffset = target;
+        else _lyricClockOffset -= 0.25;
+
+        return Math.Max(0, (long)(now + _lyricClockOffset));
+    }
+
+    /// <summary>A seek happened (the bar, the arrow keys, a double-clicked line): the lyrics jump there and follow again.</summary>
+    private void OnSeeked(long ms)
+    {
+        _lyricManualUntil = DateTime.MinValue;
+        _lyricClockOffset = ms - NowMs();
+        _lyricClockValid = true;
+        if (!_lyricsOpen || _lyrics is not { Synced: true }) return;
+
+        UpdateLyricsCore(ms);
+        if (_lyricIndex >= 0) ScrollToLyric(_lyricIndex, immediate: false);
+    }
 
     private DispatcherTimer EnsureLyricTimer()
     {
@@ -192,36 +238,21 @@ public partial class MainWindow
             _lyricTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
             _lyricTimer.Tick += (_, _) =>
             {
-                // the player reports the time a few times a second; between two reports the clock runs on by itself, so the
-                // words light up smoothly instead of in jumps
-                if (_player is not { IsPlaying: true }) return;
-
-                long reported = _player.Time;
-                if (reported != _lyricRefMs)
-                {
-                    _lyricRefMs = reported;
-                    _lyricRefTicks = Stopwatch.GetTimestamp();
-                }
-                double elapsed = (Stopwatch.GetTimestamp() - _lyricRefTicks) * 1000.0 / Stopwatch.Frequency;
-                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 300));
+                if (_player is not { IsPlaying: true }) { _lyricClockValid = false; return; }
+                UpdateLyricsCore(IngestLyricTime(_player.Time, allowSnap: true));
             };
         }
         return _lyricTimer;
     }
 
-    /// <summary>Highlights the line being sung and glides the list to it. Called from the player's time updates.</summary>
-    private void UpdateLyrics(long timeMs)
-    {
-        _lyricRefMs = timeMs;
-        _lyricRefTicks = Stopwatch.GetTimestamp();
-        UpdateLyricsCore(timeMs);
-    }
+    /// <summary>The player's own time report (it can be a little old by the time it gets here).</summary>
+    private void UpdateLyrics(long timeMs) => UpdateLyricsCore(IngestLyricTime(timeMs, allowSnap: false));
 
     private void UpdateLyricsCore(long timeMs)
     {
         if (!_lyricsOpen || _lyrics is not { Synced: true } || _lyricLines.Count == 0) return;
 
-        int idx = FindLyricIndex(timeMs + 120);   // a hair early reads better than a hair late
+        int idx = FindLyricIndex(timeMs);   // exactly on the timestamp: the earlier +120 ms lead made every line appear before it was sung
         if (idx != _lyricIndex)
         {
             if (_lyricIndex >= 0 && _lyricIndex < _lyricLines.Count) _lyricLines[_lyricIndex].IsActive = false;
@@ -322,8 +353,10 @@ public partial class MainWindow
 
         var line = _lyricLines[_lyricIndex];
         long next = _lyricIndex + 1 < _lyricLines.Count ? _lyricLines[_lyricIndex + 1].TimeMs : line.TimeMs + 4000;
-        // sung in about as long as the words take; a long pause after the line doesn't stretch it
-        double span = Math.Clamp(Math.Min(next - line.TimeMs, Math.Max(1500, line.Text.Length * 85)), 400, 12000);
+        // the words are spread over most of the time until the next line (a singer rarely finishes a line early), but a long
+        // instrumental pause after the line does not stretch it: about 85 ms per character at the most (a fast verse, not a ballad)
+        double gap = Math.Max(1, next - line.TimeMs);
+        double span = Math.Clamp(Math.Min(gap * 0.97, line.Text.Length * 85 + 500), 600, 12000);
         double progress = Math.Clamp((timeMs - line.TimeMs) / span, 0, 1);
 
         int lit = 0;
@@ -336,7 +369,9 @@ public partial class MainWindow
 
     private void SyncLyricsNow()
     {
-        if (_player != null) UpdateLyrics(_player.Time);
+        if (_player == null) return;
+        _lyricClockValid = false;
+        UpdateLyricsCore(IngestLyricTime(_player.Time, allowSnap: true));
     }
 
     private int FindLyricIndex(long timeMs)
@@ -352,6 +387,8 @@ public partial class MainWindow
         return best >= 0 && _lyricLines[best].Text.Length == 0 ? -1 : best;
     }
 
+    private bool _scrollRetryQueued;
+
     private void ScrollToLyric(int index, bool immediate)
     {
         if (index < 0 || index >= _lyricLines.Count) return;
@@ -359,7 +396,16 @@ public partial class MainWindow
         _lyricsViewer ??= FindScrollViewer(LyricsList);
         var viewer = _lyricsViewer;
         if (viewer == null || viewer.ViewportHeight <= 0) return;
-        if (LyricsList.ItemContainerGenerator.ContainerFromIndex(index) is not FrameworkElement item) return;
+        if (LyricsList.ItemContainerGenerator.ContainerFromIndex(index) is not FrameworkElement item)
+        {
+            // the line's container is not made yet (the list was only just filled): try again once the layout has run
+            if (!_scrollRetryQueued)
+            {
+                _scrollRetryQueued = true;
+                Dispatcher.InvokeAsync(() => { _scrollRetryQueued = false; if (_lyricsOpen) ScrollToLyric(_lyricIndex >= 0 ? _lyricIndex : index, immediate); }, DispatcherPriority.Loaded);
+            }
+            return;
+        }
 
         // where the line's middle is inside the viewport right now, then where the viewport has to move to centre it
         var centre = item.TranslatePoint(new Point(0, item.ActualHeight / 2), viewer);
@@ -386,7 +432,7 @@ public partial class MainWindow
         if (e.OriginalSource is FrameworkElement { DataContext: LyricLine line } && line.TimeMs >= 0 && _player != null && _hasMedia)
         {
             _player.Time = line.TimeMs;
-            _lyricManualUntil = DateTime.MinValue;
+            OnSeeked(line.TimeMs);
         }
     }
 
@@ -410,7 +456,7 @@ public partial class MainWindow
         string name = _anon ? MusicTitle.Text : Path.GetFileNameWithoutExtension(path);
         string hint = _anon
             ? "Anonymous Mode: lyrics are kept in memory only and forgotten when you leave."
-            : "Saved next to the song with the same name (.lrc when timed, .txt for plain lyrics).";
+            : "Saved in Tempo's hidden lyrics folder, not next to the song (.lrc when timed, .txt for plain lyrics).";
 
         _lyricsEditor = new LyricsEditorWindow(name, _lyrics?.RawText ?? "", hint,
             () => _player?.Time ?? 0,
@@ -433,17 +479,11 @@ public partial class MainWindow
         {
             try
             {
-                var target = LyricsFiles.SavePathFor(mediaPath, text);
-                File.WriteAllText(target, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-                sourcePath = target;
-
-                // an older file of the other kind would still win when the song is loaded again: remove the one that was showing
-                var old = _lyrics?.SourcePath;
-                if (old != null && !string.Equals(old, target, StringComparison.OrdinalIgnoreCase) && File.Exists(old)) File.Delete(old);
+                sourcePath = LyricsFiles.Save(mediaPath, text);   // the hidden Tempo folder: it also drops the other kind (.lrc / .txt) kept there
             }
             catch (Exception ex)
             {
-                return "Couldn't save next to the song: " + ex.Message;
+                return "Couldn't save the lyrics: " + ex.Message;
             }
         }
 
@@ -513,8 +553,8 @@ public partial class MainWindow
             {
                 try
                 {
-                    File.WriteAllText(Path.ChangeExtension(path, ".lrc"), text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-                    note = " and saved next to the song";
+                    LyricsFiles.Save(path, text);
+                    note = " and saved";
                 }
                 catch (Exception ex)
                 {
@@ -598,7 +638,7 @@ public partial class MainWindow
                 return;
             }
 
-            // same path as pasted lyrics: saved next to the song (.lrc when timed, .txt when plain) and shown straight away
+            // same path as pasted lyrics: saved in the hidden lyrics folder (.lrc when timed, .txt when plain) and shown straight away
             string? error = SaveLyrics(path, found.Text);
             if (error != null)
             {
@@ -608,7 +648,7 @@ public partial class MainWindow
                     ShowLyrics(LyricsParser.Parse(found.Text, null));
                     SetLyricsOpen(true);
                 }
-                Notify("Lyrics found, but they couldn't be saved next to the song");
+                Notify("Lyrics found, but they couldn't be saved");
             }
             else if (!found.Synced)
             {

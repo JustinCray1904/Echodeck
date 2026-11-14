@@ -23,6 +23,7 @@ public partial class MainWindow
     // or frozen" crash), so a new colour means new, frozen brushes put into the resources, not a colour animation on an old one.
     private readonly Dictionary<string, Color> _ambientColours = new();
     private readonly HashSet<FrameworkElement> _skinned = new();
+    private readonly HashSet<FrameworkElement> _skinnedNeutral = new();   // the bottom bar and title bar: cover-tinted text and hover, but the app's own accent
     private Color _railColour = Color.FromArgb(0x8C, 0x10, 0x10, 0x14);
     private Color _barColour = Color.FromArgb(0x99, 0x10, 0x10, 0x14);
     private Color _menuColour = Color.FromRgb(0x16, 0x14, 0x1A);
@@ -99,14 +100,19 @@ public partial class MainWindow
         // menus are opaque (a translucent popup window would show the desktop through it): the same hue, a little lighter
         _menuColour = CoverPalette.FromHsv(hue, grey ? 0.0 : Math.Min(sat, 0.55), 0.16);
 
-        foreach (var el in _skinned) PutAmbientResources(el.Resources);
+        foreach (var el in _skinned) PutAmbientResources(el.Resources, _skinnedNeutral.Contains(el));
         ApplyTints(animate);
     }
 
-    private void PutAmbientResources(ResourceDictionary resources)
+    private static bool IsAccentKey(string key) => key.StartsWith("Accent", StringComparison.Ordinal) || key == "OnAccentBrush";
+
+    private void PutAmbientResources(ResourceDictionary resources, bool neutral = false)
     {
         foreach (var key in AmbientKeys)
+        {
+            if (neutral && IsAccentKey(key)) continue;   // keeps the theme's accent colour
             if (_ambientColours.TryGetValue(key, out var colour)) resources[key] = Frozen(colour);
+        }
     }
 
     /// <summary>The glass behind the side bar, queue and bottom bar (only while the cover's colours fill the window).</summary>
@@ -138,7 +144,7 @@ public partial class MainWindow
     /// Gives an element (and everything inside it) the adaptive colours, or takes them away again. Text that does not name its own
     /// colour takes it from the element's Foreground, so that is pointed at the same adaptive brush.
     /// </summary>
-    private void SetAmbientSkin(FrameworkElement el, bool apply)
+    private void SetAmbientSkin(FrameworkElement el, bool apply, bool neutral = false)
     {
         bool has = _skinned.Contains(el);
         if (apply == has) return;
@@ -147,12 +153,14 @@ public partial class MainWindow
         {
             if (_ambientColours.Count == 0) UpdateAmbientColours(animate: false);
             _skinned.Add(el);
-            PutAmbientResources(el.Resources);
+            if (neutral) _skinnedNeutral.Add(el);
+            PutAmbientResources(el.Resources, neutral);
             el.SetResourceReference(TextElement.ForegroundProperty, "TextBrush");
         }
         else
         {
             _skinned.Remove(el);
+            _skinnedNeutral.Remove(el);
             foreach (var key in AmbientKeys) el.Resources.Remove(key);
             el.ClearValue(TextElement.ForegroundProperty);
         }
@@ -190,7 +198,7 @@ public partial class MainWindow
     private void InitResponsive()
     {
         SizeChanged += (_, _) => ApplyResponsiveLayout();
-        MusicPanel.SizeChanged += (_, _) => RelayoutLyrics();
+        MusicPanel.SizeChanged += (_, _) => { RelayoutLyrics(); UpdateTaskbarClip(); };
         UpdateAmbientColours(animate: false);
     }
 
@@ -214,5 +222,42 @@ public partial class MainWindow
         double panel = Math.Max(120, full - LyricsPanelMargin);
         if (Math.Abs(LyricsPanel.Width - panel) > 0.5) LyricsPanel.Width = panel;
         LyricsPanel.Opacity = 1;
+    }
+
+    // ------------------------------------------------------------------ taskbar preview
+
+    private ClipRect? _lastTaskbarClip;
+
+    /// <summary>
+    /// The taskbar preview of the music view shows the cover, the visualiser and the title (a big, readable picture) instead of
+    /// the whole window shrunk to a thumbnail. Everywhere else the preview shows the window as usual.
+    /// </summary>
+    private void UpdateTaskbarClip()
+    {
+        if (_taskbar == null || !_cfg.TaskbarControls) return;
+        try
+        {
+            ClipRect? clip = null;
+            if (!_anon && _currentIsAudio && !_libraryVisible && MusicPanel.Visibility == Visibility.Visible &&
+                MusicPanel.ActualWidth > 80 && MusicPanel.ActualHeight > 80)
+            {
+                double cover = Math.Max(0, MusicPanel.ActualWidth - (_lyricsOpen ? LyricsCol.Width.Value : 0));
+                var origin = MusicPanel.TranslatePoint(new Point(0, 0), this);
+                double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+                var rect = new ClipRect
+                {
+                    Left = (int)(origin.X * dpi),
+                    Top = (int)(origin.Y * dpi),
+                    Right = (int)((origin.X + cover) * dpi),
+                    Bottom = (int)((origin.Y + MusicPanel.ActualHeight) * dpi),
+                };
+                if (rect.Right - rect.Left > 80 && rect.Bottom - rect.Top > 80) clip = rect;
+            }
+
+            if (Nullable.Equals(clip, _lastTaskbarClip)) return;
+            _lastTaskbarClip = clip;
+            _taskbar.SetClip(clip);
+        }
+        catch { /* the preview is a nicety */ }
     }
 }

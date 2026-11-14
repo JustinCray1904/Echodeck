@@ -208,7 +208,7 @@ public sealed class AuroraBackground : Grid
     private const int BlobCount = 4;
 
     private readonly Rectangle _base = new() { Fill = new SolidColorBrush(Color.FromRgb(16, 18, 30)) };
-    private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.55, Visibility = Visibility.Collapsed };
+    private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.38, Visibility = Visibility.Collapsed };
     private readonly Rectangle _veil = new() { IsHitTestVisible = false };
 
     // a computer that draws everything in software (no graphics card acceleration) gets still colours instead of motion
@@ -223,8 +223,8 @@ public sealed class AuroraBackground : Grid
     private bool _moving;
 
     private static readonly (double X, double Y)[] Anchors = { (0.06, 0.10), (0.88, 0.06), (0.10, 0.92), (0.92, 0.86) };
-    private static readonly double[] MoveSeconds = { 19, 27, 23, 31 };
-    private static readonly double[] BreatheSeconds = { 15, 21, 18, 24 };
+    private static readonly double[] MoveSeconds = { 11, 15, 13, 17 };
+    private static readonly double[] BreatheSeconds = { 8, 11, 9, 12 };
 
     public AuroraBackground()
     {
@@ -239,9 +239,9 @@ public sealed class AuroraBackground : Grid
 
         for (int i = 0; i < BlobCount; i++)
         {
-            _centreStops[i] = new GradientStop(Color.FromArgb(0xF0, 90, 100, 160), 0.0);
+            _centreStops[i] = new GradientStop(Color.FromArgb(0xFF, 120, 130, 190), 0.0);
             _edgeStops[i] = new GradientStop(Color.FromArgb(0x00, 90, 100, 160), 1.0);
-            _midStops[i] = new GradientStop(Color.FromArgb(0xA0, 90, 100, 160), 0.55);
+            _midStops[i] = new GradientStop(Color.FromArgb(0xB4, 90, 100, 160), 0.50);
             var glow = new RadialGradientBrush { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5), RadiusX = 0.5, RadiusY = 0.5 };
             glow.GradientStops.Add(_centreStops[i]);
             glow.GradientStops.Add(_midStops[i]);
@@ -258,7 +258,7 @@ public sealed class AuroraBackground : Grid
         }
 
         // a dark veil: the lyrics and titles stay readable on any colours
-        _veil.Fill = new LinearGradientBrush(Color.FromArgb(0x26, 0, 0, 0), Color.FromArgb(0x62, 0, 0, 0), 90);
+        _veil.Fill = new LinearGradientBrush(Color.FromArgb(0x10, 0, 0, 0), Color.FromArgb(0x44, 0, 0, 0), 90);
         Children.Add(_veil);
 
         SizeChanged += (_, _) => Relayout();
@@ -280,9 +280,12 @@ public sealed class AuroraBackground : Grid
             // the glows are the vivid colours: bright and saturated, so they stand out from the darker base
             var c = colours[i % colours.Count];
             CoverPalette.ToHsv(c.R, c.G, c.B, out double ch, out double cs, out double cv);
-            c = CoverPalette.FromHsv(ch, Math.Max(cs, 0.60), Math.Max(cv, 0.70));
-            _centreStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xF0, c.R, c.G, c.B), ms) { EasingFunction = ease });
-            _midStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xA0, c.R, c.G, c.B), ms) { EasingFunction = ease });
+            c = CoverPalette.FromHsv(ch, Math.Max(cs, 0.65), Math.Max(cv, 0.85));
+
+            // a glow has a bright core: the middle of each blob is the colour lightened toward white, fading out to the colour itself
+            var core = Color.FromRgb((byte)(c.R + (255 - c.R) * 0.30), (byte)(c.G + (255 - c.G) * 0.30), (byte)(c.B + (255 - c.B) * 0.30));
+            _centreStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xFF, core.R, core.G, core.B), ms) { EasingFunction = ease });
+            _midStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xB8, c.R, c.G, c.B), ms) { EasingFunction = ease });
             _edgeStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0x00, c.R, c.G, c.B), ms) { EasingFunction = ease });
         }
 
@@ -329,7 +332,7 @@ public sealed class AuroraBackground : Grid
 
         for (int i = 0; i < BlobCount; i++)
         {
-            double dx = w * (i % 2 == 0 ? 0.30 : -0.30), dy = h * (i < 2 ? 0.28 : -0.28);
+            double dx = w * (i % 2 == 0 ? 0.42 : -0.42), dy = h * (i < 2 ? 0.40 : -0.40);
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
 
             _moves[i].BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-dx, dx, TimeSpan.FromSeconds(MoveSeconds[i]))
@@ -337,7 +340,7 @@ public sealed class AuroraBackground : Grid
             _moves[i].BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(dy, -dy, TimeSpan.FromSeconds(MoveSeconds[(i + 2) % BlobCount] * 0.9))
                 { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
 
-            var breathe = new DoubleAnimation(0.8, 1.3, TimeSpan.FromSeconds(BreatheSeconds[i]))
+            var breathe = new DoubleAnimation(0.65, 1.45, TimeSpan.FromSeconds(BreatheSeconds[i]))
                 { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate();
             _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
             _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, breathe);

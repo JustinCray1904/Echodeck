@@ -88,11 +88,25 @@ public partial class MainWindow : Window
         {
             bar.Scrubbing += frac =>
             {
-                if (_lengthMs > 0) TimeText.Text = Fmt((long)(frac * _lengthMs));
+                if (_lengthMs <= 0) return;
+                long ms = (long)(frac * _lengthMs);
+                TimeText.Text = Fmt(ms);
+
+                // the song follows the handle while it is dragged (about every 150 ms), like VLC
+                if (_player != null && _hasMedia && Environment.TickCount64 - _lastScrubSeek > 150)
+                {
+                    _lastScrubSeek = Environment.TickCount64;
+                    _player.Time = ms;
+                    OnSeeked(ms);
+                }
             };
             bar.SeekCommitted += frac =>
             {
-                if (_player != null && _hasMedia && _lengthMs > 0) _player.Time = (long)(frac * _lengthMs);
+                if (_player == null || !_hasMedia || _lengthMs <= 0) return;
+                long ms = (long)(frac * _lengthMs);
+                if (_playbackEnded) { _playbackEnded = false; RestartCurrent(); return; }
+                _player.Time = ms;
+                OnSeeked(ms);
             };
         }
 
@@ -136,12 +150,13 @@ public partial class MainWindow : Window
 
         AppSettings.Changed += OnSettingsChanged;
 
-        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
+        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 200);
         _sidebarVisible = _cfg.ShowSidebarAtStart;
         InitLibrary();
         InitMini();
         InitPopups();
         InitLyrics();
+        InitResponsive();
         ApplyVisualizerStyle();
         ApplyViewMode();
         ApplyRail();
@@ -249,7 +264,7 @@ public partial class MainWindow : Window
         finally { _modalOpen = false; }
 
         ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex);
-        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
+        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 200);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -446,9 +461,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private long _lastScrubSeek;
+    private bool _playbackEnded;   // the song / video played to its end and nothing followed: Play must start it again
+
+    /// <summary>Plays the current item from the start again (LibVLC does not restart a finished item with a plain Play).</summary>
+    private async void RestartCurrent()
+    {
+        var player = _player;
+        if (player is null) return;
+        try
+        {
+            if (!_anon && _queueIndex >= 0 && _queueIndex < _queue.Count)
+            {
+                PlayNormal(_queue[_queueIndex].FullPath, stayInLibrary: _libraryVisible);
+                return;
+            }
+            await Task.Run(() => player.Stop());
+            player.Play();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Restart", ex);
+        }
+    }
+
     private void TogglePlayPause()
     {
         if (_player is null) return;
+
+        if (_playbackEnded && _hasMedia)
+        {
+            _playbackEnded = false;
+            RestartCurrent();
+            return;
+        }
 
         if (!_hasMedia)
         {
@@ -464,10 +510,12 @@ public partial class MainWindow : Window
     {
         if (_player is null) return;
         _errorSkips = 0;
+        _playbackEnded = false;
         SetPlayGlyph(true);
         SetPulse(_currentIsAudio);
         EmptyHint.Visibility = Visibility.Collapsed;
         _player.Volume = (int)VolumeSlider.Value;
+        if (_cropIndex > 0) TrySetCrop(CropValues[_cropIndex]);   // a new video starts uncropped: bring the chosen crop back
         _lengthMs = _player.Length;
         if (_lengthMs > 0) DurationText.Text = Fmt(_lengthMs);
 
@@ -565,14 +613,16 @@ public partial class MainWindow : Window
     private void SeekBy(int seconds)
     {
         if (_player is null || !_hasMedia || _lengthMs <= 0) return;
-        _player.Time = Math.Clamp(_player.Time + seconds * 1000L, 0, _lengthMs);
+        long target = Math.Clamp(_player.Time + seconds * 1000L, 0, _lengthMs);
+        _player.Time = target;
+        OnSeeked(target);
         ShowOsd((seconds > 0 ? "+" : "") + seconds + " s");
     }
 
     private void ChangeVolume(int delta)
     {
-        VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + delta, 0, 100);
-        ShowOsd("Volume " + (int)VolumeSlider.Value + "%", VolumeSlider.Value / 100.0);
+        VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + delta, 0, 200);   // up to 200 % like VLC (LibVLC accepts 0-200)
+        ShowOsd("Volume " + (int)VolumeSlider.Value + "%", VolumeSlider.Value / 200.0);
     }
 
     private void ToggleMute()
@@ -580,7 +630,7 @@ public partial class MainWindow : Window
         if (_player is null) return;
         _player.Mute = !_player.Mute;
         UpdateVolumeGlyphs(animate: true);
-        ShowOsd(_player.Mute ? "Muted" : "Volume " + (int)VolumeSlider.Value + "%", _player.Mute ? 0.0 : VolumeSlider.Value / 100.0);
+        ShowOsd(_player.Mute ? "Muted" : "Volume " + (int)VolumeSlider.Value + "%", _player.Mute ? 0.0 : VolumeSlider.Value / 200.0);
     }
 
     /// <summary>Controls that need something playing are disabled until there is something to act on.</summary>
@@ -641,6 +691,7 @@ public partial class MainWindow : Window
         var around = CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor"));   // until the cover's colours are known
         Aurora.SetPalette(around, null);
         WindowAurora.SetPalette(around, null);
+        SetAmbientPalette(around);
         OnMusicViewChanged(on);
         if (!on) ClearLyrics();
 
@@ -693,6 +744,7 @@ public partial class MainWindow : Window
         var palette = CoverPalette.From(bmp);
         Aurora.SetPalette(palette, bmp);
         WindowAurora.SetPalette(palette, bmp);
+        SetAmbientPalette(palette);
 
         // the ripples and glow take the colour of the cover
         if (ShellThumbnail.DominantColor(bmp) is { } color)
@@ -881,6 +933,7 @@ public partial class MainWindow : Window
             menu.Items.Add(MenuEntry("Settings", "IcoSettings", AllSettings_Click, "Ctrl+,"));
         }
 
+        SkinMenu(menu);
         if (menu.Items.Count > 0) menu.IsOpen = true;
     }
 
@@ -1254,7 +1307,7 @@ public partial class MainWindow : Window
     private void UpdateVolumeGlyphs(bool animate)
     {
         if (VolumeIcon is null || PopupVolumeIcon is null || VolumeSlider is null) return;
-        double level = VolumeSlider.Value / 100.0;
+        double level = Math.Min(1.0, VolumeSlider.Value / 100.0);   // the speaker icon is full at 100 %
         bool muted = _player?.Mute ?? false;
         VolumeIcon.SetState(level, muted, animate);
         PopupVolumeIcon.SetState(level, muted, animate);
@@ -1426,6 +1479,7 @@ public partial class MainWindow : Window
             case NativeMethods.VK_F: ToggleFullscreen(); break;
             case NativeMethods.VK_M: ToggleMute(); break;
             case NativeMethods.VK_V: CycleTrack(audio: false); break;
+            case NativeMethods.VK_C: CycleCrop(); break;
             case NativeMethods.VK_A: CycleTrack(audio: true); break;
             case NativeMethods.VK_B: ToggleRail(); break;
             case NativeMethods.VK_Q:

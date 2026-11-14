@@ -5,13 +5,15 @@ using System.Windows.Controls.Primitives;
 
 namespace EchoDeck;
 
-// Generating lyrics for several songs in the background: the player stays fully usable, a card in the side bar
-// shows "n of N" and the progress, and every result is saved next to its song as a .lrc file.
+// Finding (lrclib.net) or generating (Whisper) lyrics for several songs in the background: the player stays fully usable,
+// a card in the side bar shows "n of N" and the progress, and every result is saved in Tempo's hidden lyrics folder.
 public partial class MainWindow
 {
     private CancellationTokenSource? _batchCts;
     private int _batchTotal, _batchDone, _batchFailed, _batchSkipped;
     private string _batchCurrent = "";
+    private string _batchTitle = "Generating lyrics";
+    private int _batchSynced, _batchPlain;
     private double _batchFraction;
     private bool _cloudConsent;   // the user agreed to upload audio during this run of the app
 
@@ -25,6 +27,11 @@ public partial class MainWindow
 
         var menu = new ContextMenu { PlacementTarget = SelMoreButton, Placement = PlacementMode.Top };
         var label = songs.Count == 1 ? "Generate lyrics for this song" : $"Generate lyrics for {songs.Count} songs";
+        var findOnline = MenuEntry(songs.Count == 1 ? "Find lyrics online" : $"Find lyrics online for {songs.Count} songs", "IcoSearch",
+            (_, _) => StartOnlineLyricsBatch(songs));
+        findOnline.IsEnabled = songs.Count > 0 && !_anon;
+        menu.Items.Add(findOnline);
+
         var generate = MenuEntry(label, "IcoMusic", (_, _) => StartLyricsBatch(songs));
         generate.IsEnabled = songs.Count > 0 && !_anon;
         menu.Items.Add(generate);
@@ -37,7 +44,7 @@ public partial class MainWindow
         menu.IsOpen = true;
     }
 
-    /// <summary>Queues songs for lyrics generation. Songs that already have a .lrc next to them are skipped.</summary>
+    /// <summary>Queues songs for lyrics generation. Songs that already have lyrics are skipped.</summary>
     private async void StartLyricsBatch(IReadOnlyList<string> songs)
     {
         try
@@ -65,17 +72,18 @@ public partial class MainWindow
             _batchSkipped = 0;
             foreach (var path in songs.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (File.Exists(Path.ChangeExtension(path, ".lrc"))) _batchSkipped++;
+                if (LyricsFiles.Find(path) != null) _batchSkipped++;
                 else todo.Add(path);
             }
 
             if (todo.Count == 0)
             {
-                Notify(_batchSkipped > 0 ? "Those songs already have lyrics next to them." : "Nothing to generate.");
+                Notify(_batchSkipped > 0 ? "Those songs already have lyrics." : "Nothing to generate.");
                 return;
             }
 
             _batchCts = new CancellationTokenSource();
+            _batchTitle = "Generating lyrics";
             _batchTotal = todo.Count;
             _batchDone = 0;
             _batchFailed = 0;
@@ -121,7 +129,7 @@ public partial class MainWindow
             try
             {
                 var text = (await LyricsGenerator.GenerateAsync(path, _cfg, progress, ct)).Replace("\r\n", "\n").Replace("\n", "\r\n");
-                File.WriteAllText(Path.ChangeExtension(path, ".lrc"), text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                var savedTo = LyricsFiles.Save(path, text);
                 _sessionLyrics[path] = text;
                 _batchDone++;
 
@@ -129,7 +137,7 @@ public partial class MainWindow
                 if (warn != null) warnings.Add("“" + _batchCurrent + "”: " + warn);
 
                 // if this is the song on screen right now, show its new lyrics at once
-                if (string.Equals(_lyricsMediaPath, path, StringComparison.OrdinalIgnoreCase)) ShowLyrics(LyricsParser.Parse(text, Path.ChangeExtension(path, ".lrc")));
+                if (string.Equals(_lyricsMediaPath, path, StringComparison.OrdinalIgnoreCase)) ShowLyrics(LyricsParser.Parse(text, savedTo));
             }
             catch (OperationCanceledException)
             {
@@ -170,6 +178,153 @@ public partial class MainWindow
         }
     }
 
+    // ------------------------------------------------------------------ online batch (lrclib.net)
+
+    /// <summary>
+    /// Looks every ticked song up at lrclib.net, one after the other (a short pause between requests keeps the free service happy).
+    /// Only the title, artist, album and length of each song are sent. Songs that already have lyrics are skipped.
+    /// </summary>
+    private async void StartOnlineLyricsBatch(IReadOnlyList<string> songs)
+    {
+        try
+        {
+            if (_anon)
+            {
+                Notify("Online lookup isn't available in Anonymous Mode: it would send song names over the internet.");
+                return;
+            }
+            if (BatchRunning || _lyricsCts != null)
+            {
+                Notify("Lyrics are already being generated. Wait for it to finish, or cancel it first.");
+                return;
+            }
+
+            var todo = new List<string>();
+            _batchSkipped = 0;
+            foreach (var path in songs.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (LyricsFiles.Find(path) != null) _batchSkipped++;
+                else todo.Add(path);
+            }
+
+            if (todo.Count == 0)
+            {
+                Notify(_batchSkipped > 0 ? "Those songs already have lyrics." : "Nothing to look up.");
+                return;
+            }
+
+            _batchCts = new CancellationTokenSource();
+            _batchTitle = "Finding lyrics online";
+            _batchTotal = todo.Count;
+            _batchDone = 0;
+            _batchFailed = 0;
+            _batchSynced = 0;
+            _batchPlain = 0;
+            _batchFraction = 0;
+            UpdateBatchUi();
+            Notify($"Looking up lyrics for {todo.Count} song{(todo.Count == 1 ? "" : "s")} at lrclib.net" +
+                   (_batchSkipped > 0 ? $" ({_batchSkipped} already had lyrics)" : ""));
+
+            await RunOnlineBatchAsync(todo, _batchCts.Token);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Online lyrics batch", ex);
+            Notify("Looking up lyrics stopped: " + ex.Message);
+        }
+        finally
+        {
+            _batchCts?.Dispose();
+            _batchCts = null;
+            UpdateBatchUi();
+        }
+    }
+
+    private async Task RunOnlineBatchAsync(List<string> songs, CancellationToken ct)
+    {
+        int notFound = 0;          // looked up fine, but lrclib has nothing for the song
+        int networkFailures = 0;   // in a row: the same problem would hit every remaining song
+        string? lastProblem = null;
+
+        foreach (var path in songs)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            _batchCurrent = Path.GetFileNameWithoutExtension(path);
+            _batchFraction = 0.1;
+            UpdateBatchUi();
+
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(25));
+
+                var tags = await Task.Run(() => LibraryScanner.ReadTags(path), timeout.Token);
+                _batchFraction = 0.4;
+                UpdateBatchUi();
+
+                var found = await OnlineLyrics.FindAsync(path, tags, timeout.Token);
+                networkFailures = 0;
+
+                if (found == null)
+                {
+                    notFound++;
+                }
+                else
+                {
+                    var text = found.Text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                    var savedTo = LyricsFiles.Save(path, text);
+                    _sessionLyrics[path] = text;
+                    _batchDone++;
+                    if (found.Synced) _batchSynced++; else _batchPlain++;
+
+                    // if this is the song on screen right now, show its new lyrics at once
+                    if (string.Equals(_lyricsMediaPath, path, StringComparison.OrdinalIgnoreCase))
+                        ShowLyrics(LyricsParser.Parse(text, savedTo));
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (OperationCanceledException)
+            {
+                // this one song took too long: count it and go on
+                _batchFailed++;
+                networkFailures++;
+                lastProblem = "the service took too long";
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Online lyrics batch", ex, path);
+                _batchFailed++;
+                networkFailures++;
+                lastProblem = ex.Message;
+            }
+
+            _batchFraction = 1;
+            UpdateBatchUi();
+
+            if (networkFailures >= 3)
+            {
+                lastProblem = "can't reach lrclib.net" + (lastProblem != null ? " (" + Truncate(lastProblem, 60) + ")" : "");
+                break;
+            }
+
+            try { await Task.Delay(300, ct); }   // be polite to the free service
+            catch (OperationCanceledException) { break; }
+        }
+
+        string summary = ct.IsCancellationRequested
+            ? $"Cancelled: lyrics found for {_batchDone} of {_batchTotal}"
+            : $"Lyrics found for {_batchDone} of {_batchTotal} song{(_batchTotal == 1 ? "" : "s")}";
+        if (_batchPlain > 0) summary += $" ({_batchSynced} timed, {_batchPlain} without timing)";
+        if (notFound > 0) summary += $", {notFound} not found";
+        if (_batchFailed > 0) summary += $", {_batchFailed} failed";
+        if (networkFailures >= 3 && lastProblem != null) summary += ". Stopped: " + lastProblem;
+        Notify(summary);
+    }
+
     private static string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max) + "…";
 
     /// <summary>Cloud engine: say clearly, once per run, that the audio leaves the PC.</summary>
@@ -201,10 +356,11 @@ public partial class MainWindow
         BatchBadge.Visibility = running && !_libraryVisible ? Visibility.Visible : Visibility.Collapsed;
         if (!running) return;
 
+        BatchTitleText.Text = _batchTitle;
         BatchCountText.Text = $"Song {shown} of {_batchTotal}  ·  {_batchDone} done" + (_batchFailed > 0 ? $", {_batchFailed} failed" : "");
         BatchFileText.Text = _batchCurrent;
         BatchBadge.Text = $"{shown}/{_batchTotal}";
-        BatchBadge.ToolTip = "Generating lyrics: " + _batchCurrent;
+        BatchBadge.ToolTip = _batchTitle + ": " + _batchCurrent;
 
         double overall = _batchTotal == 0 ? 0 : (_batchDone + _batchFailed + Math.Clamp(_batchFraction, 0, 1)) / _batchTotal;
         BatchFill.Width = Math.Max(0, BatchTrack.ActualWidth * Math.Clamp(overall, 0, 1));

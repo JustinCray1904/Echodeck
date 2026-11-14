@@ -227,11 +227,14 @@ public partial class MainWindow
         {
             card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             double popupWidth = card.DesiredSize.Width;                 // includes the card's own margin (room for the shadow)
-            var topLeft = info.Anchor.TranslatePoint(new Point(0, 0), ControlBar);
+            // the button's real place and width inside the bar (the bar's contents are scaled down in fullscreen)
+            var bounds = info.Anchor.TransformToAncestor(ControlBar)
+                .TransformBounds(new Rect(0, 0, info.Anchor.ActualWidth, info.Anchor.ActualHeight));
+            var topLeft = bounds.TopLeft;
 
             double x = info.AlignRight
-                ? topLeft.X + info.Anchor.ActualWidth - popupWidth + card.Margin.Right   // card's right edge on the tools' right edge
-                : topLeft.X + (info.Anchor.ActualWidth - popupWidth) / 2;                // centred over the speaker
+                ? topLeft.X + bounds.Width - popupWidth + card.Margin.Right   // card's right edge on the tools' right edge
+                : topLeft.X + (bounds.Width - popupWidth) / 2;                // centred over the speaker
             double maxX = ControlBar.ActualWidth - popupWidth + card.Margin.Right;
             pop.HorizontalOffset = Math.Max(-card.Margin.Left + 4, Math.Min(x, maxX));
             pop.VerticalOffset = 0;
