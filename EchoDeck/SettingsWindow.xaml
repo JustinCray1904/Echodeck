@@ -63,9 +63,9 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Theme"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Dark, light, follow Windows, or one of the new looks: Liquid Glass, Midnight, AMOLED Black."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Dark, light, follow Windows, or one of the darker looks: Midnight, AMOLED Black."/>
                             </StackPanel>
-                            <ComboBox x:Name="ThemeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Dark"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="System"/><ComboBoxItem Content="Liquid Glass"/><ComboBoxItem Content="Midnight"/><ComboBoxItem Content="AMOLED Black"/></ComboBox>
+                            <ComboBox x:Name="ThemeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Dark"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="System"/><ComboBoxItem Content="Midnight"/><ComboBoxItem Content="AMOLED Black"/></ComboBox>
                         </Grid>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -470,7 +470,7 @@
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions>
                             <TextBlock Style="{StaticResource RowLabel}" Text="Volume"/>
-                            <Slider x:Name="VolumeSlider" Grid.Column="1" Style="{StaticResource FigmaSlider}" Minimum="0" Maximum="100" IsMoveToPointEnabled="True" ValueChanged="Slider_Changed"/>
+                            <Slider x:Name="VolumeSlider" Grid.Column="1" Style="{StaticResource FigmaSlider}" Minimum="0" Maximum="200" IsMoveToPointEnabled="True" ValueChanged="Slider_Changed"/>
                             <TextBlock x:Name="VolumeSliderValue" Grid.Column="2" Style="{StaticResource HintText}" TextAlignment="Right" VerticalAlignment="Center"/>
                         </Grid>
                         <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0" Text="Switch audio tracks from the audio button in the control bar (or press A). Music files open in the dedicated music view."/>
@@ -487,7 +487,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Load lyric files automatically"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="When a song starts, look next to it for a .lrc or .txt file with exactly the same name."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="When a song starts, load its lyrics from Tempo's hidden lyrics folder (or a .lrc / .txt with the song's exact name next to it)."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsAutoSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
@@ -495,7 +495,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Save generated lyrics next to the song"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="AI-generated lyrics are written as a .lrc file with the song's name, so they load by themselves next time."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="AI-generated lyrics are kept in Tempo's hidden lyrics folder (not next to the song), so they load by themselves next time."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsSaveSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>

@@ -11,21 +11,27 @@ using System.Windows.Threading;
 
 namespace EchoDeck;
 
-// Lyrics: auto-loaded .lrc / .txt next to the song, editor + paste, local Whisper generation, and the synced display.
+// Lyrics: loaded from Tempo's hidden lyrics folder (or an .lrc / .txt next to the song), editor + paste, online lookup, local Whisper generation, and the synced display.
 public partial class MainWindow
 {
     private const double LyricsPanelMargin = 28;
 
     /// <summary>
-    /// The cover and the visualiser keep their size; the lyrics take what is left beside them (at most 480 wide, at least 320).
-    /// Only when even that does not fit does the cover scale down.
+    /// The cover and the visualiser keep their size while there is room; the lyrics take what is left beside them (at most 480 wide).
+    /// In a narrower music view (the queue and side bar are open, or the window is small) the cover scales down and the lyrics get
+    /// about half; when even that is too tight, the lyrics take the whole width and the cover steps aside until they are closed.
     /// </summary>
     private double ComputeLyricsColumn()
     {
         double avail = MusicPanel.ActualWidth;
         if (avail <= 0) return 480 + LyricsPanelMargin;
+        if (avail < 560) return avail;
+
         const double coverNeeds = 500;
-        return Math.Clamp(avail - coverNeeds - LyricsPanelMargin, 320, 480) + LyricsPanelMargin;
+        double lyrics = avail >= 900
+            ? Math.Clamp(avail - coverNeeds - LyricsPanelMargin, 320, 480)
+            : Math.Clamp(avail * 0.46, 250, 480);
+        return lyrics + LyricsPanelMargin;
     }
 
     private readonly ObservableCollection<LyricLine> _lyricLines = new();
@@ -106,7 +112,7 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ loading lyrics for a song
 
-    /// <summary>Called when a song starts: finds the .lrc / .txt with the same name next to it (or lyrics made earlier this session).</summary>
+    /// <summary>Called when a song starts: finds its lyrics in the hidden lyrics folder, or an .lrc / .txt next to it (or lyrics made earlier this session).</summary>
     private async void LoadLyricsFor(string path, bool isAudio)
     {
         _lyricsMediaPath = isAudio ? path : null;
@@ -156,7 +162,7 @@ public partial class MainWindow
             ? "Automatic lyric loading is off (Settings > Lyrics). You can still paste lyrics or generate them."
             : _anon
                 ? "No lyrics for this song. Anything you add in Anonymous Mode is kept in memory only."
-                : "No .lrc or .txt file with this song's name was found next to it. Paste the lyrics, or generate them with AI.";
+                : "No lyrics for this song yet. Find them online, paste them, or generate them with AI.";
 
         if (any && _lyricsOpen)
             Dispatcher.InvokeAsync(() => { SyncLyricsNow(); ScrollToLyric(Math.Max(0, _lyricIndex), immediate: true); }, DispatcherPriority.Loaded);
@@ -203,7 +209,7 @@ public partial class MainWindow
                     _lyricRefTicks = Stopwatch.GetTimestamp();
                 }
                 double elapsed = (Stopwatch.GetTimestamp() - _lyricRefTicks) * 1000.0 / Stopwatch.Frequency;
-                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 300));
+                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 250));
             };
         }
         return _lyricTimer;
@@ -221,7 +227,7 @@ public partial class MainWindow
     {
         if (!_lyricsOpen || _lyrics is not { Synced: true } || _lyricLines.Count == 0) return;
 
-        int idx = FindLyricIndex(timeMs + 120);   // a hair early reads better than a hair late
+        int idx = FindLyricIndex(timeMs);   // exactly on the timestamp: the earlier +120 ms lead made every line appear before it was sung
         if (idx != _lyricIndex)
         {
             if (_lyricIndex >= 0 && _lyricIndex < _lyricLines.Count) _lyricLines[_lyricIndex].IsActive = false;
@@ -322,8 +328,10 @@ public partial class MainWindow
 
         var line = _lyricLines[_lyricIndex];
         long next = _lyricIndex + 1 < _lyricLines.Count ? _lyricLines[_lyricIndex + 1].TimeMs : line.TimeMs + 4000;
-        // sung in about as long as the words take; a long pause after the line doesn't stretch it
-        double span = Math.Clamp(Math.Min(next - line.TimeMs, Math.Max(1500, line.Text.Length * 85)), 400, 12000);
+        // the words are spread over most of the time until the next line (a singer rarely finishes a line early), but a long
+        // instrumental pause after the line does not stretch it: about 150 ms per character at the most
+        double gap = Math.Max(1, next - line.TimeMs);
+        double span = Math.Clamp(Math.Min(gap * 0.95, Math.Max(2500, line.Text.Length * 150)), 500, 12000);
         double progress = Math.Clamp((timeMs - line.TimeMs) / span, 0, 1);
 
         int lit = 0;
@@ -410,7 +418,7 @@ public partial class MainWindow
         string name = _anon ? MusicTitle.Text : Path.GetFileNameWithoutExtension(path);
         string hint = _anon
             ? "Anonymous Mode: lyrics are kept in memory only and forgotten when you leave."
-            : "Saved next to the song with the same name (.lrc when timed, .txt for plain lyrics).";
+            : "Saved in Tempo's hidden lyrics folder, not next to the song (.lrc when timed, .txt for plain lyrics).";
 
         _lyricsEditor = new LyricsEditorWindow(name, _lyrics?.RawText ?? "", hint,
             () => _player?.Time ?? 0,
@@ -433,17 +441,11 @@ public partial class MainWindow
         {
             try
             {
-                var target = LyricsFiles.SavePathFor(mediaPath, text);
-                File.WriteAllText(target, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-                sourcePath = target;
-
-                // an older file of the other kind would still win when the song is loaded again: remove the one that was showing
-                var old = _lyrics?.SourcePath;
-                if (old != null && !string.Equals(old, target, StringComparison.OrdinalIgnoreCase) && File.Exists(old)) File.Delete(old);
+                sourcePath = LyricsFiles.Save(mediaPath, text);   // the hidden Tempo folder: it also drops the other kind (.lrc / .txt) kept there
             }
             catch (Exception ex)
             {
-                return "Couldn't save next to the song: " + ex.Message;
+                return "Couldn't save the lyrics: " + ex.Message;
             }
         }
 
@@ -513,8 +515,8 @@ public partial class MainWindow
             {
                 try
                 {
-                    File.WriteAllText(Path.ChangeExtension(path, ".lrc"), text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-                    note = " and saved next to the song";
+                    LyricsFiles.Save(path, text);
+                    note = " and saved";
                 }
                 catch (Exception ex)
                 {
@@ -598,7 +600,7 @@ public partial class MainWindow
                 return;
             }
 
-            // same path as pasted lyrics: saved next to the song (.lrc when timed, .txt when plain) and shown straight away
+            // same path as pasted lyrics: saved in the hidden lyrics folder (.lrc when timed, .txt when plain) and shown straight away
             string? error = SaveLyrics(path, found.Text);
             if (error != null)
             {
@@ -608,7 +610,7 @@ public partial class MainWindow
                     ShowLyrics(LyricsParser.Parse(found.Text, null));
                     SetLyricsOpen(true);
                 }
-                Notify("Lyrics found, but they couldn't be saved next to the song");
+                Notify("Lyrics found, but they couldn't be saved");
             }
             else if (!found.Synced)
             {

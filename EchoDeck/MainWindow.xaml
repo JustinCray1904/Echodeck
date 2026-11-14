@@ -495,7 +495,7 @@
                             Background="{DynamicResource RaisedBrush}">
                         <StackPanel>
                             <Grid>
-                                <TextBlock Text="Generating lyrics" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                <TextBlock x:Name="BatchTitleText" Text="Generating lyrics" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextBrush}"/>
                                 <Button Content="✕" HorizontalAlignment="Right" Style="{StaticResource FlatButton}" Background="Transparent"
                                         BorderThickness="0" Padding="6,0" ToolTip="Cancel" Click="BatchCancel_Click"/>
@@ -703,12 +703,14 @@
 
                     <Grid Grid.Row="3">
                         <Border Height="1" VerticalAlignment="Top" Background="{DynamicResource RaisedBrush}"/>
-                        <Rectangle x:Name="LibWatermark" Style="{StaticResource Watermark}" Width="190" Height="190"/>
                         <ListBox x:Name="LibraryList" Style="{StaticResource PlaylistList}"
                                  ItemContainerStyle="{StaticResource TileRowItem}" Margin="0,10,0,0"
                                  HorizontalAlignment="Stretch" MaxWidth="1100"
                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"/>
+                        <!-- an empty page shows the big, faint Tempo mark in the middle with the message under it (like Visual Studio Code's
+                             start screen); as soon as there is something to list, all of it goes away -->
                         <StackPanel x:Name="LibEmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="True">
+                            <Rectangle x:Name="LibWatermark" Style="{StaticResource Watermark}" Width="230" Height="230" Opacity="0.11" Margin="0,0,0,26"/>
                             <TextBlock x:Name="LibEmptyHint" TextWrapping="Wrap" TextAlignment="Center" FontSize="14" MaxWidth="420"
                                        Foreground="{DynamicResource Fg3Brush}" Text="Nothing here yet."/>
                             <Button x:Name="LibEmptyButton" Content="Open a folder" Style="{StaticResource FlatButton}" Margin="0,16,0,0"
@@ -860,7 +862,7 @@
                             </Border>
 
                             <Grid Grid.Row="3">
-                                <Rectangle x:Name="SideWatermark" Style="{StaticResource Watermark}" Width="96" Height="96"/>
+                                <Rectangle x:Name="SideWatermark" Style="{StaticResource Watermark}" Width="130" Height="130" Opacity="0.11" Visibility="Collapsed"/>
                             <ListBox x:Name="SideList" Style="{StaticResource PlaylistList}" VirtualizingPanel.ScrollUnit="Pixel"
                                          ItemContainerStyle="{StaticResource PlaylistItem}" ItemTemplate="{StaticResource SideTpl}"
                                          MouseDoubleClick="SideList_MouseDoubleClick"/>
@@ -958,7 +960,7 @@
 
                                 <!-- the control bar floats here in fullscreen -->
                                 <Border x:Name="FloatingBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
-                                        Margin="40,0,40,30" MaxWidth="1280" CornerRadius="20"
+                                        Margin="60,0,60,22" MaxWidth="880" CornerRadius="16"
                                         Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}"
                                         BorderThickness="1">
                                     <Border.Effect>
@@ -1188,7 +1190,7 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                     <local:VolumeGlyph x:Name="PopupVolumeIcon" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}"/>
                                 </Button>
                                 <Slider x:Name="VolumeSlider" Style="{StaticResource ModernSlider}" Width="150" Margin="10,0,2,0" VerticalAlignment="Center"
-                                        Minimum="0" Maximum="100" Value="80" IsMoveToPointEnabled="True"
+                                        Minimum="0" Maximum="200" Value="80" IsMoveToPointEnabled="True"
                                         ValueChanged="VolumeSlider_ValueChanged"/>
                             </StackPanel>
                         </Border>

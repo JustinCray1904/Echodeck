@@ -63,7 +63,7 @@ public partial class SettingsWindow : Window
 
     private void LoadValues()
     {
-        ThemeCombo.SelectedIndex = (int)_cfg.Theme;
+        ThemeCombo.SelectedIndex = _cfg.Theme == ThemeMode.LiquidGlass ? 0 : (int)_cfg.Theme;   // 0 Dark, 1 Light, 2 System, 3 Midnight, 4 AMOLED
         AccentCombo.SelectedIndex = Math.Clamp(_cfg.AccentIndex, 0, ThemeManager.Accents.Length - 1);
 
         SidebarSwitch.IsChecked = _cfg.ShowSidebarAtStart;

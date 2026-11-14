@@ -237,13 +237,13 @@ public partial class MainWindow
         if (!animate)
         {
             UiAnim.Cancel(SidebarPanel);
-            SidebarPanel.Width = 330;
+            SidebarPanel.Width = SidebarWidth;
             SidebarPanel.Margin = margin;
             SidebarPanel.Opacity = 1;
             SidebarPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
-        UiAnim.SlidePanel(SidebarPanel, show, 330, margin, SmoothPanels, CurtainOn, CurtainOff);
+        UiAnim.SlidePanel(SidebarPanel, show, SidebarWidth, margin, SmoothPanels, CurtainOn, CurtainOff);
     }
 
     // ------------------------------------------------------------------ page content
@@ -759,7 +759,6 @@ public partial class MainWindow
     private void UpdateEmptyState()
     {
         bool empty = _visibleEntries.Count == 0;
-        LibWatermark.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;   // the "nothing here" message has its own icon
         LibEmptyPanel.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         if (!empty) return;
 
@@ -1471,6 +1470,7 @@ public partial class MainWindow
 
         bool empty = _sideItems.Count == 0;
         SideEmptyPanel.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        SideWatermark.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;   // the big faint mark only while there is nothing to list
         SideEmptyHint.Text = text.Length > 0 ? "No matches." : emptyText;
         SideEmptyButton.Content = emptyButton;
         SideEmptyButton.Visibility = text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;

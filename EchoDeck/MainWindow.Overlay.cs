@@ -116,6 +116,9 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ floating bar in fullscreen
 
+    private const double FloatingBarScale = 0.84;
+    private const double FloatingBarHeight = 46;
+
     private void AttachFloatingBar()
     {
         if (ReferenceEquals(FloatingBar.Child, ControlBar)) return;
@@ -126,6 +129,13 @@ public partial class MainWindow
         FloatingBar.Child = ControlBar;
         FloatingBar.Visibility = Visibility.Visible;
         VideoCorners.Radius = 0;
+
+        // a compact bar: shorter, tighter, and its contents scaled down (the scale sits on the inner grid, not on the bar itself,
+        // so the popups above it still find their buttons by plain layout positions)
+        ControlBar.Height = FloatingBarHeight;
+        ControlBar.Padding = new Thickness(12, 0, 12, 0);
+        if (ControlBar.Child is FrameworkElement inner)
+            inner.LayoutTransform = new System.Windows.Media.ScaleTransform(FloatingBarScale, FloatingBarScale);
         RevealFloatingBar();
     }
 
@@ -136,9 +146,14 @@ public partial class MainWindow
 
         FloatingBar.Child = null;
         FloatingBar.Visibility = Visibility.Collapsed;
+
+        ControlBar.Height = 58;
+        ControlBar.Padding = new Thickness(18, 0, 18, 0);
+        if (ControlBar.Child is FrameworkElement inner)
+            inner.LayoutTransform = System.Windows.Media.Transform.Identity;
         VideoSurface.Cursor = Cursors.Arrow;
         MusicLayer.Cursor = Cursors.Arrow;
-        ControlBar.SetResourceReference(Border.BackgroundProperty, "BgBrush");
+        RestoreBarBackground();
         RootGrid.Children.Add(ControlBar);
         Grid.SetRow(ControlBar, 2);
         ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
@@ -270,5 +285,47 @@ public partial class MainWindow
             return true;
         }
         catch { return false; }
+    }
+
+    // ------------------------------------------------------------------ crop (C), like VLC
+
+    private static readonly string[] CropValues = { "", "16:10", "16:9", "4:3", "185:100", "221:100", "235:100", "239:100", "5:3", "5:4", "1:1" };
+    private static readonly string[] CropNames = { "Default", "16:10", "16:9", "4:3", "1.85:1", "2.21:1", "2.35:1", "2.39:1", "5:3", "5:4", "1:1" };
+    private int _cropIndex;
+
+    /// <summary>C: crops the picture to the next ratio (Default, 16:10, 16:9, 4:3 ...), shown on screen. Videos only.</summary>
+    private void CycleCrop()
+    {
+        if (_player is null || !_hasMedia || _currentIsAudio) return;
+
+        int next = (_cropIndex + 1) % CropValues.Length;
+        if (!TrySetCrop(CropValues[next]))
+        {
+            ShowOsd("Crop isn't available in this player build");
+            return;
+        }
+        _cropIndex = next;
+        ShowOsd("Crop: " + CropNames[_cropIndex]);
+    }
+
+    /// <summary>
+    /// libvlc_video_set_crop_geometry through MediaPlayer.CropGeometry, looked up by name so a LibVLCSharp build without it
+    /// can't break the build (the same approach as the equaliser reset).
+    /// </summary>
+    private bool TrySetCrop(string geometry)
+    {
+        if (_player is null) return false;
+        try
+        {
+            var property = typeof(MediaPlayer).GetProperty("CropGeometry");
+            if (property == null || !property.CanWrite) return false;
+            property.SetValue(_player, geometry);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Crop", ex);
+            return false;
+        }
     }
 }

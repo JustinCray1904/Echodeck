@@ -136,12 +136,13 @@ public partial class MainWindow : Window
 
         AppSettings.Changed += OnSettingsChanged;
 
-        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
+        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 200);
         _sidebarVisible = _cfg.ShowSidebarAtStart;
         InitLibrary();
         InitMini();
         InitPopups();
         InitLyrics();
+        InitResponsive();
         ApplyVisualizerStyle();
         ApplyViewMode();
         ApplyRail();
@@ -249,7 +250,7 @@ public partial class MainWindow : Window
         finally { _modalOpen = false; }
 
         ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex);
-        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 100);
+        VolumeSlider.Value = Math.Clamp(_cfg.Volume, 0, 200);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -468,6 +469,7 @@ public partial class MainWindow : Window
         SetPulse(_currentIsAudio);
         EmptyHint.Visibility = Visibility.Collapsed;
         _player.Volume = (int)VolumeSlider.Value;
+        if (_cropIndex > 0) TrySetCrop(CropValues[_cropIndex]);   // a new video starts uncropped: bring the chosen crop back
         _lengthMs = _player.Length;
         if (_lengthMs > 0) DurationText.Text = Fmt(_lengthMs);
 
@@ -571,8 +573,8 @@ public partial class MainWindow : Window
 
     private void ChangeVolume(int delta)
     {
-        VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + delta, 0, 100);
-        ShowOsd("Volume " + (int)VolumeSlider.Value + "%", VolumeSlider.Value / 100.0);
+        VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + delta, 0, 200);   // up to 200 % like VLC (LibVLC accepts 0-200)
+        ShowOsd("Volume " + (int)VolumeSlider.Value + "%", VolumeSlider.Value / 200.0);
     }
 
     private void ToggleMute()
@@ -580,7 +582,7 @@ public partial class MainWindow : Window
         if (_player is null) return;
         _player.Mute = !_player.Mute;
         UpdateVolumeGlyphs(animate: true);
-        ShowOsd(_player.Mute ? "Muted" : "Volume " + (int)VolumeSlider.Value + "%", _player.Mute ? 0.0 : VolumeSlider.Value / 100.0);
+        ShowOsd(_player.Mute ? "Muted" : "Volume " + (int)VolumeSlider.Value + "%", _player.Mute ? 0.0 : VolumeSlider.Value / 200.0);
     }
 
     /// <summary>Controls that need something playing are disabled until there is something to act on.</summary>
@@ -641,6 +643,7 @@ public partial class MainWindow : Window
         var around = CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor"));   // until the cover's colours are known
         Aurora.SetPalette(around, null);
         WindowAurora.SetPalette(around, null);
+        SetAmbientPalette(around);
         OnMusicViewChanged(on);
         if (!on) ClearLyrics();
 
@@ -693,6 +696,7 @@ public partial class MainWindow : Window
         var palette = CoverPalette.From(bmp);
         Aurora.SetPalette(palette, bmp);
         WindowAurora.SetPalette(palette, bmp);
+        SetAmbientPalette(palette);
 
         // the ripples and glow take the colour of the cover
         if (ShellThumbnail.DominantColor(bmp) is { } color)
@@ -1254,7 +1258,7 @@ public partial class MainWindow : Window
     private void UpdateVolumeGlyphs(bool animate)
     {
         if (VolumeIcon is null || PopupVolumeIcon is null || VolumeSlider is null) return;
-        double level = VolumeSlider.Value / 100.0;
+        double level = Math.Min(1.0, VolumeSlider.Value / 100.0);   // the speaker icon is full at 100 %
         bool muted = _player?.Mute ?? false;
         VolumeIcon.SetState(level, muted, animate);
         PopupVolumeIcon.SetState(level, muted, animate);
@@ -1426,6 +1430,7 @@ public partial class MainWindow : Window
             case NativeMethods.VK_F: ToggleFullscreen(); break;
             case NativeMethods.VK_M: ToggleMute(); break;
             case NativeMethods.VK_V: CycleTrack(audio: false); break;
+            case NativeMethods.VK_C: CycleCrop(); break;
             case NativeMethods.VK_A: CycleTrack(audio: true); break;
             case NativeMethods.VK_B: ToggleRail(); break;
             case NativeMethods.VK_Q:
