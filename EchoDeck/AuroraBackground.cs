@@ -11,7 +11,11 @@ namespace EchoDeck;
 /// <summary>The most present vivid colours of a cover picture (what the animated background is made of).</summary>
 internal static class CoverPalette
 {
-    /// <summary>Up to four colours, the most present first. Never empty.</summary>
+    /// <summary>
+    /// Up to four colours of the cover itself, the most present first: black if the cover is black, grey if it is grey, and any colour
+    /// that takes up a real part of it. Colourful pixels count a little more than dull ones, so a small bright accent on a dark cover
+    /// still makes the list (after the dark that dominates it). Never empty.
+    /// </summary>
     internal static List<Color> From(BitmapSource source)
     {
         var found = new List<Color>();
@@ -24,25 +28,21 @@ internal static class CoverPalette
             var px = new byte[stride * h];
             bgra.CopyPixels(px, stride, 0);
 
-            const int bins = 12;
+            // every pixel goes into one of 512 colour boxes (8 steps per channel), black and white included
+            const int bins = 512;
             var weight = new double[bins];
             var sr = new double[bins];
             var sg = new double[bins];
             var sb = new double[bins];
-            double grey = 0;
-            int greyCount = 0;
 
             for (int i = 0; i + 3 < px.Length; i += 4)
             {
                 double b = px[i], g = px[i + 1], r = px[i + 2], a = px[i + 3];
                 if (a < 40) continue;
-                ToHsv(r, g, b, out double hue, out double sat, out double val);
-                grey += val;
-                greyCount++;
-                if (val < 0.16 || (sat < 0.10 && val > 0.80)) continue;   // black and white say nothing about the colours
+                ToHsv(r, g, b, out _, out double sat, out _);
 
-                double wgt = 0.04 + sat * val;
-                int bin = (int)(hue / 30) % bins;
+                double wgt = 1 + 2 * sat;
+                int bin = ((int)r >> 5) * 64 + ((int)g >> 5) * 8 + ((int)b >> 5);
                 weight[bin] += wgt;
                 sr[bin] += r * wgt;
                 sg[bin] += g * wgt;
@@ -51,22 +51,12 @@ internal static class CoverPalette
 
             foreach (int bin in Enumerable.Range(0, bins).OrderByDescending(x => weight[x]))
             {
-                if (weight[bin] <= 0.05) break;
-                double r = sr[bin] / weight[bin], g = sg[bin] / weight[bin], b = sb[bin] / weight[bin];
-                ToHsv(r, g, b, out double hue, out double sat, out double val);
-                var colour = FromHsv(hue, Math.Clamp(sat * 1.1, 0.30, 1.0), Math.Clamp(val, 0.45, 0.95));
+                if (weight[bin] <= 0) break;
+                var colour = Color.FromRgb((byte)Math.Round(sr[bin] / weight[bin]), (byte)Math.Round(sg[bin] / weight[bin]), (byte)Math.Round(sb[bin] / weight[bin]));
 
                 // colours that are nearly the same add nothing
-                if (found.All(c => Distance(c, colour) > 70)) found.Add(colour);
+                if (found.All(c => Distance(c, colour) > 60)) found.Add(colour);
                 if (found.Count == 4) break;
-            }
-
-            if (found.Count == 0)
-            {
-                // a black-and-white cover: soft blue-greys of its own brightness
-                double v = greyCount > 0 ? Math.Clamp(grey / greyCount, 0.35, 0.8) : 0.5;
-                found.Add(FromHsv(220, 0.12, v));
-                found.Add(FromHsv(240, 0.18, v * 0.8));
             }
         }
         catch
@@ -74,15 +64,20 @@ internal static class CoverPalette
             // unreadable picture: the accent-coloured default is used instead
         }
 
-        // fewer than four: variations of the ones found
+        if (found.Count == 0) found.Add(Color.FromRgb(24, 24, 28));
+
+        // fewer than four (a cover of one colour): the same colour, a little lighter or darker, never an invented hue
         int original = found.Count;
         for (int i = 0; original > 0 && found.Count < 4; i++)
         {
-            ToHsv(found[i % original].R, found[i % original].G, found[i % original].B, out double hue, out double sat, out double val);
-            found.Add(FromHsv(hue + (i % 2 == 0 ? 35 : -35), sat, Math.Clamp(val * 0.85, 0.35, 0.95)));
+            var c = found[i % original];
+            found.Add(Mix(c, i % 2 == 0 ? Colors.White : Colors.Black, 0.10));
         }
         return found;
     }
+
+    private static Color Mix(Color a, Color b, double t) => Color.FromRgb(
+        (byte)Math.Round(a.R + (b.R - a.R) * t), (byte)Math.Round(a.G + (b.G - a.G) * t), (byte)Math.Round(a.B + (b.B - a.B) * t));
 
     /// <summary>
     /// The cover as a tiny, already blurred picture (about 48 px, two box blurs). Shown stretched over the window it looks like a
@@ -277,13 +272,14 @@ public sealed class AuroraBackground : Grid
 
         for (int i = 0; i < BlobCount; i++)
         {
-            // the glows are the vivid colours: bright and saturated, so they stand out from the darker base
+            // the glows are the cover's own colours, as they are (black stays black, grey stays grey): nothing is made more vivid
             var c = colours[i % colours.Count];
-            CoverPalette.ToHsv(c.R, c.G, c.B, out double ch, out double cs, out double cv);
-            c = CoverPalette.FromHsv(ch, Math.Max(cs, 0.65), Math.Max(cv, 0.85));
+            CoverPalette.ToHsv(c.R, c.G, c.B, out _, out _, out double cv);
 
-            // a glow has a bright core: the middle of each blob is the colour lightened toward white, fading out to the colour itself
-            var core = Color.FromRgb((byte)(c.R + (255 - c.R) * 0.30), (byte)(c.G + (255 - c.G) * 0.30), (byte)(c.B + (255 - c.B) * 0.30));
+            // a glow has a brighter core: the middle of each blob is the colour lightened a little (less for dark colours, so a
+            // black cover does not turn grey), fading out to the colour itself
+            double lift = 0.30 * (0.35 + 0.65 * cv);
+            var core = Color.FromRgb((byte)(c.R + (255 - c.R) * lift), (byte)(c.G + (255 - c.G) * lift), (byte)(c.B + (255 - c.B) * lift));
             _centreStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xFF, core.R, core.G, core.B), ms) { EasingFunction = ease });
             _midStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xB8, c.R, c.G, c.B), ms) { EasingFunction = ease });
             _edgeStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0x00, c.R, c.G, c.B), ms) { EasingFunction = ease });
@@ -291,7 +287,7 @@ public sealed class AuroraBackground : Grid
 
         // the deep base colour: the first colour, darkened
         CoverPalette.ToHsv(colours[0].R, colours[0].G, colours[0].B, out double hue, out double sat, out double val);
-        var baseColour = CoverPalette.FromHsv(hue, Math.Clamp(sat * 0.95, 0, 1), Math.Clamp(val * 0.42, 0.14, 0.45));
+        var baseColour = CoverPalette.FromHsv(hue, Math.Clamp(sat * 0.95, 0, 1), Math.Clamp(val * 0.55, 0, 0.50));
         if (_base.Fill is SolidColorBrush brush)
             brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(baseColour, ms) { EasingFunction = ease });
 

@@ -68,7 +68,18 @@ public partial class MainWindow
 
     private void UpdateAmbientColours(bool animate)
     {
-        Color seed = _ambientPalette is { Count: > 0 } ? _ambientPalette[0] : (Color)FindResource("AccentColor");
+        // the glass takes its hue from the first colour that really is a colour (the cover's dark or grey parts say nothing about the hue);
+        // a black or grey cover has none, so the glass stays neutral
+        Color seed = (Color)FindResource("AccentColor");
+        if (_ambientPalette is { Count: > 0 })
+        {
+            seed = _ambientPalette[0];
+            foreach (var candidate in _ambientPalette)
+            {
+                CoverPalette.ToHsv(candidate.R, candidate.G, candidate.B, out _, out double s, out double v);
+                if (s > 0.25 && v > 0.20) { seed = candidate; break; }
+            }
+        }
         CoverPalette.ToHsv(seed.R, seed.G, seed.B, out double hue, out double sat, out _);
 
         // the highlight: the cover's own hue, bright and clean; a grey cover gets a soft white. Always light enough to be read on the
@@ -110,7 +121,7 @@ public partial class MainWindow
     {
         foreach (var key in AmbientKeys)
         {
-            if (neutral && IsAccentKey(key)) continue;   // keeps the theme's accent colour
+            if (neutral && (IsAccentKey(key) || key == "TrackBrush")) continue;   // keeps the theme's accent colour and its dark seek-bar track
             if (_ambientColours.TryGetValue(key, out var colour)) resources[key] = Frozen(colour);
         }
     }
