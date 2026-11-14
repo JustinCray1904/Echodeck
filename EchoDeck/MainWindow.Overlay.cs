@@ -116,8 +116,6 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ floating bar in fullscreen
 
-    private const double FloatingBarHeight = 50;
-
     private void AttachFloatingBar()
     {
         if (ReferenceEquals(FloatingBar.Child, ControlBar)) return;
@@ -128,10 +126,6 @@ public partial class MainWindow
         FloatingBar.Child = ControlBar;
         FloatingBar.Visibility = Visibility.Visible;
         VideoCorners.Radius = 0;
-
-        // a compact bar: shorter and tighter, at full size inside (scaling the contents made the text and seek bar soft)
-        ControlBar.Height = FloatingBarHeight;
-        ControlBar.Padding = new Thickness(12, 0, 12, 0);
         RevealFloatingBar();
     }
 
@@ -142,12 +136,9 @@ public partial class MainWindow
 
         FloatingBar.Child = null;
         FloatingBar.Visibility = Visibility.Collapsed;
-
-        ControlBar.Height = 58;
-        ControlBar.Padding = new Thickness(18, 0, 18, 0);
         VideoSurface.Cursor = Cursors.Arrow;
         MusicLayer.Cursor = Cursors.Arrow;
-        RestoreBarBackground();
+        ControlBar.SetResourceReference(Border.BackgroundProperty, "BgBrush");
         RootGrid.Children.Add(ControlBar);
         Grid.SetRow(ControlBar, 2);
         ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
@@ -279,47 +270,5 @@ public partial class MainWindow
             return true;
         }
         catch { return false; }
-    }
-
-    // ------------------------------------------------------------------ crop (C), like VLC
-
-    private static readonly string[] CropValues = { "", "16:10", "16:9", "4:3", "185:100", "221:100", "235:100", "239:100", "5:3", "5:4", "1:1" };
-    private static readonly string[] CropNames = { "Default", "16:10", "16:9", "4:3", "1.85:1", "2.21:1", "2.35:1", "2.39:1", "5:3", "5:4", "1:1" };
-    private int _cropIndex;
-
-    /// <summary>C: crops the picture to the next ratio (Default, 16:10, 16:9, 4:3 ...), shown on screen. Videos only.</summary>
-    private void CycleCrop()
-    {
-        if (_player is null || !_hasMedia || _currentIsAudio) return;
-
-        int next = (_cropIndex + 1) % CropValues.Length;
-        if (!TrySetCrop(CropValues[next]))
-        {
-            ShowOsd("Crop isn't available in this player build");
-            return;
-        }
-        _cropIndex = next;
-        ShowOsd("Crop: " + CropNames[_cropIndex]);
-    }
-
-    /// <summary>
-    /// libvlc_video_set_crop_geometry through MediaPlayer.CropGeometry, looked up by name so a LibVLCSharp build without it
-    /// can't break the build (the same approach as the equaliser reset).
-    /// </summary>
-    private bool TrySetCrop(string geometry)
-    {
-        if (_player is null) return false;
-        try
-        {
-            var property = typeof(MediaPlayer).GetProperty("CropGeometry");
-            if (property == null || !property.CanWrite) return false;
-            property.SetValue(_player, geometry);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            AppLog.Write("Crop", ex);
-            return false;
-        }
     }
 }

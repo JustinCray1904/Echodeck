@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace EchoDeck;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ThemeMode { Dark, Light, System, Midnight, Amoled, LiquidGlass /* retired: only kept so an old settings.json still loads; it becomes Dark */ }
+public enum ThemeMode { Dark, Light, System, LiquidGlass, Midnight, Amoled }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LoopMode { Off, One, All }
@@ -84,9 +84,9 @@ public sealed class AppSettings
     public bool GlobalVolumeKeys { get; set; }            // volume keys change Tempo's volume instead of the system volume
 
     // ---- lyrics
-    public bool AutoLoadLyrics { get; set; } = true;      // lyrics from the hidden Tempo lyrics folder (or an .lrc / .txt next to the song)
+    public bool AutoLoadLyrics { get; set; } = true;      // .lrc / .txt next to the song with the same name
     public bool LyricsOpen { get; set; }                  // lyrics panel is open in the music view
-    public bool SaveGeneratedLyrics { get; set; } = true; // keep AI-generated lyrics in the hidden Tempo lyrics folder
+    public bool SaveGeneratedLyrics { get; set; } = true; // write AI-generated lyrics next to the song as .lrc
     public string WhisperExePath { get; set; } = "";      // whisper.cpp command line program (whisper-cli.exe)
     public string WhisperModelPath { get; set; } = "";    // ggml model, for example ggml-base.en.bin
     public string WhisperLanguage { get; set; } = "auto"; // auto, en, es, fr ...
@@ -119,7 +119,6 @@ public sealed class AppSettings
         {
             if (File.Exists(FilePath))
                 Current = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
-            if (Current.Theme == ThemeMode.LiquidGlass) Current.Theme = ThemeMode.Dark;   // the Liquid Glass theme was removed
         }
         catch
         {

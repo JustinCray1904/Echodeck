@@ -164,62 +164,11 @@ internal static class LyricsParser
 
 internal static class LyricsFiles
 {
-    /// <summary>
-    /// %LOCALAPPDATA%\Tempo\Lyrics: lyrics Tempo finds, generates or saves are kept here (hidden), so the music folders stay clean.
-    /// Each file is named after the song plus a short hash of the song's full path, so two songs with the same name in different
-    /// folders never share lyrics.
-    /// </summary>
-    public static string StoreDir => Path.Combine(AppPaths.DataDir, "Lyrics");
-
-    private static string StoreBaseName(string mediaPath)
-    {
-        string stem = Path.GetFileNameWithoutExtension(mediaPath) ?? "";
-        var invalid = Path.GetInvalidFileNameChars();
-        var clean = new string(stem.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c).ToArray()).Trim(' ', '.');
-        if (clean.Length > 80) clean = clean.Substring(0, 80).TrimEnd(' ', '.');
-        if (clean.Length == 0) clean = "song";
-
-        string full;
-        try { full = Path.GetFullPath(mediaPath); } catch { full = mediaPath; }
-        var hash = System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(full.ToLowerInvariant()));
-        return clean + "." + Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
-    }
-
-    public static bool IsInStore(string? path)
-    {
-        if (string.IsNullOrEmpty(path)) return false;
-        try
-        {
-            var dir = Path.GetDirectoryName(Path.GetFullPath(path));
-            return dir != null && string.Equals(dir.TrimEnd('\\', '/'), Path.GetFullPath(StoreDir).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
-        }
-        catch { return false; }
-    }
-
-    /// <summary>Makes sure the hidden lyrics folder exists.</summary>
-    private static void EnsureStore()
-    {
-        var dir = StoreDir;
-        if (Directory.Exists(dir)) return;
-        var info = Directory.CreateDirectory(dir);
-        try { info.Attributes |= FileAttributes.Hidden; } catch { /* a hidden flag is only cosmetic */ }
-    }
-
-    /// <summary>
-    /// The lyrics of this song: the hidden Tempo folder first (.lrc preferred over .txt), then, for lyrics made by earlier
-    /// versions or by hand, a .lrc / .txt with exactly the same name next to the song. Null when there are none.
-    /// </summary>
+    /// <summary>The .lrc (preferred) or .txt next to the media file with exactly the same name, or null.</summary>
     public static string? Find(string mediaPath)
     {
         try
         {
-            var baseName = StoreBaseName(mediaPath);
-            foreach (var ext in new[] { ".lrc", ".txt" })
-            {
-                var stored = Path.Combine(StoreDir, baseName + ext);
-                if (File.Exists(stored)) return stored;
-            }
-
             var dir = Path.GetDirectoryName(mediaPath);
             if (string.IsNullOrEmpty(dir)) return null;
             var stem = Path.GetFileNameWithoutExtension(mediaPath);
@@ -257,22 +206,8 @@ internal static class LyricsFiles
         }
     }
 
-    /// <summary>Path where lyrics for this song are saved: the hidden Tempo folder (.lrc when timed, otherwise .txt).</summary>
+    /// <summary>Path where lyrics for this song are saved (.lrc when timed, otherwise .txt).</summary>
     public static string SavePathFor(string mediaPath, string text) =>
-        Path.Combine(StoreDir, StoreBaseName(mediaPath) + (LyricsParser.HasTimestamps(text) ? ".lrc" : ".txt"));
-
-    /// <summary>
-    /// Saves the lyrics into the hidden folder and returns the file written. The other kind (.lrc / .txt) for the same song is
-    /// removed from the hidden folder, so the new one is what gets loaded next time. Files next to the song are never touched.
-    /// </summary>
-    public static string Save(string mediaPath, string text)
-    {
-        EnsureStore();
-        var target = SavePathFor(mediaPath, text);
-        File.WriteAllText(target, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-
-        var other = Path.ChangeExtension(target, string.Equals(Path.GetExtension(target), ".lrc", StringComparison.OrdinalIgnoreCase) ? ".txt" : ".lrc");
-        try { if (File.Exists(other)) File.Delete(other); } catch { /* leave it */ }
-        return target;
-    }
+        Path.Combine(Path.GetDirectoryName(mediaPath) ?? "", Path.GetFileNameWithoutExtension(mediaPath) +
+                     (LyricsParser.HasTimestamps(text) ? ".lrc" : ".txt"));
 }

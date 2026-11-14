@@ -350,6 +350,8 @@ public partial class MainWindow
     /// </summary>
     private bool _ambience;
 
+    private static readonly Brush GlassRail = FrozenBrush(Color.FromArgb(0x2C, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush GlassBar = FrozenBrush(Color.FromArgb(0x38, 0x00, 0x00, 0x00));
     private static readonly Brush MusicVeil = FrozenBrush(Color.FromArgb(0x1C, 0x00, 0x00, 0x00));
 
     private static Brush FrozenBrush(Color c)
@@ -361,10 +363,8 @@ public partial class MainWindow
 
     /// <summary>
     /// While a song's music view is showing, its colours fill the whole window (dark themes): the side bar, the queue and the
-    /// bottom bar become dark glass in the cover's hue over them instead of flat panels that looked like part of another app,
-    /// and their text, hover, selection, highlight and icon colours are taken from the cover too (MainWindow.Ambience.cs), so
-    /// they stay readable on any cover. Light themes keep the colours behind the music view only (white text on a light window
-    /// would not be readable).
+    /// bottom bar become translucent glass over them instead of flat panels that looked like part of another app. Light themes
+    /// keep the colours behind the music view only (white text on a light window would not be readable).
     /// </summary>
     private void SyncAmbience()
     {
@@ -373,25 +373,14 @@ public partial class MainWindow
 
         WindowAurora.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         Aurora.Visibility = music && !on ? Visibility.Visible : Visibility.Collapsed;
-
-        // the music view itself (its buttons, text and hover colours) always sits on the cover's colours
-        SetAmbientSkin(MusicLayer, music);
-
-        // the video area is black behind a video; behind a song it must let the window's colours through, or the music view
-        // showed a flat black rectangle in the middle of the coloured window
-        VideoHost.Background = on ? Brushes.Transparent : Brushes.Black;
-
         if (on == _ambience) return;
         _ambience = on;
 
-        SetAmbientSkin(Rail, on);
-        SetAmbientSkin(SidebarPanel, on);
-        SetAmbientSkin(ControlBar, on);
-        SetAmbientSkin(TopBar, on);
-
         if (on)
         {
-            ApplyTints(animate: false);
+            Rail.Background = GlassRail;
+            SidebarPanel.Background = GlassRail;
+            ControlBar.Background = GlassBar;
             TopBar.Background = Brushes.Transparent;
             MusicLayer.Background = MusicVeil;
         }
@@ -399,7 +388,7 @@ public partial class MainWindow
         {
             Rail.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PanelBrush");
             SidebarPanel.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PanelBrush");
-            if (!_isFullscreen) ControlBar.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "BgBrush");
+            ControlBar.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "BgBrush");
             TopBar.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "BgBrush");
             MusicLayer.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PanelBrush");
         }

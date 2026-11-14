@@ -121,14 +121,6 @@ public sealed class WaveformBar : FrameworkElement
         Scrubbing?.Invoke(_progress);
     }
 
-    protected override void OnLostMouseCapture(MouseEventArgs e)
-    {
-        base.OnLostMouseCapture(e);
-        if (!_dragging) return;   // a normal release already finished the drag
-        _dragging = false;
-        SeekCommitted?.Invoke(_progress);
-    }
-
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
