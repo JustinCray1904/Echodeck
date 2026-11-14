@@ -182,14 +182,17 @@ public partial class MainWindow
     }
 
     /// <summary>Gives a right-click menu the music view's look: the cover's hue as its (opaque) background, and the adaptive text and highlight colours.</summary>
-    private void SkinMenu(ContextMenu menu)
+    private void SkinMenu(ContextMenu menu) => SkinResources(menu.Resources);
+
+    /// <summary>Puts the cover's colours (and an opaque cover-hued panel) into a menu's resources while the music view is showing.</summary>
+    private void SkinResources(ResourceDictionary resources)
     {
         if (!(_currentIsAudio && !_libraryVisible && MusicPanel.Visibility == Visibility.Visible)) return;
         try
         {
             if (_ambientColours.Count == 0) UpdateAmbientColours(animate: false);
-            PutAmbientResources(menu.Resources);
-            menu.Resources["PanelBrush"] = Frozen(_menuColour);
+            PutAmbientResources(resources);
+            resources["PanelBrush"] = Frozen(_menuColour);
         }
         catch (Exception ex) { AppLog.Write("Menu colours", ex); }
     }

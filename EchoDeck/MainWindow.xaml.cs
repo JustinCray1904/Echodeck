@@ -157,6 +157,7 @@ public partial class MainWindow : Window
         InitPopups();
         InitLyrics();
         InitResponsive();
+        ApplyHideUi();
         ApplyVisualizerStyle();
         ApplyViewMode();
         ApplyRail();
@@ -316,6 +317,8 @@ public partial class MainWindow : Window
         SeekBar.InvalidateVisual();
         VideoCorners.InvalidateVisual();
         ApplyViewMode();
+        ApplyHideUi();
+        if (_lyricsOpen) ApplyLyricFocus(_lyricIndex);   // the word-by-word setting may have changed
         ApplyGlobalKeys();
         ApplyVisualizerStyle();
 
@@ -340,7 +343,8 @@ public partial class MainWindow : Window
         _libraryVisible = on;
         if (on) UiAnim.FadeIn(LibraryView, 170);
         else { UiAnim.Cancel(LibraryView); LibraryView.Opacity = 1; LibraryView.Visibility = Visibility.Collapsed; }
-        if (!_isFullscreen) ControlBar.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        ApplyHideUi();
+        if (!ChromeHidden) ControlBar.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
 
         // Expanded rail (icons + labels) in the library, icon-only next to a playing video.
         ApplyRail();
@@ -711,9 +715,13 @@ public partial class MainWindow : Window
 
         try
         {
+            // the bar fills in while the song is read: the parts that are ready are shown at once
+            Action<float[]> partial = peaks =>
+                Dispatcher.InvokeAsync(() => { if (!cts.IsCancellationRequested) WaveBar.Peaks = peaks; }, DispatcherPriority.Background);
+
             var analysis = vaultStream != null
-                ? await WaveformLoader.FromStreamAsync(vaultStream, cts.Token)
-                : await WaveformLoader.FromFileAsync(path, cts.Token);
+                ? await WaveformLoader.FromStreamAsync(vaultStream, cts.Token, partial)
+                : await WaveformLoader.FromFileAsync(path, cts.Token, partial);
             if (!cts.IsCancellationRequested)
             {
                 WaveBar.Peaks = analysis?.Peaks;
@@ -915,6 +923,7 @@ public partial class MainWindow : Window
             menu.Items.Add(MenuEntry("Video settings", "IcoSettings", (_, _) => OpenQuick(QTabVideo, forceOpen: true)));
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Fullscreen", "IcoFullscreen", Fullscreen_Click, "F"));
+            menu.Items.Add(MenuEntry(_cfg.HideInterface ? "Show interface" : "Hide interface", "IcoCursor", (_, _) => ToggleHideUi(), "H"));
             menu.Items.Add(MenuEntry("Back to library", "IcoHome", (_, _) => ShowLibrary(true), "Backspace"));
         }
         else
@@ -933,8 +942,10 @@ public partial class MainWindow : Window
             menu.Items.Add(MenuEntry("Settings", "IcoSettings", AllSettings_Click, "Ctrl+,"));
         }
 
+        if (menu.Items.Count == 0) return;
+        if (ShowFastMenu(menu)) return;   // appears at once (no fade); the real menu is only the fallback
         SkinMenu(menu);
-        if (menu.Items.Count > 0) menu.IsOpen = true;
+        menu.IsOpen = true;
     }
 
     private void About_Click(object sender, RoutedEventArgs e)
@@ -1265,18 +1276,22 @@ public partial class MainWindow : Window
     /// <summary>Fullscreen shows only the video: title bar, nav, panels and control bar are all hidden.</summary>
     private void SetChromeVisible(bool visible)
     {
+        visible &= !_uiHidden;   // the interface stays hidden after leaving fullscreen if it was hidden before
         var v = visible ? Visibility.Visible : Visibility.Collapsed;
         TopBar.Visibility = v;
         ApplyRail(animate: false);
         if (visible) ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
+        else if (!_isFullscreen) ControlBar.Visibility = Visibility.Collapsed;
         ApplySidebar(animate: false);
         if (!visible) ClosePopup(QuickPopup, animate: false);
         ContentGrid.Margin = visible ? new Thickness(8, 0, 8, 8) : new Thickness(0);
 
         if (_chrome != null)
         {
-            _chrome.CaptionHeight = visible ? 40 : 0;
-            _chrome.ResizeBorderThickness = visible ? new Thickness(6) : new Thickness(0);
+            // hidden interface in a window (not fullscreen): a thin invisible strip at the top still drags the window, the edges still resize
+            bool windowed = _uiHidden && !_isFullscreen;
+            _chrome.CaptionHeight = visible ? 40 : (windowed ? 14 : 0);
+            _chrome.ResizeBorderThickness = visible || windowed ? new Thickness(6) : new Thickness(0);
         }
     }
 
@@ -1480,6 +1495,9 @@ public partial class MainWindow : Window
             case NativeMethods.VK_M: ToggleMute(); break;
             case NativeMethods.VK_V: CycleTrack(audio: false); break;
             case NativeMethods.VK_C: CycleCrop(); break;
+            case NativeMethods.VK_H: ToggleHideUi(); break;
+            case NativeMethods.VK_OEM_4: NudgeLyricOffset(-100); break;
+            case NativeMethods.VK_OEM_6: NudgeLyricOffset(+100); break;
             case NativeMethods.VK_A: CycleTrack(audio: true); break;
             case NativeMethods.VK_B: ToggleRail(); break;
             case NativeMethods.VK_Q:

@@ -118,6 +118,14 @@
                             </StackPanel>
                             <CheckBox x:Name="SidebarSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Hide the interface while playing"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Only the music view or the video is shown: no title bar, side bars or controls. Press H, or use the right-click menu, to bring them back."/>
+                            </StackPanel>
+                            <CheckBox x:Name="HideUiSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
         <Grid Margin="0,0,0,16">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel Margin="0,0,24,0">
@@ -498,6 +506,14 @@
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="AI-generated lyrics are kept in Tempo's hidden lyrics folder (not next to the song), so they load by themselves next time."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsSaveSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Light up words one by one"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Off: the whole line being sung is highlighted. On: its words light up in turn (an estimate, so it can drift on songs with timing for lines only)."/>
+                            </StackPanel>
+                            <CheckBox x:Name="LyricsWordsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
                         <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
                         <TextBlock Text="AI lyrics (Whisper, runs on this PC)" Style="{StaticResource SectionTitle}"/>

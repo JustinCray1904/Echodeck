@@ -26,6 +26,9 @@ internal static class NativeMethods
     public const int VK_B = 0x42;
     public const int VK_C = 0x43;
     public const int VK_F = 0x46;
+    public const int VK_H = 0x48;
+    public const int VK_OEM_4 = 0xDB;   // [
+    public const int VK_OEM_6 = 0xDD;   // ]
     public const int VK_L = 0x4C;
     public const int VK_M = 0x4D;
     public const int VK_O = 0x4F;

@@ -150,7 +150,7 @@ public partial class MainWindow
         RestoreBarBackground();
         RootGrid.Children.Add(ControlBar);
         Grid.SetRow(ControlBar, 2);
-        ControlBar.Visibility = _libraryVisible ? Visibility.Collapsed : Visibility.Visible;
+        ControlBar.Visibility = _libraryVisible || _uiHidden ? Visibility.Collapsed : Visibility.Visible;
         VideoCorners.Radius = 14;
     }
 
@@ -321,5 +321,29 @@ public partial class MainWindow
             AppLog.Write("Crop", ex);
             return false;
         }
+    }
+
+    // ------------------------------------------------------------------ hide the interface (H)
+
+    private bool _uiHidden;
+
+    /// <summary>Fullscreen or "hide interface": only the music view / video is shown.</summary>
+    private bool ChromeHidden => _isFullscreen || _uiHidden;
+
+    private void ToggleHideUi()
+    {
+        if (_libraryVisible) return;
+        _cfg.HideInterface = !_cfg.HideInterface;
+        if (_anon) ApplyHideUi();   // Anonymous Mode writes nothing to disk
+        else _cfg.Save();           // also applies it, through OnSettingsChanged
+    }
+
+    /// <summary>The setting means "hide it while playing": the library pages always keep their navigation.</summary>
+    private void ApplyHideUi()
+    {
+        bool want = _cfg.HideInterface && !_libraryVisible;
+        if (want == _uiHidden) return;
+        _uiHidden = want;
+        SetChromeVisible(!(_isFullscreen || _uiHidden));
     }
 }

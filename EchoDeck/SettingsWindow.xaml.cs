@@ -91,6 +91,8 @@ public partial class SettingsWindow : Window
         AssocSwitch.IsChecked = FileAssociations.IsRegistered();
         LyricsAutoSwitch.IsChecked = _cfg.AutoLoadLyrics;
         LyricsSaveSwitch.IsChecked = _cfg.SaveGeneratedLyrics;
+        LyricsWordsSwitch.IsChecked = _cfg.LyricsWordByWord;
+        HideUiSwitch.IsChecked = _cfg.HideInterface;
         VisualizerCombo.SelectedIndex = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
         HwModeCombo.SelectedIndex = Math.Max(0, Array.IndexOf(HwModes, _cfg.HardwareMode));
         HwModeCombo.IsEnabled = _cfg.HardwareDecoding;
@@ -335,6 +337,8 @@ public partial class SettingsWindow : Window
             case nameof(TaskbarSwitch): _cfg.TaskbarControls = on; break;
             case nameof(LyricsAutoSwitch): _cfg.AutoLoadLyrics = on; break;
             case nameof(LyricsSaveSwitch): _cfg.SaveGeneratedLyrics = on; break;
+            case nameof(LyricsWordsSwitch): _cfg.LyricsWordByWord = on; break;
+            case nameof(HideUiSwitch): _cfg.HideInterface = on; break;
             case nameof(AssocSwitch): ToggleAssociation(box, on); return;
             default: return;
         }

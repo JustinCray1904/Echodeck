@@ -118,6 +118,8 @@ public partial class MainWindow
     {
         _lyricsMediaPath = isAudio ? path : null;
         _lyricClockValid = false;   // a new song: the lyrics clock starts again from the player's time
+        _lyricOffsetMs = LyricsOffsets.Get(isAudio ? path : null);
+        UpdateLyricOffsetUi();
         UpdateLyricsBusyVisibility();
 
         if (!isAudio)
@@ -248,9 +250,30 @@ public partial class MainWindow
     /// <summary>The player's own time report (it can be a little old by the time it gets here).</summary>
     private void UpdateLyrics(long timeMs) => UpdateLyricsCore(IngestLyricTime(timeMs, allowSnap: false));
 
+    // ---- per-song timing nudge (positive = the lyrics show later)
+
+    private int _lyricOffsetMs;
+
+    private void NudgeLyricOffset(int deltaMs)
+    {
+        if (!_lyricsOpen || _lyricsMediaPath == null) return;
+        _lyricOffsetMs = Math.Clamp(_lyricOffsetMs + deltaMs, -5000, 5000);
+        LyricsOffsets.Set(_lyricsMediaPath, _lyricOffsetMs, save: !_anon);   // Anonymous Mode keeps it in memory only
+        UpdateLyricOffsetUi();
+        SyncLyricsNow();
+    }
+
+    private void UpdateLyricOffsetUi() =>
+        LyricsOffsetText.Text = _lyricOffsetMs == 0 ? "Sync" : (_lyricOffsetMs > 0 ? "+" : "−") + (Math.Abs(_lyricOffsetMs) / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s";
+
+    private void LyricsEarlier_Click(object sender, RoutedEventArgs e) => NudgeLyricOffset(-100);
+
+    private void LyricsLater_Click(object sender, RoutedEventArgs e) => NudgeLyricOffset(+100);
+
     private void UpdateLyricsCore(long timeMs)
     {
         if (!_lyricsOpen || _lyrics is not { Synced: true } || _lyricLines.Count == 0) return;
+        timeMs -= _lyricOffsetMs;   // a line shows later when the offset is positive
 
         int idx = FindLyricIndex(timeMs);   // exactly on the timestamp: the earlier +120 ms lead made every line appear before it was sung
         if (idx != _lyricIndex)
@@ -327,6 +350,9 @@ public partial class MainWindow
     /// <summary>The active line is split into words, so they can light up as they are sung.</summary>
     private void PrepareWords(LyricLine line, TextBlock text)
     {
+        // by default the whole line being sung is simply bright; the words only light up one by one if the setting is on
+        if (!_cfg.LyricsWordByWord) return;
+
         _wordBlock = text;
         _wordsLit = -1;
         _words.Clear();

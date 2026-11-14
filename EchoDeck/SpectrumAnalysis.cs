@@ -38,6 +38,7 @@ internal sealed class SpectrumBuilder
     private readonly List<float> _db = new();
     private int _ringPos;
     private long _monoCount;
+    private int _sinceFrame;
     private int _frames;
 
     public SpectrumBuilder(int sampleRate)
@@ -65,16 +66,20 @@ internal sealed class SpectrumBuilder
     public void Push(float sample)
     {
         _ring[_ringPos] = sample;
-        _ringPos = (_ringPos + 1) % N;
+        _ringPos = (_ringPos + 1) & (N - 1);   // N is a power of two: a mask instead of a division for every sample
         _monoCount++;
-        if (_monoCount >= N && _monoCount % _hop == 0) AnalyseFrame();
+        if (++_sinceFrame >= _hop)
+        {
+            _sinceFrame = 0;
+            if (_monoCount >= N) AnalyseFrame();
+        }
     }
 
     private void AnalyseFrame()
     {
         for (int i = 0; i < N; i++)
         {
-            _re[i] = _ring[(_ringPos + i) % N] * _window[i];   // oldest sample first
+            _re[i] = _ring[(_ringPos + i) & (N - 1)] * _window[i];   // oldest sample first
             _im[i] = 0;
         }
         Fft(_re, _im);

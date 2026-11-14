@@ -197,7 +197,7 @@ public partial class MainWindow
     private void ApplyRail(bool animate = true)
     {
         // On the library pages the side bar is always there; only next to the player can it be collapsed.
-        bool collapsed = (_railHidden && !_libraryVisible) || _isFullscreen;
+        bool collapsed = (_railHidden && !_libraryVisible) || ChromeHidden;
         TopSidebarToggle.IsEnabled = !_libraryVisible;
         TopSidebarToggle.IsChecked = !(_railHidden && !_libraryVisible);
 
@@ -232,7 +232,7 @@ public partial class MainWindow
     /// <summary>The queue / playlists panel next to the player: slides open and shut.</summary>
     private void ApplySidebar(bool animate = true)
     {
-        bool show = _sidebarVisible && !_isFullscreen && !_libraryVisible;
+        bool show = _sidebarVisible && !ChromeHidden && !_libraryVisible;
         var margin = new Thickness(0, 0, 8, 0);
         if (!animate)
         {

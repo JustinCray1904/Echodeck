@@ -276,3 +276,45 @@ internal static class LyricsFiles
         return target;
     }
 }
+
+/// <summary>A per-song nudge of the lyrics timing (milliseconds, positive = later), kept in %LOCALAPPDATA%\Tempo\lyric-offsets.json.</summary>
+internal static class LyricsOffsets
+{
+    private static Dictionary<string, int>? _map;
+
+    private static string FilePath => Path.Combine(AppPaths.DataDir, "lyric-offsets.json");
+
+    private static Dictionary<string, int> Map()
+    {
+        if (_map != null) return _map;
+        try
+        {
+            _map = File.Exists(FilePath)
+                ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(FilePath)) ?? new()
+                : new();
+        }
+        catch { _map = new(); }
+        return _map;
+    }
+
+    private static string Key(string path)
+    {
+        try { return Path.GetFullPath(path).ToLowerInvariant(); }
+        catch { return path.ToLowerInvariant(); }
+    }
+
+    public static int Get(string? path) => path != null && Map().TryGetValue(Key(path), out var ms) ? ms : 0;
+
+    public static void Set(string path, int ms, bool save)
+    {
+        var map = Map();
+        if (ms == 0) map.Remove(Key(path)); else map[Key(path)] = ms;
+        if (!save) return;
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+            File.WriteAllText(FilePath, System.Text.Json.JsonSerializer.Serialize(map));
+        }
+        catch { /* the nudge just isn't remembered */ }
+    }
+}

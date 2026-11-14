@@ -1036,6 +1036,12 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                             </Grid.RowDefinitions>
                                             <Grid Margin="4,0,8,0">
                                                 <WrapPanel HorizontalAlignment="Right">
+                                                    <Button Content="−" Style="{StaticResource GlassButton}" Margin="0,0,2,6" MinWidth="26"
+                                                            ToolTip="Show the lyrics 0.1 s earlier  ( [ )" Click="LyricsEarlier_Click"/>
+                                                    <TextBlock x:Name="LyricsOffsetText" Text="Sync" FontSize="12" FontWeight="SemiBold" Foreground="#C8FFFFFF"
+                                                               MinWidth="36" TextAlignment="Center" VerticalAlignment="Center" Margin="2,0,2,6"/>
+                                                    <Button Content="+" Style="{StaticResource GlassButton}" Margin="2,0,10,6" MinWidth="26"
+                                                            ToolTip="Show the lyrics 0.1 s later  ( ] )" Click="LyricsLater_Click"/>
                                                     <Button Content="Edit" Style="{StaticResource GlassButton}" Margin="0,0,6,6" Click="LyricsEdit_Click"/>
                                                     <Button x:Name="LyricsOnlineButton" Content="Find online" Style="{StaticResource GlassButton}" Margin="0,0,6,6"
                                                             ToolTip="Look the song up at lrclib.net (only its title, artist and length are sent)" Click="LyricsOnline_Click"/>

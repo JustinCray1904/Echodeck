@@ -200,7 +200,7 @@ internal static class CoverPalette
 /// </summary>
 public sealed class AuroraBackground : Grid
 {
-    private const int BlobCount = 4;
+    private const int BlobCount = 6;
 
     private readonly Rectangle _base = new() { Fill = new SolidColorBrush(Color.FromRgb(16, 18, 30)) };
     private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.38, Visibility = Visibility.Collapsed };
@@ -215,11 +215,16 @@ public sealed class AuroraBackground : Grid
     private readonly GradientStop[] _edgeStops = new GradientStop[BlobCount];
     private readonly TranslateTransform[] _moves = new TranslateTransform[BlobCount];
     private readonly ScaleTransform[] _scales = new ScaleTransform[BlobCount];
+    private readonly RotateTransform[] _spins = new RotateTransform[BlobCount];
     private bool _moving;
 
-    private static readonly (double X, double Y)[] Anchors = { (0.06, 0.10), (0.88, 0.06), (0.10, 0.92), (0.92, 0.86) };
-    private static readonly double[] MoveSeconds = { 11, 15, 13, 17 };
-    private static readonly double[] BreatheSeconds = { 8, 11, 9, 12 };
+    // six smaller blobs, spread over the window; each one drifts, stretches and turns on its own timing, so together they flow like a liquid
+    private static readonly (double X, double Y)[] Anchors = { (0.15, 0.20), (0.82, 0.16), (0.50, 0.52), (0.18, 0.84), (0.84, 0.80), (0.60, 0.10) };
+    private static readonly double[] MoveSecondsX = { 7.0, 9.5, 8.0, 10.5, 6.5, 8.8 };
+    private static readonly double[] MoveSecondsY = { 9.0, 6.8, 11.0, 7.4, 9.6, 7.9 };
+    private static readonly double[] StretchSecondsX = { 4.6, 5.8, 4.1, 6.3, 5.2, 4.8 };
+    private static readonly double[] StretchSecondsY = { 6.1, 4.4, 5.5, 4.9, 6.6, 5.0 };
+    private static readonly double[] SpinSeconds = { 13, 17, 11, 15, 19, 12 };
 
     public AuroraBackground()
     {
@@ -244,8 +249,10 @@ public sealed class AuroraBackground : Grid
 
             _moves[i] = new TranslateTransform();
             _scales[i] = new ScaleTransform(1, 1);
+            _spins[i] = new RotateTransform(0);
             var group = new TransformGroup();
             group.Children.Add(_scales[i]);
+            group.Children.Add(_spins[i]);
             group.Children.Add(_moves[i]);
 
             _blobs[i] = new Ellipse { Fill = glow, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = group, IsHitTestVisible = false };
@@ -301,7 +308,7 @@ public sealed class AuroraBackground : Grid
         double w = ActualWidth, h = ActualHeight;
         if (w <= 0 || h <= 0) return;
 
-        double size = Math.Max(360, Math.Max(w, h) * 0.95);
+        double size = Math.Max(240, Math.Max(w, h) * 0.46);
         for (int i = 0; i < BlobCount; i++)
         {
             _blobs[i].Width = size;
@@ -328,18 +335,22 @@ public sealed class AuroraBackground : Grid
 
         for (int i = 0; i < BlobCount; i++)
         {
-            double dx = w * (i % 2 == 0 ? 0.42 : -0.42), dy = h * (i < 2 ? 0.40 : -0.40);
+            // wide sweeps across the window (different timing on each axis, so the paths loop and curve instead of going back and forth)
+            double dx = w * (i % 2 == 0 ? 0.34 : -0.34), dy = h * (i % 3 == 0 ? 0.36 : -0.36);
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
 
-            _moves[i].BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-dx, dx, TimeSpan.FromSeconds(MoveSeconds[i]))
+            _moves[i].BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-dx, dx, TimeSpan.FromSeconds(MoveSecondsX[i]))
                 { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
-            _moves[i].BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(dy, -dy, TimeSpan.FromSeconds(MoveSeconds[(i + 2) % BlobCount] * 0.9))
+            _moves[i].BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(dy, -dy, TimeSpan.FromSeconds(MoveSecondsY[i]))
                 { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
 
-            var breathe = new DoubleAnimation(0.65, 1.45, TimeSpan.FromSeconds(BreatheSeconds[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate();
-            _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
-            _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, breathe);
+            // the blob stretches one way while it squashes the other, and turns slowly: this is what makes it look like a liquid
+            _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.7, 1.55, TimeSpan.FromSeconds(StretchSecondsX[i]))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
+            _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.45, 0.65, TimeSpan.FromSeconds(StretchSecondsY[i]))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
+            _spins[i].BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(i % 2 == 0 ? 0 : 360, i % 2 == 0 ? 360 : 0, TimeSpan.FromSeconds(SpinSeconds[i]))
+                { RepeatBehavior = RepeatBehavior.Forever }.AtLowRate());
         }
     }
 
@@ -352,16 +363,17 @@ public sealed class AuroraBackground : Grid
             _moves[i].BeginAnimation(TranslateTransform.YProperty, null);
             _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            _spins[i].BeginAnimation(RotateTransform.AngleProperty, null);
         }
     }
 }
 
 internal static class AnimationRate
 {
-    /// <summary>The slow background drift is drawn 24 times a second: nobody sees the difference, the graphics card does the work half as often.</summary>
+    /// <summary>The background motion is drawn 30 times a second (not 60): the graphics card does half the work and it still looks smooth.</summary>
     internal static DoubleAnimation AtLowRate(this DoubleAnimation animation)
     {
-        Timeline.SetDesiredFrameRate(animation, 24);
+        Timeline.SetDesiredFrameRate(animation, 30);
         return animation;
     }
 }

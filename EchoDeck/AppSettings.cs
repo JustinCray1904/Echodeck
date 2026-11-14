@@ -84,6 +84,8 @@ public sealed class AppSettings
     public bool GlobalVolumeKeys { get; set; }            // volume keys change Tempo's volume instead of the system volume
 
     // ---- lyrics
+    public bool LyricsWordByWord { get; set; }            // light up the sung line word by word (off: the whole line is highlighted)
+    public bool HideInterface { get; set; }               // hide the title bar, side bar and controls while playing (H, or the right-click menu)
     public bool AutoLoadLyrics { get; set; } = true;      // lyrics from the hidden Tempo lyrics folder (or an .lrc / .txt next to the song)
     public bool LyricsOpen { get; set; }                  // lyrics panel is open in the music view
     public bool SaveGeneratedLyrics { get; set; } = true; // keep AI-generated lyrics in the hidden Tempo lyrics folder

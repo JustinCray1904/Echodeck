@@ -17,33 +17,35 @@ internal static class WaveformLoader
     // seeking inside VBR mp3 files is slower than just reading). Longer mixes use evenly spaced seeks instead.
     private static readonly TimeSpan SequentialLimit = TimeSpan.FromMinutes(25);
 
-    public static Task<AudioAnalysis?> FromFileAsync(string path, CancellationToken ct) =>
+    public static Task<AudioAnalysis?> FromFileAsync(string path, CancellationToken ct, Action<float[]>? partial = null) =>
         Task.Run<AudioAnalysis?>(() =>
         {
             try
             {
                 using var reader = new MediaFoundationReader(path);
-                return Analyze(reader, ct);
+                return Analyze(reader, ct, partial);
             }
             catch (OperationCanceledException) { throw; }
             catch { return null; }
         }, ct);
 
     /// <summary>For Anonymous Mode: reads from its own decrypting stream, so nothing touches the disk.</summary>
-    public static Task<AudioAnalysis?> FromStreamAsync(Stream stream, CancellationToken ct) =>
+    public static Task<AudioAnalysis?> FromStreamAsync(Stream stream, CancellationToken ct, Action<float[]>? partial = null) =>
         Task.Run<AudioAnalysis?>(() =>
         {
             try
             {
                 using (stream)
                 using (var reader = new StreamMediaFoundationReader(stream))
-                    return Analyze(reader, ct);
+                    return Analyze(reader, ct, partial);
             }
             catch (OperationCanceledException) { throw; }
             catch { return null; }
         }, ct);
 
-    private static AudioAnalysis? Analyze(WaveStream reader, CancellationToken ct)
+    /// <param name="partial">Called now and then while the song is read, with the part of the waveform that is ready (the rest is flat),
+    /// so the bar fills in as it loads instead of staying empty until the very end.</param>
+    private static AudioAnalysis? Analyze(WaveStream reader, CancellationToken ct, Action<float[]>? partial = null)
     {
         var total = reader.TotalTime;
         if (total.TotalSeconds < 1) return null;
@@ -63,6 +65,10 @@ internal static class WaveformLoader
 
             long perBucket = Math.Max(1, (long)(total.TotalSeconds * reader.WaveFormat.SampleRate) * reader.WaveFormat.Channels / Buckets);
             long index = 0;
+            long nextBoundary = perBucket;   // the first sample of the next bucket (no division per sample)
+            int b = 0;
+            int reported = 0;
+            float runningMax = 0;
             int read;
             while ((read = samples.Read(buffer, 0, buffer.Length)) > 0)
             {
@@ -70,7 +76,7 @@ internal static class WaveformLoader
                 for (int k = 0; k < read; k++)
                 {
                     float v = Math.Abs(buffer[k]);
-                    int b = (int)Math.Min(Buckets - 1, index / perBucket);
+                    while (index >= nextBoundary && b < Buckets - 1) { b++; nextBoundary += perBucket; }
                     if (v > peaks[b]) peaks[b] = v;
                     index++;
 
@@ -80,6 +86,20 @@ internal static class WaveformLoader
                         spectrum.Push(mix / channels);
                         mix = 0;
                         mixCount = 0;
+                    }
+                }
+
+                // show what is ready so far (about 15 times while loading)
+                if (partial != null && b - reported >= Buckets / 15)
+                {
+                    reported = b;
+                    runningMax = 0;
+                    for (int i = 0; i < b; i++) if (peaks[i] > runningMax) runningMax = peaks[i];
+                    if (runningMax > 0.0001f)
+                    {
+                        var shown = new float[Buckets];
+                        for (int i = 0; i < b; i++) shown[i] = (float)Math.Pow(peaks[i] / runningMax, 0.8);
+                        partial(shown);
                     }
                 }
             }
