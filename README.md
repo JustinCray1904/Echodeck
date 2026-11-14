@@ -26,15 +26,15 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - "Recent" in Anonymous Mode lives in memory only and is wiped on exit. Files imported by earlier builds have no stored details (shown as Unknown artist / album); import them again to add them.
 
 ## Lyrics, keys and Windows integration
-- **Lyrics**: the Lyrics button in the music view loads the song's lyrics from the hidden `%LOCALAPPDATA%\Tempo\Lyrics` folder (or, for older files, a `.lrc` / `.txt` with the song's exact name next to it). New lyrics are never written into your music folders. The line being sung glows and the list glides to it; double-click a line to jump there. **Edit** opens the editor: paste text, press *Stamp line* (Ctrl+Enter) as each line starts, nudge all times, save.
+- **Lyrics**: the Lyrics button in the music view loads a `.lrc` (timed, preferred) or `.txt` with the song's exact file name from the same folder. The line being sung glows and the list glides to it; double-click a line to jump there. **Edit** opens the editor: paste text, press *Stamp line* (Ctrl+Enter) as each line starts, nudge all times, save.
 - **AI lyrics** (optional, offline): put whisper.cpp's `whisper-cli.exe` and a `ggml-*.bin` model in `%LOCALAPPDATA%\Tempo\whisper` (or choose them in Settings > Lyrics), then *Generate with AI*. Nothing leaves the PC. Not available in Anonymous Mode.
 - **System-wide keys**: the keyboard's media keys (and Ctrl+Alt+Space / arrows) control Tempo while it is minimised. Volume keys can optionally control Tempo's volume.
 - **Taskbar**: Previous / Play-Pause / Next in the taskbar preview and progress on the taskbar icon (off in Anonymous Mode).
 - **Default player**: Settings > General > "Open media files with Tempo" registers the common formats for the current user.
-- **Shortcuts**: C crops the video (Default, 16:10, 16:9, 4:3 ...), volume goes up to 200 %, B shows / hides the side bar next to the player (the pages keep theirs), A cycles the audio track.
+- **Shortcuts**: B shows / hides the side bar next to the player (the pages keep theirs), A cycles the audio track.
 
 ## Look and layout
-- **Themes**: Dark, Light, System, plus **Midnight** and **AMOLED Black**. While a song plays, the side bar, queue and bottom bar become dark glass in the cover's hue, and their text, hover, selection and icon colours adapt to the cover so they stay readable.
+- **Themes**: Dark, Light, System, plus **Liquid Glass** (translucent panels over a colour wash), **Midnight** and **AMOLED Black**.
 - **Visualiser**: Ripples, Radial bars or Wave ring, with *intensity* and *sensitivity* sliders in Settings > Interface. The whole visualiser always fits: the cover, rings and title scale down together in a small window.
 - **Small player**: drag it by its grip or title; it snaps to the left (inside the side bar) or the right and remembers which. Previous / Next appear over its video on hover. It has no right-click menu.
 - **Panels** (side bar, queue / playlists) slide the video area open and shut. For the instant the video's native window is resized it is covered by a curtain, so no flash, squeeze or black strip shows; key-mashing is ignored while a panel is moving. *Settings > Interface > Smooth panel resizing* turns the slide off (the layout then changes in one step with a fade).
@@ -43,7 +43,7 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 ## Lyrics generation
 - **Download Whisper for me** (Settings > Lyrics): choose a model with its speed and accuracy shown, and Tempo fetches it plus the whisper.cpp program.
 - **Cloud (optional)**: any OpenAI-compatible service (OpenAI, Groq ...). Off by default; the song's audio is uploaded only when you press Generate, and the API key is stored encrypted for your Windows account.
-- **Batch**: tick songs, More > Generate lyrics. It runs in the background at low priority; a card in the side bar shows "Song n of N" and progress, and each result is saved in the hidden lyrics folder. **More > Find lyrics online** does the same for all ticked songs using lrclib.net (only title, artist, album and length are sent).
+- **Batch**: tick songs, More > Generate lyrics. It runs in the background at low priority; a card in the side bar shows "Song n of N" and progress, and each result is saved next to its song as `.lrc`.
 
 ## Handled problems
 Things Tempo recovers from by itself (an unusable Whisper model, a blocked registry write, a visualiser hiccup) are written to `%LOCALAPPDATA%\Tempo\tempo.log`. `crash.log` stays reserved for real crashes.
