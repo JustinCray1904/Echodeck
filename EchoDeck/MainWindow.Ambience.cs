@@ -19,41 +19,34 @@ public partial class MainWindow
         "AccentBrush", "AccentHoverBrush", "AccentMidBrush", "AccentDimBrush", "AccentSoftBrush", "OnAccentBrush",
     };
 
-    // One brush object per key, kept for the whole run: elements refer to them through DynamicResource, so animating a brush's
-    // colour recolours everything that uses it, smoothly, without looking any resource up again.
-    private readonly Dictionary<string, SolidColorBrush> _ambient = new();
-    private readonly SolidColorBrush _railTint = new(Color.FromArgb(0x8C, 0x10, 0x10, 0x14));
-    private readonly SolidColorBrush _barTint = new(Color.FromArgb(0x99, 0x10, 0x10, 0x14));
+    // Brushes are never changed after they are made: WPF freezes some of them (the "Cannot animate ... because the object is sealed
+    // or frozen" crash), so a new colour means new, frozen brushes put into the resources, not a colour animation on an old one.
+    private readonly Dictionary<string, Color> _ambientColours = new();
+    private readonly HashSet<FrameworkElement> _skinned = new();
+    private Color _railColour = Color.FromArgb(0x8C, 0x10, 0x10, 0x14);
+    private Color _barColour = Color.FromArgb(0x99, 0x10, 0x10, 0x14);
+    private Color _menuColour = Color.FromRgb(0x16, 0x14, 0x1A);
     private IReadOnlyList<Color>? _ambientPalette;
 
-    private SolidColorBrush AmbientBrush(string key)
+    private static SolidColorBrush Frozen(Color c)
     {
-        if (!_ambient.TryGetValue(key, out var brush))
-        {
-            brush = new SolidColorBrush(Colors.White);
-            _ambient[key] = brush;
-        }
+        var brush = new SolidColorBrush(c);
+        brush.Freeze();
         return brush;
-    }
-
-    private static void FadeTo(SolidColorBrush brush, Color target, bool animate)
-    {
-        if (brush.Color == target && !brush.HasAnimatedProperties) return;
-        if (!animate)
-        {
-            brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
-            brush.Color = target;
-            return;
-        }
-        brush.BeginAnimation(SolidColorBrush.ColorProperty,
-            new ColorAnimation(target, TimeSpan.FromMilliseconds(900)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
     }
 
     /// <summary>The cover's colours changed (a new song, or its picture arrived).</summary>
     private void SetAmbientPalette(IReadOnlyList<Color> palette)
     {
-        _ambientPalette = palette;
-        UpdateAmbientColours(animate: true);
+        try
+        {
+            _ambientPalette = palette;
+            UpdateAmbientColours(animate: true);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Ambient colours", ex);   // the colours are decoration: never let them crash the player
+        }
     }
 
     private static Color Mix(Color a, Color b, double t) => Color.FromRgb(
@@ -85,26 +78,60 @@ public partial class MainWindow
 
         Color onAccent = RelativeLuminance(accent) > 0.40 ? Color.FromRgb(0x0B, 0x13, 0x20) : Colors.White;
 
-        void Set(string key, Color c) => FadeTo(AmbientBrush(key), c, animate);
-
-        Set("TextBrush", Color.FromRgb(0xF4, 0xF4, 0xF6));
-        Set("Fg1Brush", Color.FromArgb(0xDC, 0xFF, 0xFF, 0xFF));
-        Set("MutedBrush", Color.FromArgb(0xC4, 0xFF, 0xFF, 0xFF));
-        Set("Fg3Brush", Color.FromArgb(0x96, 0xFF, 0xFF, 0xFF));
-        Set("RaisedBrush", Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));    // hover and cards: a soft lift of light
-        Set("SlateBrush", Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
-        Set("TrackBrush", Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
-        Set("AccentBrush", accent);
-        Set("AccentHoverBrush", Mix(accent, Colors.White, 0.28));
-        Set("AccentMidBrush", Mix(accent, Colors.Black, 0.30));
-        Set("AccentDimBrush", Color.FromArgb(0x5C, accent.R, accent.G, accent.B));    // selected row / pressed
-        Set("AccentSoftBrush", Color.FromArgb(0x3A, accent.R, accent.G, accent.B));   // bundles, the song that is playing
-        Set("OnAccentBrush", onAccent);
+        _ambientColours["TextBrush"] = Color.FromRgb(0xF4, 0xF4, 0xF6);
+        _ambientColours["Fg1Brush"] = Color.FromArgb(0xDC, 0xFF, 0xFF, 0xFF);
+        _ambientColours["MutedBrush"] = Color.FromArgb(0xC4, 0xFF, 0xFF, 0xFF);
+        _ambientColours["Fg3Brush"] = Color.FromArgb(0x96, 0xFF, 0xFF, 0xFF);
+        _ambientColours["RaisedBrush"] = Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF);    // hover and cards: a soft lift of light
+        _ambientColours["SlateBrush"] = Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF);
+        _ambientColours["TrackBrush"] = Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF);
+        _ambientColours["AccentBrush"] = accent;
+        _ambientColours["AccentHoverBrush"] = Mix(accent, Colors.White, 0.28);
+        _ambientColours["AccentMidBrush"] = Mix(accent, Colors.Black, 0.30);
+        _ambientColours["AccentDimBrush"] = Color.FromArgb(0x5C, accent.R, accent.G, accent.B);    // selected row / pressed
+        _ambientColours["AccentSoftBrush"] = Color.FromArgb(0x3A, accent.R, accent.G, accent.B);   // bundles, the song that is playing
+        _ambientColours["OnAccentBrush"] = onAccent;
 
         // the side bar, queue and bottom bar: a dark glass in the cover's hue, so white text always has the contrast it needs
         Color tint = CoverPalette.FromHsv(hue, grey ? 0.0 : Math.Min(sat, 0.70), 0.09);
-        FadeTo(_railTint, Color.FromArgb(0x8C, tint.R, tint.G, tint.B), animate);
-        FadeTo(_barTint, Color.FromArgb(0x99, tint.R, tint.G, tint.B), animate);
+        _railColour = Color.FromArgb(0x8C, tint.R, tint.G, tint.B);
+        _barColour = Color.FromArgb(0x99, tint.R, tint.G, tint.B);
+        // menus are opaque (a translucent popup window would show the desktop through it): the same hue, a little lighter
+        _menuColour = CoverPalette.FromHsv(hue, grey ? 0.0 : Math.Min(sat, 0.55), 0.16);
+
+        foreach (var el in _skinned) PutAmbientResources(el.Resources);
+        ApplyTints(animate);
+    }
+
+    private void PutAmbientResources(ResourceDictionary resources)
+    {
+        foreach (var key in AmbientKeys)
+            if (_ambientColours.TryGetValue(key, out var colour)) resources[key] = Frozen(colour);
+    }
+
+    /// <summary>The glass behind the side bar, queue and bottom bar (only while the cover's colours fill the window).</summary>
+    private void ApplyTints(bool animate)
+    {
+        if (!_ambience) return;
+        SetTint(Rail, _railColour, animate);
+        SetTint(SidebarPanel, _railColour, animate);
+        if (!_isFullscreen) SetTint(ControlBar, _barColour, animate);
+    }
+
+    private static void SetTint(Border el, Color target, bool animate)
+    {
+        var from = (el.Background as SolidColorBrush)?.Color;
+        if (!animate || from == null || from.Value == target)
+        {
+            el.Background = Frozen(target);
+            return;
+        }
+
+        // a fresh brush that nobody else shares: safe to animate
+        var live = new SolidColorBrush(from.Value);
+        el.Background = live;
+        live.BeginAnimation(SolidColorBrush.ColorProperty,
+            new ColorAnimation(target, TimeSpan.FromMilliseconds(900)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
     }
 
     /// <summary>
@@ -113,16 +140,19 @@ public partial class MainWindow
     /// </summary>
     private void SetAmbientSkin(FrameworkElement el, bool apply)
     {
-        bool has = el.Resources.Contains("TextBrush");
+        bool has = _skinned.Contains(el);
         if (apply == has) return;
 
         if (apply)
         {
-            foreach (var key in AmbientKeys) el.Resources[key] = AmbientBrush(key);
+            if (_ambientColours.Count == 0) UpdateAmbientColours(animate: false);
+            _skinned.Add(el);
+            PutAmbientResources(el.Resources);
             el.SetResourceReference(TextElement.ForegroundProperty, "TextBrush");
         }
         else
         {
+            _skinned.Remove(el);
             foreach (var key in AmbientKeys) el.Resources.Remove(key);
             el.ClearValue(TextElement.ForegroundProperty);
         }
@@ -132,10 +162,23 @@ public partial class MainWindow
         WaveBar.InvalidateVisual();
     }
 
+    /// <summary>Gives a right-click menu the music view's look: the cover's hue as its (opaque) background, and the adaptive text and highlight colours.</summary>
+    private void SkinMenu(ContextMenu menu)
+    {
+        if (!(_currentIsAudio && !_libraryVisible && MusicPanel.Visibility == Visibility.Visible)) return;
+        try
+        {
+            if (_ambientColours.Count == 0) UpdateAmbientColours(animate: false);
+            PutAmbientResources(menu.Resources);
+            menu.Resources["PanelBrush"] = Frozen(_menuColour);
+        }
+        catch (Exception ex) { AppLog.Write("Menu colours", ex); }
+    }
+
     /// <summary>The bottom bar's background after the floating bar goes away: the glass while a song's colours fill the window, else the theme's.</summary>
     private void RestoreBarBackground()
     {
-        if (_ambience) ControlBar.Background = _barTint;
+        if (_ambience) ControlBar.Background = Frozen(_barColour);
         else ControlBar.SetResourceReference(Border.BackgroundProperty, "BgBrush");
     }
 

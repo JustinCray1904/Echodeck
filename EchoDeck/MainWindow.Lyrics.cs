@@ -116,6 +116,7 @@ public partial class MainWindow
     private async void LoadLyricsFor(string path, bool isAudio)
     {
         _lyricsMediaPath = isAudio ? path : null;
+        _lyricClockValid = false;   // a new song: the lyrics clock starts again from the player's time
         UpdateLyricsBusyVisibility();
 
         if (!isAudio)
@@ -188,8 +189,46 @@ public partial class MainWindow
     }
 
     private DispatcherTimer? _lyricTimer;
-    private long _lyricRefMs;
-    private long _lyricRefTicks;
+
+    // ---- the lyrics clock
+    // LibVLC reports the song's time only a few times a second, and each report is already a little old when it is read. Using the
+    // reports directly made the highlight jump ahead and fall behind. Instead the lyrics run on their own clock (the system's
+    // stopwatch) that is kept in step with the reports: a report is never ahead of the truth, only behind it, so the clock follows the
+    // highest value it has been given (the freshest report) and lets go of it very slowly. A jump of more than 0.6 s (a seek, or
+    // playing again after a pause) puts the clock straight on the report.
+    private double _lyricClockOffset;
+    private bool _lyricClockValid;
+
+    private static double NowMs() => Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
+
+    private long IngestLyricTime(long reported, bool allowSnap)
+    {
+        double now = NowMs();
+        double target = reported - now;
+        double estimate = now + _lyricClockOffset;
+
+        if (!_lyricClockValid || (allowSnap && Math.Abs(reported - estimate) > 600))
+        {
+            _lyricClockOffset = target;
+            _lyricClockValid = true;
+        }
+        else if (target > _lyricClockOffset) _lyricClockOffset = target;
+        else _lyricClockOffset -= 0.25;
+
+        return Math.Max(0, (long)(now + _lyricClockOffset));
+    }
+
+    /// <summary>A seek happened (the bar, the arrow keys, a double-clicked line): the lyrics jump there and follow again.</summary>
+    private void OnSeeked(long ms)
+    {
+        _lyricManualUntil = DateTime.MinValue;
+        _lyricClockOffset = ms - NowMs();
+        _lyricClockValid = true;
+        if (!_lyricsOpen || _lyrics is not { Synced: true }) return;
+
+        UpdateLyricsCore(ms);
+        if (_lyricIndex >= 0) ScrollToLyric(_lyricIndex, immediate: false);
+    }
 
     private DispatcherTimer EnsureLyricTimer()
     {
@@ -198,30 +237,15 @@ public partial class MainWindow
             _lyricTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
             _lyricTimer.Tick += (_, _) =>
             {
-                // the player reports the time a few times a second; between two reports the clock runs on by itself, so the
-                // words light up smoothly instead of in jumps
-                if (_player is not { IsPlaying: true }) return;
-
-                long reported = _player.Time;
-                if (reported != _lyricRefMs)
-                {
-                    _lyricRefMs = reported;
-                    _lyricRefTicks = Stopwatch.GetTimestamp();
-                }
-                double elapsed = (Stopwatch.GetTimestamp() - _lyricRefTicks) * 1000.0 / Stopwatch.Frequency;
-                UpdateLyricsCore(_lyricRefMs + (long)Math.Min(elapsed, 250));
+                if (_player is not { IsPlaying: true }) { _lyricClockValid = false; return; }
+                UpdateLyricsCore(IngestLyricTime(_player.Time, allowSnap: true));
             };
         }
         return _lyricTimer;
     }
 
-    /// <summary>Highlights the line being sung and glides the list to it. Called from the player's time updates.</summary>
-    private void UpdateLyrics(long timeMs)
-    {
-        _lyricRefMs = timeMs;
-        _lyricRefTicks = Stopwatch.GetTimestamp();
-        UpdateLyricsCore(timeMs);
-    }
+    /// <summary>The player's own time report (it can be a little old by the time it gets here).</summary>
+    private void UpdateLyrics(long timeMs) => UpdateLyricsCore(IngestLyricTime(timeMs, allowSnap: false));
 
     private void UpdateLyricsCore(long timeMs)
     {
@@ -344,7 +368,9 @@ public partial class MainWindow
 
     private void SyncLyricsNow()
     {
-        if (_player != null) UpdateLyrics(_player.Time);
+        if (_player == null) return;
+        _lyricClockValid = false;
+        UpdateLyricsCore(IngestLyricTime(_player.Time, allowSnap: true));
     }
 
     private int FindLyricIndex(long timeMs)
@@ -394,7 +420,7 @@ public partial class MainWindow
         if (e.OriginalSource is FrameworkElement { DataContext: LyricLine line } && line.TimeMs >= 0 && _player != null && _hasMedia)
         {
             _player.Time = line.TimeMs;
-            _lyricManualUntil = DateTime.MinValue;
+            OnSeeked(line.TimeMs);
         }
     }
 

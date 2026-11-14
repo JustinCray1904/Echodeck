@@ -88,11 +88,25 @@ public partial class MainWindow : Window
         {
             bar.Scrubbing += frac =>
             {
-                if (_lengthMs > 0) TimeText.Text = Fmt((long)(frac * _lengthMs));
+                if (_lengthMs <= 0) return;
+                long ms = (long)(frac * _lengthMs);
+                TimeText.Text = Fmt(ms);
+
+                // the song follows the handle while it is dragged (about every 150 ms), like VLC
+                if (_player != null && _hasMedia && Environment.TickCount64 - _lastScrubSeek > 150)
+                {
+                    _lastScrubSeek = Environment.TickCount64;
+                    _player.Time = ms;
+                    OnSeeked(ms);
+                }
             };
             bar.SeekCommitted += frac =>
             {
-                if (_player != null && _hasMedia && _lengthMs > 0) _player.Time = (long)(frac * _lengthMs);
+                if (_player == null || !_hasMedia || _lengthMs <= 0) return;
+                long ms = (long)(frac * _lengthMs);
+                if (_playbackEnded) { _playbackEnded = false; RestartCurrent(); return; }
+                _player.Time = ms;
+                OnSeeked(ms);
             };
         }
 
@@ -447,9 +461,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private long _lastScrubSeek;
+    private bool _playbackEnded;   // the song / video played to its end and nothing followed: Play must start it again
+
+    /// <summary>Plays the current item from the start again (LibVLC does not restart a finished item with a plain Play).</summary>
+    private async void RestartCurrent()
+    {
+        var player = _player;
+        if (player is null) return;
+        try
+        {
+            if (!_anon && _queueIndex >= 0 && _queueIndex < _queue.Count)
+            {
+                PlayNormal(_queue[_queueIndex].FullPath, stayInLibrary: _libraryVisible);
+                return;
+            }
+            await Task.Run(() => player.Stop());
+            player.Play();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Restart", ex);
+        }
+    }
+
     private void TogglePlayPause()
     {
         if (_player is null) return;
+
+        if (_playbackEnded && _hasMedia)
+        {
+            _playbackEnded = false;
+            RestartCurrent();
+            return;
+        }
 
         if (!_hasMedia)
         {
@@ -465,6 +510,7 @@ public partial class MainWindow : Window
     {
         if (_player is null) return;
         _errorSkips = 0;
+        _playbackEnded = false;
         SetPlayGlyph(true);
         SetPulse(_currentIsAudio);
         EmptyHint.Visibility = Visibility.Collapsed;
@@ -567,7 +613,9 @@ public partial class MainWindow : Window
     private void SeekBy(int seconds)
     {
         if (_player is null || !_hasMedia || _lengthMs <= 0) return;
-        _player.Time = Math.Clamp(_player.Time + seconds * 1000L, 0, _lengthMs);
+        long target = Math.Clamp(_player.Time + seconds * 1000L, 0, _lengthMs);
+        _player.Time = target;
+        OnSeeked(target);
         ShowOsd((seconds > 0 ? "+" : "") + seconds + " s");
     }
 
@@ -885,6 +933,7 @@ public partial class MainWindow : Window
             menu.Items.Add(MenuEntry("Settings", "IcoSettings", AllSettings_Click, "Ctrl+,"));
         }
 
+        SkinMenu(menu);
         if (menu.Items.Count > 0) menu.IsOpen = true;
     }
 

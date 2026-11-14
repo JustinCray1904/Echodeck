@@ -116,8 +116,7 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ floating bar in fullscreen
 
-    private const double FloatingBarScale = 0.84;
-    private const double FloatingBarHeight = 46;
+    private const double FloatingBarHeight = 50;
 
     private void AttachFloatingBar()
     {
@@ -130,12 +129,9 @@ public partial class MainWindow
         FloatingBar.Visibility = Visibility.Visible;
         VideoCorners.Radius = 0;
 
-        // a compact bar: shorter, tighter, and its contents scaled down (the scale sits on the inner grid, not on the bar itself,
-        // so the popups above it still find their buttons by plain layout positions)
+        // a compact bar: shorter and tighter, at full size inside (scaling the contents made the text and seek bar soft)
         ControlBar.Height = FloatingBarHeight;
         ControlBar.Padding = new Thickness(12, 0, 12, 0);
-        if (ControlBar.Child is FrameworkElement inner)
-            inner.LayoutTransform = new System.Windows.Media.ScaleTransform(FloatingBarScale, FloatingBarScale);
         RevealFloatingBar();
     }
 
@@ -149,8 +145,6 @@ public partial class MainWindow
 
         ControlBar.Height = 58;
         ControlBar.Padding = new Thickness(18, 0, 18, 0);
-        if (ControlBar.Child is FrameworkElement inner)
-            inner.LayoutTransform = System.Windows.Media.Transform.Identity;
         VideoSurface.Cursor = Cursors.Arrow;
         MusicLayer.Cursor = Cursors.Arrow;
         RestoreBarBackground();

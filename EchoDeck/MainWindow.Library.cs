@@ -1625,6 +1625,7 @@ public partial class MainWindow
         if (_resumePath != null) { ResumeStore.Remove(_resumePath); _resumePath = null; }
         HideResumePrompt(animate: false);
         ResetTransport();
+        _playbackEnded = true;   // cleared again as soon as something starts playing
 
         if (_cfg.Loop == LoopMode.One && _queueIndex >= 0 && _queueIndex < _queue.Count)
         {

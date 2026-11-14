@@ -1150,15 +1150,15 @@
     <!-- Small translucent buttons for the music view (they sit on the cover-coloured background, so they don't follow the theme) -->
     <Style x:Key="GlassButton" TargetType="Button">
         <Setter Property="Foreground" Value="White"/>
-        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontSize" Value="12"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Padding" Value="11,4"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Chrome" CornerRadius="10" Background="#2EFFFFFF" Padding="{TemplateBinding Padding}">
+                    <Border x:Name="Chrome" CornerRadius="9" Background="#2EFFFFFF" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>

@@ -960,7 +960,7 @@
 
                                 <!-- the control bar floats here in fullscreen -->
                                 <Border x:Name="FloatingBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
-                                        Margin="60,0,60,22" MaxWidth="880" CornerRadius="16"
+                                        Margin="60,0,60,22" MaxWidth="980" CornerRadius="16" UseLayoutRounding="True" SnapsToDevicePixels="True"
                                         Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource SlateBrush}"
                                         BorderThickness="1">
                                     <Border.Effect>
@@ -1023,18 +1023,18 @@
 
                                     <!-- lyrics button + panel -->
                                     <Button x:Name="LyricsToggle" Grid.ColumnSpan="2" Content="Lyrics" Style="{StaticResource FlatButton}"
-                                            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="22,20,0,0" Padding="14,7"
+                                            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="22,16,0,0" Padding="12,5"
                                             Click="LyricsToggle_Click"/>
 
                                     <Grid x:Name="LyricsHost" Grid.Column="1" ClipToBounds="True">
-<Border x:Name="LyricsPanel" HorizontalAlignment="Left" Margin="0,70,28,28" Visibility="Collapsed"
+<Border x:Name="LyricsPanel" HorizontalAlignment="Left" Margin="0,46,28,28" Visibility="Collapsed"
 CornerRadius="18" Padding="4" Background="Transparent">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
-                                            <Grid Margin="4,6,8,0">
+                                            <Grid Margin="4,0,8,0">
                                                 <WrapPanel HorizontalAlignment="Right">
                                                     <Button Content="Edit" Style="{StaticResource GlassButton}" Margin="0,0,6,6" Click="LyricsEdit_Click"/>
                                                     <Button x:Name="LyricsOnlineButton" Content="Find online" Style="{StaticResource GlassButton}" Margin="0,0,6,6"

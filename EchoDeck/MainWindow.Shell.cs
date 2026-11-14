@@ -391,9 +391,7 @@ public partial class MainWindow
 
         if (on)
         {
-            Rail.Background = _railTint;
-            SidebarPanel.Background = _railTint;
-            if (!_isFullscreen) ControlBar.Background = _barTint;
+            ApplyTints(animate: false);
             TopBar.Background = Brushes.Transparent;
             MusicLayer.Background = MusicVeil;
         }
