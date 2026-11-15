@@ -91,7 +91,7 @@ public partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        if (entry.Icon is UIElement icon)
+        if (entry.Icon is FrameworkElement icon)
         {
             entry.Icon = null;   // an element can only live in one place
             icon.VerticalAlignment = VerticalAlignment.Center;
