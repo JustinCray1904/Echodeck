@@ -195,36 +195,40 @@ internal static class CoverPalette
 }
 
 /// <summary>
-/// The background of the music view: the cover blurred into soft colour, with four large glows (in the cover's own colours) that
-/// drift and breathe slowly, under a dark veil that keeps the text readable. Colours change smoothly from one song to the next.
+/// The background of the music view: a flowing, liquid blend of the cover's own colours (like Apple Music's), under a dark veil that
+/// keeps the text readable. Six colour points wander across the window while the picture they colour is warped by slow waves, so the
+/// colours swirl into each other instead of sliding around as separate shapes. The blend is calculated at a tiny size (96 x 54 pixels)
+/// and stretched smoothly over the window: it costs almost nothing and needs no graphics-card features. Colours change smoothly from
+/// one song to the next.
 /// </summary>
 public sealed class AuroraBackground : Grid
 {
-    private const int BlobCount = 6;
+    private const int W = 96, H = 54, Points = 6;
 
     private readonly Rectangle _base = new() { Fill = new SolidColorBrush(Color.FromRgb(16, 18, 30)) };
-    private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.38, Visibility = Visibility.Collapsed };
+    private readonly Image _cover = new() { Stretch = Stretch.UniformToFill, Opacity = 0.20, Visibility = Visibility.Collapsed };
+    private readonly Image _fluid = new() { Stretch = Stretch.Fill, IsHitTestVisible = false };
     private readonly Rectangle _veil = new() { IsHitTestVisible = false };
 
-    // a computer that draws everything in software (no graphics card acceleration) gets still colours instead of motion
-    private static readonly bool Accelerated = (RenderCapability.Tier >> 16) >= 1;
-    private readonly Canvas _canvas = new() { IsHitTestVisible = false };
-    private readonly Ellipse[] _blobs = new Ellipse[BlobCount];
-    private readonly GradientStop[] _centreStops = new GradientStop[BlobCount];
-    private readonly GradientStop[] _midStops = new GradientStop[BlobCount];
-    private readonly GradientStop[] _edgeStops = new GradientStop[BlobCount];
-    private readonly TranslateTransform[] _moves = new TranslateTransform[BlobCount];
-    private readonly ScaleTransform[] _scales = new ScaleTransform[BlobCount];
-    private readonly RotateTransform[] _spins = new RotateTransform[BlobCount];
-    private bool _moving;
+    private readonly WriteableBitmap _bitmap = new(W, H, 96, 96, PixelFormats.Bgra32, null);
+    private readonly int[] _pixels = new int[W * H];
+    private readonly double[] _current = new double[Points * 3];   // the colours shown now (r, g, b per point)
+    private readonly double[] _target = new double[Points * 3];   // the colours they are fading to
+    private readonly double[] _sx = new double[W];
+    private readonly double[] _sy = new double[H];
+    private bool _hasColours;
+    private bool _dirty = true;
+    private double _time;
+    private long _lastTicks;
 
-    // six smaller blobs, spread over the window; each one drifts, stretches and turns on its own timing, so together they flow like a liquid
-    private static readonly (double X, double Y)[] Anchors = { (0.15, 0.20), (0.82, 0.16), (0.50, 0.52), (0.18, 0.84), (0.84, 0.80), (0.60, 0.10) };
-    private static readonly double[] MoveSecondsX = { 7.0, 9.5, 8.0, 10.5, 6.5, 8.8 };
-    private static readonly double[] MoveSecondsY = { 9.0, 6.8, 11.0, 7.4, 9.6, 7.9 };
-    private static readonly double[] StretchSecondsX = { 4.6, 5.8, 4.1, 6.3, 5.2, 4.8 };
-    private static readonly double[] StretchSecondsY = { 6.1, 4.4, 5.5, 4.9, 6.6, 5.0 };
-    private static readonly double[] SpinSeconds = { 13, 17, 11, 15, 19, 12 };
+    private readonly System.Windows.Threading.DispatcherTimer _timer = new(System.Windows.Threading.DispatcherPriority.Render)
+        { Interval = TimeSpan.FromMilliseconds(33) };
+
+    // how fast each colour point wanders along its own path (different on each axis, so the paths loop and curve)
+    private static readonly double[] SpeedX = { 0.21, 0.17, 0.26, 0.19, 0.23, 0.15 };
+    private static readonly double[] SpeedY = { 0.18, 0.25, 0.16, 0.22, 0.14, 0.27 };
+    private static readonly double[] PhaseX = { 0.0, 1.9, 3.7, 5.1, 2.6, 4.4 };
+    private static readonly double[] PhaseY = { 2.2, 0.4, 4.9, 1.3, 3.3, 5.8 };
 
     public AuroraBackground()
     {
@@ -232,41 +236,29 @@ public sealed class AuroraBackground : Grid
         ClipToBounds = true;
 
         RenderOptions.SetBitmapScalingMode(_cover, BitmapScalingMode.HighQuality);
+        RenderOptions.SetBitmapScalingMode(_fluid, BitmapScalingMode.HighQuality);   // smooth when stretched
+        _fluid.Source = _bitmap;
 
         Children.Add(_base);
         Children.Add(_cover);
-        Children.Add(_canvas);
-
-        for (int i = 0; i < BlobCount; i++)
-        {
-            _centreStops[i] = new GradientStop(Color.FromArgb(0xFF, 120, 130, 190), 0.0);
-            _edgeStops[i] = new GradientStop(Color.FromArgb(0x00, 90, 100, 160), 1.0);
-            _midStops[i] = new GradientStop(Color.FromArgb(0xB4, 90, 100, 160), 0.50);
-            var glow = new RadialGradientBrush { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5), RadiusX = 0.5, RadiusY = 0.5 };
-            glow.GradientStops.Add(_centreStops[i]);
-            glow.GradientStops.Add(_midStops[i]);
-            glow.GradientStops.Add(_edgeStops[i]);
-
-            _moves[i] = new TranslateTransform();
-            _scales[i] = new ScaleTransform(1, 1);
-            _spins[i] = new RotateTransform(0);
-            var group = new TransformGroup();
-            group.Children.Add(_scales[i]);
-            group.Children.Add(_spins[i]);
-            group.Children.Add(_moves[i]);
-
-            _blobs[i] = new Ellipse { Fill = glow, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = group, IsHitTestVisible = false };
-            _canvas.Children.Add(_blobs[i]);
-        }
+        Children.Add(_fluid);
 
         // a dark veil: the lyrics and titles stay readable on any colours
         _veil.Fill = new LinearGradientBrush(Color.FromArgb(0x10, 0, 0, 0), Color.FromArgb(0x44, 0, 0, 0), 90);
         Children.Add(_veil);
 
-        SizeChanged += (_, _) => Relayout();
-        IsVisibleChanged += (_, _) => { if (IsVisible) StartMotion(); else StopMotion(); };
-        Loaded += (_, _) => { Relayout(); if (IsVisible) StartMotion(); };
-        Unloaded += (_, _) => StopMotion();
+        _timer.Tick += (_, _) => Frame();
+        IsVisibleChanged += (_, _) => { if (IsVisible) StartClock(); else _timer.Stop(); };
+        Loaded += (_, _) => { if (IsVisible) StartClock(); };
+        Unloaded += (_, _) => _timer.Stop();
+        SizeChanged += (_, _) => _dirty = true;
+    }
+
+    private void StartClock()
+    {
+        _lastTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        _dirty = true;
+        _timer.Start();
     }
 
     /// <summary>New colours (and the blurred cover behind them): everything fades over to them in about a second.</summary>
@@ -274,49 +266,31 @@ public sealed class AuroraBackground : Grid
     {
         if (colours.Count == 0) return;
 
-        var ms = TimeSpan.FromMilliseconds(1000);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
-
-        for (int i = 0; i < BlobCount; i++)
+        // the cover's own colours, as they are (black stays black, grey stays grey): nothing is made more vivid
+        for (int i = 0; i < Points; i++)
         {
-            // the glows are the cover's own colours, as they are (black stays black, grey stays grey): nothing is made more vivid
             var c = colours[i % colours.Count];
-            CoverPalette.ToHsv(c.R, c.G, c.B, out _, out _, out double cv);
-
-            // a glow has a brighter core: the middle of each blob is the colour lightened a little (less for dark colours, so a
-            // black cover does not turn grey), fading out to the colour itself
-            double lift = 0.30 * (0.35 + 0.65 * cv);
-            var core = Color.FromRgb((byte)(c.R + (255 - c.R) * lift), (byte)(c.G + (255 - c.G) * lift), (byte)(c.B + (255 - c.B) * lift));
-            _centreStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xFF, core.R, core.G, core.B), ms) { EasingFunction = ease });
-            _midStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xB8, c.R, c.G, c.B), ms) { EasingFunction = ease });
-            _edgeStops[i].BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0x00, c.R, c.G, c.B), ms) { EasingFunction = ease });
+            _target[i * 3] = c.R;
+            _target[i * 3 + 1] = c.G;
+            _target[i * 3 + 2] = c.B;
         }
+        if (!_hasColours)
+        {
+            Array.Copy(_target, _current, _target.Length);
+            _hasColours = true;
+        }
+        _dirty = true;
 
         // the deep base colour: the first colour, darkened
         CoverPalette.ToHsv(colours[0].R, colours[0].G, colours[0].B, out double hue, out double sat, out double val);
         var baseColour = CoverPalette.FromHsv(hue, Math.Clamp(sat * 0.95, 0, 1), Math.Clamp(val * 0.55, 0, 0.50));
         if (_base.Fill is SolidColorBrush brush)
-            brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(baseColour, ms) { EasingFunction = ease });
+            brush.BeginAnimation(SolidColorBrush.ColorProperty,
+                new ColorAnimation(baseColour, TimeSpan.FromMilliseconds(1000)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
 
         var soft = cover is BitmapSource bitmap ? CoverPalette.Soft(bitmap) : null;
         _cover.Source = soft;
         _cover.Visibility = soft != null ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void Relayout()
-    {
-        double w = ActualWidth, h = ActualHeight;
-        if (w <= 0 || h <= 0) return;
-
-        double size = Math.Max(240, Math.Max(w, h) * 0.46);
-        for (int i = 0; i < BlobCount; i++)
-        {
-            _blobs[i].Width = size;
-            _blobs[i].Height = size;
-            Canvas.SetLeft(_blobs[i], Anchors[i].X * w - size / 2);
-            Canvas.SetTop(_blobs[i], Anchors[i].Y * h - size / 2);
-        }
-        if (_moving) StartMotion();   // the drift distance follows the size
     }
 
     /// <summary>How strong the dark veil over the colours is: 1 = as in the music panel, less when the colours also sit behind the side bar and bottom bar.</summary>
@@ -326,60 +300,86 @@ public sealed class AuroraBackground : Grid
         set => _veil.Opacity = Math.Clamp(value, 0, 1);
     }
 
-    private bool _motionEnabled = true;
+    /// <summary>False: the colours stay still (Settings > Interface > Moving background).</summary>
+    public bool MotionEnabled { get; set; } = true;
 
-    /// <summary>False: the colours stay still (Settings > Interface > Moving background, or on battery in automatic mode).</summary>
-    public bool MotionEnabled
+    private void Frame()
     {
-        get => _motionEnabled;
-        set
+        if (!IsVisible || !_hasColours) return;
+
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double dt = Math.Min(0.1, (now - _lastTicks) / (double)System.Diagnostics.Stopwatch.Frequency);
+        _lastTicks = now;
+
+        // ease the colours toward the target ones (about a second)
+        double k = 1 - Math.Exp(-dt * 3.0);
+        double change = 0;
+        for (int i = 0; i < _current.Length; i++)
         {
-            if (_motionEnabled == value) return;
-            _motionEnabled = value;
-            if (!value) StopMotion();
-            else if (IsVisible) StartMotion();
+            double d = _target[i] - _current[i];
+            _current[i] += d * k;
+            change += Math.Abs(d);
         }
+
+        if (MotionEnabled) _time += dt;
+        else if (change < 0.5 && !_dirty) return;   // still, and nothing is changing: nothing to draw
+
+        _dirty = false;
+        Render();
     }
 
-    private void StartMotion()
+    private void Render()
     {
-        double w = ActualWidth, h = ActualHeight;
-        if (w <= 0 || h <= 0) return;
-        _moving = true;
-        if (!Accelerated || !_motionEnabled) return;   // software drawing, or switched off: still colours
+        double aspect = ActualHeight > 0 ? Math.Clamp(ActualWidth / ActualHeight, 0.6, 3.0) : 1.78;
+        double t = _time;
 
-        for (int i = 0; i < BlobCount; i++)
+        // where each colour point is now
+        Span<double> cx = stackalloc double[Points];
+        Span<double> cy = stackalloc double[Points];
+        for (int i = 0; i < Points; i++)
         {
-            // wide sweeps across the window (different timing on each axis, so the paths loop and curve instead of going back and forth)
-            double dx = w * (i % 2 == 0 ? 0.34 : -0.34), dy = h * (i % 3 == 0 ? 0.36 : -0.36);
-            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-
-            _moves[i].BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-dx, dx, TimeSpan.FromSeconds(MoveSecondsX[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
-            _moves[i].BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(dy, -dy, TimeSpan.FromSeconds(MoveSecondsY[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
-
-            // the blob stretches one way while it squashes the other, and turns slowly: this is what makes it look like a liquid
-            _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.7, 1.55, TimeSpan.FromSeconds(StretchSecondsX[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
-            _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.45, 0.65, TimeSpan.FromSeconds(StretchSecondsY[i]))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }.AtLowRate());
-            _spins[i].BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(i % 2 == 0 ? 0 : 360, i % 2 == 0 ? 360 : 0, TimeSpan.FromSeconds(SpinSeconds[i]))
-                { RepeatBehavior = RepeatBehavior.Forever }.AtLowRate());
+            cx[i] = aspect * (0.5 + 0.46 * Math.Sin(SpeedX[i] * t * 1.6 + PhaseX[i]));
+            cy[i] = 0.5 + 0.46 * Math.Sin(SpeedY[i] * t * 1.6 + PhaseY[i]);
         }
-    }
 
-    private void StopMotion()
-    {
-        _moving = false;
-        for (int i = 0; i < BlobCount; i++)
+        // the slow waves that bend the picture: one value per column and per row, so the swirling costs almost nothing
+        for (int x = 0; x < W; x++)
         {
-            _moves[i].BeginAnimation(TranslateTransform.XProperty, null);
-            _moves[i].BeginAnimation(TranslateTransform.YProperty, null);
-            _scales[i].BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            _scales[i].BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            _spins[i].BeginAnimation(RotateTransform.AngleProperty, null);
+            double u = (x + 0.5) / W * aspect;
+            _sx[x] = 0.20 * Math.Sin(2.3 * u - 0.50 * t + 0.7) + 0.10 * Math.Sin(4.4 * u + 0.80 * t);
         }
+        for (int y = 0; y < H; y++)
+        {
+            double v = (y + 0.5) / H;
+            _sy[y] = 0.20 * Math.Sin(2.6 * v + 0.55 * t) + 0.10 * Math.Sin(4.7 * v - 0.75 * t + 1.3);
+        }
+
+        for (int y = 0; y < H; y++)
+        {
+            double v = (y + 0.5) / H;
+            for (int x = 0; x < W; x++)
+            {
+                double u = (x + 0.5) / W * aspect;
+                double qx = u + _sy[y];   // a column is bent by the row's wave and the other way round
+                double qy = v + _sx[x];
+
+                double sw = 0, sr = 0, sg = 0, sb = 0;
+                for (int i = 0; i < Points; i++)
+                {
+                    double dx = qx - cx[i], dy = qy - cy[i];
+                    double d2 = dx * dx + dy * dy + 0.012;
+                    double w = 1.0 / (d2 * d2);   // the nearer colour points count much more: smooth, liquid blends
+                    sw += w;
+                    sr += w * _current[i * 3];
+                    sg += w * _current[i * 3 + 1];
+                    sb += w * _current[i * 3 + 2];
+                }
+                int r = (int)(sr / sw), g = (int)(sg / sw), b = (int)(sb / sw);
+                _pixels[y * W + x] = (255 << 24) | (r << 16) | (g << 8) | b;
+            }
+        }
+
+        _bitmap.WritePixels(new Int32Rect(0, 0, W, H), _pixels, W * 4, 0);
     }
 }
 

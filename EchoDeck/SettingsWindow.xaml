@@ -146,7 +146,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Moving background"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The colours behind the music view drift and flow. Automatic keeps them still on battery power or when Windows animations are off."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The colours behind the music view flow like a liquid. Automatic keeps them still only when Windows animations are turned off."/>
                             </StackPanel>
                             <ComboBox x:Name="MotionCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Automatic"/><ComboBoxItem Content="Always moving"/><ComboBoxItem Content="Always still"/></ComboBox>
                         </Grid>
@@ -546,6 +546,15 @@
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Off: the whole line being sung is highlighted. On: its words light up in turn (an estimate, so it can drift on songs with timing for lines only)."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsWordsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Lyrics timing"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Moves the lyrics of every song earlier (left) or later (right). For one song, use the right-click menu or the [ and ] keys while its lyrics are showing."/>
+                            </StackPanel>
+                            <Slider x:Name="LyricsOffsetSlider" Grid.Column="1" Style="{StaticResource FigmaSlider}" Minimum="-2000" Maximum="2000" TickFrequency="100" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" ValueChanged="LyricsOffsetSlider_Changed"/>
+                            <TextBlock x:Name="LyricsOffsetValue" Grid.Column="2" Style="{StaticResource HintText}" TextAlignment="Right" VerticalAlignment="Center"/>
                         </Grid>
                         <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
                         <TextBlock Text="AI lyrics (Whisper, runs on this PC)" Style="{StaticResource SectionTitle}"/>

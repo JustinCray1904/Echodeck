@@ -84,9 +84,10 @@ public sealed class AppSettings
     public bool GlobalVolumeKeys { get; set; }            // volume keys change Tempo's volume instead of the system volume
 
     // ---- lyrics
+    public int LyricsOffsetMs { get; set; }                // timing of every song's lyrics (positive = later); each song can add its own nudge
     public bool CleanTitles { get; set; } = true;          // show tidy song names (no site names or quality tags); files are never renamed
     public bool FetchCoversOnline { get; set; }           // look up missing covers at MusicBrainz / Cover Art Archive (sends artist and title)
-    public int MotionMode { get; set; }                   // moving background: 0 automatic (still on battery), 1 always moving, 2 always still
+    public int MotionMode { get; set; } = 1;              // moving background: 0 automatic (still when Windows animations are off), 1 always moving, 2 always still
     public bool LyricsWordByWord { get; set; }            // light up the sung line word by word (off: the whole line is highlighted)
     public bool HideInterface { get; set; }               // hide the title bar, side bar and controls while playing (H, or the right-click menu)
     public bool AutoLoadLyrics { get; set; } = true;      // lyrics from the hidden Tempo lyrics folder (or an .lrc / .txt next to the song)

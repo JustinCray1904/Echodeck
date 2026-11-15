@@ -61,6 +61,16 @@ public partial class SettingsWindow : Window
 
     // ------------------------------------------------------------------ loading
 
+    private static string FormatOffset(int ms) => (ms > 0 ? "+" : "") + (ms / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s";
+
+    private void LyricsOffsetSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loading) return;
+        _cfg.LyricsOffsetMs = (int)Math.Round(e.NewValue / 100.0) * 100;
+        LyricsOffsetValue.Text = FormatOffset(_cfg.LyricsOffsetMs);
+        _cfg.Save();
+    }
+
     private void DuplicatesButton_Click(object sender, RoutedEventArgs e)
     {
         if (_cfg.MusicFolders.Count == 0)
@@ -102,6 +112,8 @@ public partial class SettingsWindow : Window
         LyricsAutoSwitch.IsChecked = _cfg.AutoLoadLyrics;
         LyricsSaveSwitch.IsChecked = _cfg.SaveGeneratedLyrics;
         LyricsWordsSwitch.IsChecked = _cfg.LyricsWordByWord;
+        LyricsOffsetSlider.Value = Math.Clamp(_cfg.LyricsOffsetMs, -2000, 2000);
+        LyricsOffsetValue.Text = FormatOffset(_cfg.LyricsOffsetMs);
         HideUiSwitch.IsChecked = _cfg.HideInterface;
         CleanTitlesSwitch.IsChecked = _cfg.CleanTitles;
         CoversSwitch.IsChecked = _cfg.FetchCoversOnline;

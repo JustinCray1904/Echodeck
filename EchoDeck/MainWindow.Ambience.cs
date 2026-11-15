@@ -211,14 +211,14 @@ public partial class MainWindow
 
     // ------------------------------------------------------------------ moving background on / off
 
-    /// <summary>Settings > Interface > Moving background: automatic (still on battery or when Windows animations are off), always, or never.</summary>
+    /// <summary>Settings > Interface > Moving background: automatic (still when Windows animations are off), always, or never.</summary>
     private void ApplyMotion()
     {
         bool still = _cfg.MotionMode switch
         {
             1 => false,
             2 => true,
-            _ => SystemParameters.PowerLineStatus == PowerLineStatus.Offline || !SystemParameters.ClientAreaAnimation,
+            _ => !SystemParameters.ClientAreaAnimation,
         };
         Aurora.MotionEnabled = !still;
         WindowAurora.MotionEnabled = !still;

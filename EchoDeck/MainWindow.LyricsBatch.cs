@@ -13,7 +13,7 @@ public partial class MainWindow
     private int _batchTotal, _batchDone, _batchFailed, _batchSkipped;
     private string _batchCurrent = "";
     private string _batchTitle = "Generating lyrics";
-    private int _batchSynced, _batchPlain, _batchApprox;
+    private int _batchSynced, _batchPlain, _batchApprox, _batchMissSkipped;
     private double _batchFraction;
     private bool _cloudConsent;   // the user agreed to upload audio during this run of the app
 
@@ -201,15 +201,19 @@ public partial class MainWindow
 
             var todo = new List<string>();
             _batchSkipped = 0;
+            _batchMissSkipped = 0;
             foreach (var path in songs.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (LyricsFiles.Find(path) != null) _batchSkipped++;
+                else if (LyricsMisses.Recent(path)) _batchMissSkipped++;   // nothing was found for it recently: not asked again yet
                 else todo.Add(path);
             }
 
             if (todo.Count == 0)
             {
-                Notify(_batchSkipped > 0 ? "Those songs already have lyrics." : "Nothing to look up.");
+                Notify(_batchSkipped > 0 || _batchMissSkipped > 0
+                    ? $"Nothing to look up: {_batchSkipped} already have lyrics, {_batchMissSkipped} had no lyrics online last time."
+                    : "Nothing to look up.");
                 return;
             }
 
@@ -224,7 +228,9 @@ public partial class MainWindow
             _batchFraction = 0;
             UpdateBatchUi();
             Notify($"Looking up lyrics for {todo.Count} song{(todo.Count == 1 ? "" : "s")} at lrclib.net" +
-                   (_batchSkipped > 0 ? $" ({_batchSkipped} already had lyrics)" : ""));
+                   (_batchSkipped > 0 ? $" ({_batchSkipped} already had lyrics)" : "") +
+                   (_batchMissSkipped > 0 ? $" ({_batchMissSkipped} had none online last time)" : "") +
+                   ". The service allows about one request a second, so this takes a while: you can keep using Tempo.");
 
             await RunOnlineBatchAsync(todo, _batchCts.Token);
         }
@@ -245,6 +251,7 @@ public partial class MainWindow
     {
         int notFound = 0;          // looked up fine, but lrclib has nothing for the song
         int networkFailures = 0;   // in a row: the same problem would hit every remaining song
+        int rateLimits = 0;        // in a row: "too many requests" even after waiting
         string? lastProblem = null;
 
         foreach (var path in songs)
@@ -258,7 +265,7 @@ public partial class MainWindow
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(TimeSpan.FromSeconds(25));
+                timeout.CancelAfter(TimeSpan.FromSeconds(120));   // long enough for the service's "wait a moment" answers
 
                 var tags = await Task.Run(() => LibraryScanner.ReadTags(path), timeout.Token);
                 _batchFraction = 0.4;
@@ -266,10 +273,12 @@ public partial class MainWindow
 
                 var found = await OnlineLyrics.FindAsync(path, tags, timeout.Token);
                 networkFailures = 0;
+                rateLimits = 0;
 
                 if (found == null)
                 {
                     notFound++;
+                    LyricsMisses.Add(path);
                 }
                 else
                 {
@@ -296,6 +305,18 @@ public partial class MainWindow
                 networkFailures++;
                 lastProblem = "the service took too long";
             }
+            catch (OnlineLyrics.RateLimitedException)
+            {
+                // the service said "too many requests" and did not let up after waiting: rest a minute, then go on with the next song
+                rateLimits++;
+                lastProblem = "lrclib.net asks to slow down (too many requests)";
+                if (rateLimits < 3)
+                {
+                    Notify("lrclib.net asks to slow down: waiting a minute, then carrying on");
+                    try { await Task.Delay(TimeSpan.FromSeconds(60), ct); }
+                    catch (OperationCanceledException) { break; }
+                }
+            }
             catch (Exception ex)
             {
                 AppLog.Write("Online lyrics batch", ex, path);
@@ -307,15 +328,22 @@ public partial class MainWindow
             _batchFraction = 1;
             UpdateBatchUi();
 
+            if (rateLimits >= 3)
+            {
+                lastProblem = "lrclib.net keeps asking to slow down: try again in a while (what was found is saved, and the same songs are skipped next time)";
+                break;
+            }
             if (networkFailures >= 3)
             {
                 lastProblem = "can't reach lrclib.net" + (lastProblem != null ? " (" + Truncate(lastProblem, 60) + ")" : "");
                 break;
             }
 
-            try { await Task.Delay(300, ct); }   // be polite to the free service
+            try { await Task.Delay(100, ct); }   // OnlineLyrics itself keeps the pace of about one request a second
             catch (OperationCanceledException) { break; }
         }
+
+        LyricsMisses.Save();
 
         string summary = ct.IsCancellationRequested
             ? $"Cancelled: lyrics found for {_batchDone} of {_batchTotal}"
@@ -324,7 +352,7 @@ public partial class MainWindow
         if (_batchApprox > 0) summary += $"; {_batchApprox} matched by title only (timing may be off)";
         if (notFound > 0) summary += $", {notFound} not found";
         if (_batchFailed > 0) summary += $", {_batchFailed} failed";
-        if (networkFailures >= 3 && lastProblem != null) summary += ". Stopped: " + lastProblem;
+        if ((networkFailures >= 3 || rateLimits >= 3) && lastProblem != null) summary += ". Stopped: " + lastProblem;
         Notify(summary);
     }
 

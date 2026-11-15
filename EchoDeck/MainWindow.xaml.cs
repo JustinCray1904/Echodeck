@@ -414,6 +414,7 @@ public partial class MainWindow : Window
 
         bool audio = MediaTypes.IsAudio(path);
         ShowMusic(audio, DisplayNames.Clean(Path.GetFileNameWithoutExtension(path)), Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
+        ApplyMotion();   // the moving-background setting always applies to the song that starts
         if (stayInLibrary && _libraryVisible) UpdateMiniPlayer(); else ShowLibrary(false);
         StartPlayback(path, 0, isMrl: false);
         LoadLyricsFor(path, audio);
@@ -930,6 +931,13 @@ public partial class MainWindow : Window
             menu.Items.Add(MenuEntry("Fullscreen", "IcoFullscreen", Fullscreen_Click, "F"));
             menu.Items.Add(MenuEntry(_cfg.HideInterface ? "Show interface" : "Hide interface", "IcoCursor", (_, _) => ToggleHideUi(), "H"));
             menu.Items.Add(MenuEntry(SleepActive ? "Sleep timer (on)" : "Sleep timer", "IcoClock", (_, _) => ShowSleepMenu()));
+            if (_lyricsOpen && _lyrics is { Synced: true })
+            {
+                menu.Items.Add(new Separator());
+                string now = _lyricOffsetMs == 0 ? "" : $" (now {(_lyricOffsetMs > 0 ? "+" : "")}{_lyricOffsetMs / 1000.0:0.0} s)";
+                menu.Items.Add(MenuEntry("Lyrics earlier by 0.1 s" + now, "IcoClock", (_, _) => NudgeLyricOffset(-100), "["));
+                menu.Items.Add(MenuEntry("Lyrics later by 0.1 s" + now, "IcoClock", (_, _) => NudgeLyricOffset(+100), "]"));
+            }
             menu.Items.Add(MenuEntry("Back to library", "IcoHome", (_, _) => ShowLibrary(true), "Backspace"));
         }
         else

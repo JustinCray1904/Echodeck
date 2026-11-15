@@ -14,10 +14,12 @@ namespace EchoDeck;
 internal sealed class DuplicatesWindow : Window
 {
     private readonly IReadOnlyList<string> _folders;
-    private readonly TextBlock _status = new() { Margin = new Thickness(0, 0, 0, 10), TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _status = new() { Margin = new Thickness(0, 0, 0, 12), TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _groups = new();
-    private readonly Button _removeButton = new() { Content = "Move ticked copies to the Recycle Bin", Padding = new Thickness(14, 7, 14, 7), IsEnabled = false };
+    private readonly Button _removeButton = new() { Content = "Move ticked copies to the Recycle Bin", Style = AppStyle("AccentButton"), IsEnabled = false };
     private readonly List<List<(CheckBox Box, string Path)>> _rows = new();
+
+    private static Style AppStyle(string key) => (Style)Application.Current.FindResource(key);
 
     public DuplicatesWindow(IReadOnlyList<string> folders)
     {
@@ -26,10 +28,9 @@ internal sealed class DuplicatesWindow : Window
         Width = 780;
         Height = 580;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        SetResourceReference(BackgroundProperty, "BgBrush");
-        SetResourceReference(ForegroundProperty, "TextBrush");
+        Style = AppStyle("EchoWindow");   // the same title bar and look as the other windows
 
-        var close = new Button { Content = "Close", Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+        var close = new Button { Content = "Close", Style = AppStyle("FlatButton"), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
         _removeButton.Click += RemoveClick;
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
@@ -37,7 +38,7 @@ internal sealed class DuplicatesWindow : Window
         buttons.Children.Add(close);
 
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _groups };
-        var root = new DockPanel { Margin = new Thickness(20) };
+        var root = new DockPanel { Margin = new Thickness(24, 0, 24, 20) };
         DockPanel.SetDock(_status, Dock.Top);
         DockPanel.SetDock(buttons, Dock.Bottom);
         root.Children.Add(_status);
@@ -45,6 +46,7 @@ internal sealed class DuplicatesWindow : Window
         root.Children.Add(scroll);
         Content = root;
 
+        _status.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         Loaded += async (_, _) => await ScanAsync();
     }
 
@@ -101,7 +103,8 @@ internal sealed class DuplicatesWindow : Window
         {
             var keep = group.OrderByDescending(t => t.S).First();
             var box = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
-            var title = new TextBlock { Text = DisplayNames.Clean(keep.T.Length > 0 ? keep.T : Path.GetFileNameWithoutExtension(keep.P)), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
+            var title = new TextBlock { Text = DisplayNames.Clean(keep.T.Length > 0 ? keep.T : Path.GetFileNameWithoutExtension(keep.P)), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
+            title.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
             box.Children.Add(title);
 
             var rows = new List<(CheckBox, string)>();
@@ -109,13 +112,32 @@ internal sealed class DuplicatesWindow : Window
             {
                 var check = new CheckBox
                 {
+                    Style = AppStyle("TileCheck"),
                     IsChecked = !ReferenceEquals(t, keep),
-                    Margin = new Thickness(0, 2, 0, 2),
-                    Content = $"{t.P}   ({t.S / 1048576.0:0.0} MB, {t.D / 60}:{t.D % 60:00}){(ReferenceEquals(t, keep) ? "   – kept" : "")}",
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, 2, 10, 2),
                 };
                 check.Checked += (_, _) => UpdateButton();
                 check.Unchecked += (_, _) => UpdateButton();
-                box.Children.Add(check);
+
+                var text = new TextBlock
+                {
+                    Text = $"{t.P}\n{t.S / 1048576.0:0.0} MB  ·  {t.D / 60}:{t.D % 60:00}{(ReferenceEquals(t, keep) ? "  ·  kept (the biggest file)" : "")}",
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 3, 0, 3),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                };
+                text.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                text.MouseLeftButtonUp += (_, _) => check.IsChecked = check.IsChecked != true;   // the text toggles it too
+
+                var line = new Grid();
+                line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                line.Children.Add(check);
+                Grid.SetColumn(text, 1);
+                line.Children.Add(text);
+                box.Children.Add(line);
                 rows.Add((check, t.P));
             }
             _rows.Add(rows);

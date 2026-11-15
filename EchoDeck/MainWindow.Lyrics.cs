@@ -119,7 +119,6 @@ public partial class MainWindow
         _lyricsMediaPath = isAudio ? path : null;
         _lyricClockValid = false;   // a new song: the lyrics clock starts again from the player's time
         _lyricOffsetMs = LyricsOffsets.Get(isAudio ? path : null);
-        UpdateLyricOffsetUi();
         UpdateLyricsBusyVisibility();
 
         if (!isAudio)
@@ -259,21 +258,14 @@ public partial class MainWindow
         if (!_lyricsOpen || _lyricsMediaPath == null) return;
         _lyricOffsetMs = Math.Clamp(_lyricOffsetMs + deltaMs, -5000, 5000);
         LyricsOffsets.Set(_lyricsMediaPath, _lyricOffsetMs, save: !_anon);   // Anonymous Mode keeps it in memory only
-        UpdateLyricOffsetUi();
         SyncLyricsNow();
+        ShowOsd("Lyrics timing for this song: " + (_lyricOffsetMs > 0 ? "+" : "") + (_lyricOffsetMs / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s");
     }
-
-    private void UpdateLyricOffsetUi() =>
-        LyricsOffsetText.Text = _lyricOffsetMs == 0 ? "Sync" : (_lyricOffsetMs > 0 ? "+" : "−") + (Math.Abs(_lyricOffsetMs) / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s";
-
-    private void LyricsEarlier_Click(object sender, RoutedEventArgs e) => NudgeLyricOffset(-100);
-
-    private void LyricsLater_Click(object sender, RoutedEventArgs e) => NudgeLyricOffset(+100);
 
     private void UpdateLyricsCore(long timeMs)
     {
         if (!_lyricsOpen || _lyrics is not { Synced: true } || _lyricLines.Count == 0) return;
-        timeMs -= _lyricOffsetMs;   // a line shows later when the offset is positive
+        timeMs -= _lyricOffsetMs + _cfg.LyricsOffsetMs;   // a line shows later when the offset is positive (the setting for all songs + this song's own nudge)
 
         int idx = FindLyricIndex(timeMs);   // exactly on the timestamp: the earlier +120 ms lead made every line appear before it was sung
         if (idx != _lyricIndex)

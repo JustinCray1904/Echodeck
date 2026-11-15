@@ -318,3 +318,45 @@ internal static class LyricsOffsets
         catch { /* the nudge just isn't remembered */ }
     }
 }
+
+/// <summary>Songs the online lookup found nothing for: a batch skips them for 14 days instead of asking again every time.</summary>
+internal static class LyricsMisses
+{
+    private static Dictionary<string, long>? _map;
+    private static string FilePath => Path.Combine(AppPaths.DataDir, "lyric-misses.json");
+
+    private static Dictionary<string, long> Map()
+    {
+        if (_map != null) return _map;
+        try
+        {
+            _map = File.Exists(FilePath)
+                ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllText(FilePath)) ?? new()
+                : new();
+        }
+        catch { _map = new(); }
+        return _map;
+    }
+
+    private static string Key(string path)
+    {
+        try { return Path.GetFullPath(path).ToLowerInvariant(); }
+        catch { return path.ToLowerInvariant(); }
+    }
+
+    private static long Today => DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 86400;
+
+    public static bool Recent(string path) => Map().TryGetValue(Key(path), out var day) && Today - day < 14;
+
+    public static void Add(string path) => Map()[Key(path)] = Today;
+
+    public static void Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+            File.WriteAllText(FilePath, System.Text.Json.JsonSerializer.Serialize(Map()));
+        }
+        catch { /* just asked again next time */ }
+    }
+}

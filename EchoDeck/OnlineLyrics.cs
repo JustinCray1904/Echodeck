@@ -131,15 +131,45 @@ internal static class OnlineLyrics
             : new Result(hit.Plain.Replace("\r\n", "\n").Trim() + "\n", false, hit.Title, hit.Artist, approximate);
 
     /// <summary>The JSON body, or null for "not found" (404).</summary>
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+    private static long _lastRequest;
+
+    /// <summary>Thrown when the service keeps answering "too many requests" even after waiting.</summary>
+    internal sealed class RateLimitedException : HttpRequestException
+    {
+        public RateLimitedException() : base("the lyrics service asks to slow down (too many requests)") { }
+    }
+
     private static async Task<JsonElement?> GetAsync(string url, CancellationToken ct)
     {
-        using var response = await Http.GetAsync(url, ct).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
-        response.EnsureSuccessStatusCode();
+        for (int attempt = 0; ; attempt++)
+        {
+            // never more than about one request a second, whatever is asking (a batch of hundreds of songs gets "429 Too Many Requests" otherwise)
+            await Gate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                long wait = 900 - (Environment.TickCount64 - _lastRequest);
+                if (wait > 0) await Task.Delay((int)wait, ct).ConfigureAwait(false);
+                _lastRequest = Environment.TickCount64;
+            }
+            finally { Gate.Release(); }
 
-        var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.Clone();   // the document is disposed here: keep a copy
+            using var response = await Http.GetAsync(url, ct).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound) return null;
+
+            if ((int)response.StatusCode == 429)
+            {
+                if (attempt >= 3) throw new RateLimitedException();
+                double seconds = response.Headers.RetryAfter?.Delta?.TotalSeconds ?? 6 * (attempt + 1);
+                await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(seconds, 3, 45)), ct).ConfigureAwait(false);   // do as asked: wait, then try again
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.Clone();   // the document is disposed here: keep a copy
+        }
     }
 
     private static Hit? ParseHit(JsonElement e)
