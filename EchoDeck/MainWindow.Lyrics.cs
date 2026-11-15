@@ -680,6 +680,10 @@ public partial class MainWindow
             {
                 Notify("Found lyrics without timing: they can't follow the song");
             }
+            else if (found.Approximate)
+            {
+                Notify("Found by title only: no upload has this song's length, so the timing may be off. Use the − and + buttons to adjust it.");
+            }
         }
         catch (OperationCanceledException)
         {

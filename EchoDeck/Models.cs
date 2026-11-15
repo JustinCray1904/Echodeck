@@ -165,7 +165,7 @@ public sealed record QueueItem(string FullPath)
     /// <summary>Set while Anonymous Mode is on: maps an encrypted file's path to its real name and kind.</summary>
     public static Func<string, (string Name, bool IsAudio)?>? Resolver { get; set; }
 
-    public string Name => Resolver?.Invoke(FullPath)?.Name ?? Path.GetFileName(FullPath);
+    public string Name => Resolver?.Invoke(FullPath)?.Name ?? DisplayNames.CleanFileName(Path.GetFileName(FullPath));
     public Geometry Icon => IconSet.Get((Resolver?.Invoke(FullPath)?.IsAudio ?? MediaTypes.IsAudio(FullPath)) ? "IcoMusic" : "IcoVideo");
 }
 

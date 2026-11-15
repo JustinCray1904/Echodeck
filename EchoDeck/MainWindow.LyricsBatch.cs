@@ -13,7 +13,7 @@ public partial class MainWindow
     private int _batchTotal, _batchDone, _batchFailed, _batchSkipped;
     private string _batchCurrent = "";
     private string _batchTitle = "Generating lyrics";
-    private int _batchSynced, _batchPlain;
+    private int _batchSynced, _batchPlain, _batchApprox;
     private double _batchFraction;
     private bool _cloudConsent;   // the user agreed to upload audio during this run of the app
 
@@ -220,6 +220,7 @@ public partial class MainWindow
             _batchFailed = 0;
             _batchSynced = 0;
             _batchPlain = 0;
+            _batchApprox = 0;
             _batchFraction = 0;
             UpdateBatchUi();
             Notify($"Looking up lyrics for {todo.Count} song{(todo.Count == 1 ? "" : "s")} at lrclib.net" +
@@ -277,6 +278,7 @@ public partial class MainWindow
                     _sessionLyrics[path] = text;
                     _batchDone++;
                     if (found.Synced) _batchSynced++; else _batchPlain++;
+                    if (found.Approximate) _batchApprox++;
 
                     // if this is the song on screen right now, show its new lyrics at once
                     if (string.Equals(_lyricsMediaPath, path, StringComparison.OrdinalIgnoreCase))
@@ -319,6 +321,7 @@ public partial class MainWindow
             ? $"Cancelled: lyrics found for {_batchDone} of {_batchTotal}"
             : $"Lyrics found for {_batchDone} of {_batchTotal} song{(_batchTotal == 1 ? "" : "s")}";
         if (_batchPlain > 0) summary += $" ({_batchSynced} timed, {_batchPlain} without timing)";
+        if (_batchApprox > 0) summary += $"; {_batchApprox} matched by title only (timing may be off)";
         if (notFound > 0) summary += $", {notFound} not found";
         if (_batchFailed > 0) summary += $", {_batchFailed} failed";
         if (networkFailures >= 3 && lastProblem != null) summary += ". Stopped: " + lastProblem;

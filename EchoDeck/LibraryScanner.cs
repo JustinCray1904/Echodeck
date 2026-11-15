@@ -234,7 +234,7 @@ internal static class LibraryScanner
 
     private static Track ToTrack(CachedTrack c)
     {
-        string title = c.T.Length > 0 ? c.T : Path.GetFileNameWithoutExtension(c.P);
+        string title = DisplayNames.Clean(c.T.Length > 0 ? c.T : Path.GetFileNameWithoutExtension(c.P));
         string artist = c.A.Length > 0 ? FirstArtist(c.A) : "Unknown artist";
         string album = c.B.Length > 0 ? c.B : "Unknown album";
         string genre = c.G.Length > 0 ? c.G : "Unknown genre";
@@ -300,6 +300,15 @@ internal static class LibraryScanner
     }
 
     /// <summary>What was read last time for these folders (instant, possibly slightly out of date until the scan finishes).</summary>
+    /// <summary>Scans the folders (the cache makes that quick) and returns what is known about each song: for the duplicate finder.</summary>
+    internal static async Task<List<CachedTrack>> ScannedAsync(IReadOnlyList<string> folders)
+    {
+        await TracksAsync(folders).ConfigureAwait(false);
+        return TrackCache.Values
+            .Where(c => folders.Any(f => c.P.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
     public static Task<List<Track>> CachedTracksAsync(IReadOnlyList<string> folders) => Task.Run(() =>
     {
         EnsureLoaded();

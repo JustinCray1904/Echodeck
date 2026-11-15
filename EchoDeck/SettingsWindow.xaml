@@ -126,6 +126,38 @@
                             </StackPanel>
                             <CheckBox x:Name="HideUiSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Tidy song names"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Shows &quot;Polo G - Flex&quot; instead of &quot;yt1z.net - Polo G - Flex (Official Audio) (320 KBps)&quot;. Only what is shown changes: your files are never renamed."/>
+                            </StackPanel>
+                            <CheckBox x:Name="CleanTitlesSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Find missing covers online"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="For songs with no cover, ask MusicBrainz and the Cover Art Archive (free). Only the artist and title are sent, covers are kept on this PC, and it is never used in Anonymous Mode."/>
+                            </StackPanel>
+                            <CheckBox x:Name="CoversSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Moving background"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The colours behind the music view drift and flow. Automatic keeps them still on battery power or when Windows animations are off."/>
+                            </StackPanel>
+                            <ComboBox x:Name="MotionCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Automatic"/><ComboBoxItem Content="Always moving"/><ComboBoxItem Content="Always still"/></ComboBox>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Duplicate songs"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Finds songs that are in your music folders more than once. Nothing is removed until you tick files and confirm, and removed files go to the Recycle Bin."/>
+                            </StackPanel>
+                            <Button x:Name="DuplicatesButton" Grid.Column="1" Content="Find duplicates…" Padding="14,7" Click="DuplicatesButton_Click"/>
+                        </Grid>
         <Grid Margin="0,0,0,16">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel Margin="0,0,24,0">

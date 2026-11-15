@@ -12,7 +12,8 @@ namespace EchoDeck;
 /// </summary>
 internal static class OnlineLyrics
 {
-    internal sealed record Result(string Text, bool Synced, string Title, string Artist);
+    /// <param name="Approximate">Matched by title only: no upload with a length close to the file's. The timing may be off.</param>
+    internal sealed record Result(string Text, bool Synced, string Title, string Artist, bool Approximate = false);
 
     private sealed record Hit(string Title, string Artist, double Duration, string Synced, string Plain, bool Instrumental);
 
@@ -53,6 +54,7 @@ internal static class OnlineLyrics
         if (title.Length == 0) return null;
 
         Hit? plainFallback = null;
+        var allHits = new List<Hit>();   // every usable search result, for the title-only second chance
 
         // 1) the exact lookup: needs artist and title, and is the most reliable when the tags are good
         if (artist.Length > 0)
@@ -92,6 +94,7 @@ internal static class OnlineLyrics
                 if (hit != null && !hit.Instrumental && (hit.Synced.Length > 0 || hit.Plain.Length > 0)) hits.Add(hit);
             }
             if (hits.Count == 0) continue;
+            allHits.AddRange(hits);
 
             // the same length as the file (within a few seconds) is what makes it the same recording
             Func<Hit, double> distance = h => seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : 0;
@@ -103,13 +106,29 @@ internal static class OnlineLyrics
             plainFallback ??= closeEnough.Where(h => h.Plain.Length > 0).OrderBy(distance).FirstOrDefault();
         }
 
-        return plainFallback != null ? ToResult(plainFallback) : null;
+        if (plainFallback != null) return ToResult(plainFallback);
+
+        // nothing has a length close to the file's: take the best match by title (and artist), closest length first, timed before plain
+        string wantTitle = Norm(title), wantArtist = Norm(artist);
+        Func<Hit, double> gap = h => seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : 9999;
+        var byTitle = allHits
+            .Where(h => Norm(h.Title).Length > 0 && (Norm(h.Title) == wantTitle ||
+                        (wantTitle.Length >= 4 && (Norm(h.Title).Contains(wantTitle) || wantTitle.Contains(Norm(h.Title))))))
+            .OrderByDescending(h => wantArtist.Length > 0 && (Norm(h.Artist).Contains(wantArtist) || wantArtist.Contains(Norm(h.Artist))))
+            .ThenByDescending(h => h.Synced.Length > 0)
+            .ThenBy(gap)
+            .FirstOrDefault();
+        return byTitle != null ? ToResult(byTitle, approximate: true) : null;
     }
 
-    private static Result ToResult(Hit hit) =>
+    /// <summary>Letters and digits only, lower case, without bracketed extras: "Flex (Official Audio)" and "flex" compare equal.</summary>
+    private static string Norm(string s) =>
+        Regex.Replace(Regex.Replace(s ?? "", @"[\(\[][^\)\]]*[\)\]]", ""), @"[^\p{L}\p{Nd}]", "").ToLowerInvariant();
+
+    private static Result ToResult(Hit hit, bool approximate = false) =>
         hit.Synced.Length > 0
-            ? new Result(hit.Synced.Replace("\r\n", "\n").Trim() + "\n", true, hit.Title, hit.Artist)
-            : new Result(hit.Plain.Replace("\r\n", "\n").Trim() + "\n", false, hit.Title, hit.Artist);
+            ? new Result(hit.Synced.Replace("\r\n", "\n").Trim() + "\n", true, hit.Title, hit.Artist, approximate)
+            : new Result(hit.Plain.Replace("\r\n", "\n").Trim() + "\n", false, hit.Title, hit.Artist, approximate);
 
     /// <summary>The JSON body, or null for "not found" (404).</summary>
     private static async Task<JsonElement?> GetAsync(string url, CancellationToken ct)

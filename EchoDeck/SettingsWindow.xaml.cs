@@ -61,6 +61,16 @@ public partial class SettingsWindow : Window
 
     // ------------------------------------------------------------------ loading
 
+    private void DuplicatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cfg.MusicFolders.Count == 0)
+        {
+            MessageBox.Show(this, "Add a music folder first (Settings > Library).", "Duplicate songs", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        new DuplicatesWindow(_cfg.MusicFolders.ToList()) { Owner = this }.ShowDialog();
+    }
+
     private void LoadValues()
     {
         ThemeCombo.SelectedIndex = _cfg.Theme == ThemeMode.LiquidGlass ? 0 : (int)_cfg.Theme;   // 0 Dark, 1 Light, 2 System, 3 Midnight, 4 AMOLED
@@ -93,6 +103,9 @@ public partial class SettingsWindow : Window
         LyricsSaveSwitch.IsChecked = _cfg.SaveGeneratedLyrics;
         LyricsWordsSwitch.IsChecked = _cfg.LyricsWordByWord;
         HideUiSwitch.IsChecked = _cfg.HideInterface;
+        CleanTitlesSwitch.IsChecked = _cfg.CleanTitles;
+        CoversSwitch.IsChecked = _cfg.FetchCoversOnline;
+        MotionCombo.SelectedIndex = Math.Clamp(_cfg.MotionMode, 0, 2);
         VisualizerCombo.SelectedIndex = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
         HwModeCombo.SelectedIndex = Math.Max(0, Array.IndexOf(HwModes, _cfg.HardwareMode));
         HwModeCombo.IsEnabled = _cfg.HardwareDecoding;
@@ -339,6 +352,8 @@ public partial class SettingsWindow : Window
             case nameof(LyricsSaveSwitch): _cfg.SaveGeneratedLyrics = on; break;
             case nameof(LyricsWordsSwitch): _cfg.LyricsWordByWord = on; break;
             case nameof(HideUiSwitch): _cfg.HideInterface = on; break;
+            case nameof(CleanTitlesSwitch): _cfg.CleanTitles = on; break;
+            case nameof(CoversSwitch): _cfg.FetchCoversOnline = on; break;
             case nameof(AssocSwitch): ToggleAssociation(box, on); return;
             default: return;
         }
@@ -363,6 +378,7 @@ public partial class SettingsWindow : Window
             case nameof(StartPageCombo): _cfg.StartPage = i == 1 ? "Home" : i == 2 ? "Blank" : "Recent"; break;
             case nameof(NetCacheCombo): _cfg.NetworkCachingMs = CacheValues[i]; break;
             case nameof(VisualizerCombo): _cfg.VisualizerStyle = i; break;
+            case nameof(MotionCombo): _cfg.MotionMode = i; break;
             case nameof(HwModeCombo): _cfg.HardwareMode = HwModes[i]; break;
             case nameof(WhisperLangCombo): _cfg.WhisperLanguage = WhisperLangs[i]; break;
             case nameof(LyricsEngineCombo):

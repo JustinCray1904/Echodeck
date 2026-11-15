@@ -326,12 +326,27 @@ public sealed class AuroraBackground : Grid
         set => _veil.Opacity = Math.Clamp(value, 0, 1);
     }
 
+    private bool _motionEnabled = true;
+
+    /// <summary>False: the colours stay still (Settings > Interface > Moving background, or on battery in automatic mode).</summary>
+    public bool MotionEnabled
+    {
+        get => _motionEnabled;
+        set
+        {
+            if (_motionEnabled == value) return;
+            _motionEnabled = value;
+            if (!value) StopMotion();
+            else if (IsVisible) StartMotion();
+        }
+    }
+
     private void StartMotion()
     {
         double w = ActualWidth, h = ActualHeight;
         if (w <= 0 || h <= 0) return;
         _moving = true;
-        if (!Accelerated) return;   // software drawing: still colours
+        if (!Accelerated || !_motionEnabled) return;   // software drawing, or switched off: still colours
 
         for (int i = 0; i < BlobCount; i++)
         {

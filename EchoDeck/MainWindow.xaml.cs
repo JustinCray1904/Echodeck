@@ -271,6 +271,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         AppSettings.Changed -= OnSettingsChanged;
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         App.ExternalOpenRequested -= OnExternalOpen;
         NativeMethods.KeepAwake(false);
         _waveCts?.Cancel();
@@ -318,6 +319,7 @@ public partial class MainWindow : Window
         VideoCorners.InvalidateVisual();
         ApplyViewMode();
         ApplyHideUi();
+        ApplyMotion();
         if (_lyricsOpen) ApplyLyricFocus(_lyricIndex);   // the word-by-word setting may have changed
         ApplyGlobalKeys();
         ApplyVisualizerStyle();
@@ -406,12 +408,12 @@ public partial class MainWindow : Window
         _queueIndex = _queue.IndexOf(existing);
         if (_cfg.RememberRecent) RecentStore.Add(path);
 
-        var name = Path.GetFileName(path);
+        var name = DisplayNames.CleanFileName(Path.GetFileName(path));
         _normalTitle = name;
         SetTitles(name);
 
         bool audio = MediaTypes.IsAudio(path);
-        ShowMusic(audio, Path.GetFileNameWithoutExtension(path), Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
+        ShowMusic(audio, DisplayNames.Clean(Path.GetFileNameWithoutExtension(path)), Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
         if (stayInLibrary && _libraryVisible) UpdateMiniPlayer(); else ShowLibrary(false);
         StartPlayback(path, 0, isMrl: false);
         LoadLyricsFor(path, audio);
@@ -737,11 +739,14 @@ public partial class MainWindow : Window
     private async void LoadCover(string path)
     {
         if (!MediaTypes.IsAudio(path)) return;
-        var bmp = await Task.Run(() =>
+        System.Windows.Media.Imaging.BitmapSource? bmp = await Task.Run(() =>
         {
             var raw = ShellThumbnail.Get(path, 600, 600, biggerOk: true);
             return raw == null ? null : ShellThumbnail.TrimBorders(raw);
         });
+
+        // no cover in the file: if the setting is on, look for one online (never in Anonymous Mode)
+        if (bmp == null && !_anon && _cfg.FetchCoversOnline) bmp = await OnlineCovers.GetAsync(path);
         if (bmp == null || _anon) return;
         if (!string.Equals(_queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex].FullPath : "", path,
                 StringComparison.OrdinalIgnoreCase)) return;
@@ -924,6 +929,7 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuEntry("Fullscreen", "IcoFullscreen", Fullscreen_Click, "F"));
             menu.Items.Add(MenuEntry(_cfg.HideInterface ? "Show interface" : "Hide interface", "IcoCursor", (_, _) => ToggleHideUi(), "H"));
+            menu.Items.Add(MenuEntry(SleepActive ? "Sleep timer (on)" : "Sleep timer", "IcoClock", (_, _) => ShowSleepMenu()));
             menu.Items.Add(MenuEntry("Back to library", "IcoHome", (_, _) => ShowLibrary(true), "Backspace"));
         }
         else

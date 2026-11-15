@@ -209,8 +209,28 @@ public partial class MainWindow
     /// <summary>The queue / playlists panel is narrower in a narrow window, so the music view keeps room to breathe.</summary>
     private double SidebarWidth => Math.Clamp(ActualWidth * 0.27, 250, 330);
 
+    // ------------------------------------------------------------------ moving background on / off
+
+    /// <summary>Settings > Interface > Moving background: automatic (still on battery or when Windows animations are off), always, or never.</summary>
+    private void ApplyMotion()
+    {
+        bool still = _cfg.MotionMode switch
+        {
+            1 => false,
+            2 => true,
+            _ => SystemParameters.PowerLineStatus == PowerLineStatus.Offline || !SystemParameters.ClientAreaAnimation,
+        };
+        Aurora.MotionEnabled = !still;
+        WindowAurora.MotionEnabled = !still;
+    }
+
+    private void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e) =>
+        Dispatcher.InvokeAsync(ApplyMotion);
+
     private void InitResponsive()
     {
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        ApplyMotion();
         SizeChanged += (_, _) => ApplyResponsiveLayout();
         MusicPanel.SizeChanged += (_, _) => { RelayoutLyrics(); UpdateTaskbarClip(); };
         UpdateAmbientColours(animate: false);

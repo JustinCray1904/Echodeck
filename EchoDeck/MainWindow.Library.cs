@@ -264,14 +264,14 @@ public partial class MainWindow
     private BrowserEntry EntryForPath(string path)
     {
         if (_anon && _anonItems.TryGetValue(path, out var item)) return VaultEntry(item);
-        return new BrowserEntry(Path.GetFileNameWithoutExtension(path), path,
+        return new BrowserEntry(DisplayNames.Clean(Path.GetFileNameWithoutExtension(path)), path,
             MediaTypes.IsAudio(path) ? EntryKind.Audio : EntryKind.Video,
             Path.GetFileName(Path.GetDirectoryName(path) ?? ""));
     }
 
     private List<BrowserEntry> VideoEntries(List<string> files)
     {
-        var list = files.Select(p => new BrowserEntry(Path.GetFileNameWithoutExtension(p), p, EntryKind.Video,
+        var list = files.Select(p => new BrowserEntry(DisplayNames.Clean(Path.GetFileNameWithoutExtension(p)), p, EntryKind.Video,
             Path.GetFileName(Path.GetDirectoryName(p) ?? ""))).ToList();
         if (_sortDesc) list.Reverse();
         return list;
@@ -571,7 +571,7 @@ public partial class MainWindow
             {
                 long size = 0;
                 try { size = new FileInfo(f).Length; } catch { /* unreadable */ }
-                list.Add(new BrowserEntry(Path.GetFileNameWithoutExtension(f), f,
+                list.Add(new BrowserEntry(DisplayNames.Clean(Path.GetFileNameWithoutExtension(f)), f,
                     MediaTypes.IsAudio(f) ? EntryKind.Audio : EntryKind.Video, VaultService.FormatSize(size)));
             }
         }
@@ -1626,6 +1626,7 @@ public partial class MainWindow
         HideResumePrompt(animate: false);
         ResetTransport();
         _playbackEnded = true;   // cleared again as soon as something starts playing
+        if (SleepStopsAfterSong()) return;   // the sleep timer was set to "end of this song"
 
         if (_cfg.Loop == LoopMode.One && _queueIndex >= 0 && _queueIndex < _queue.Count)
         {
