@@ -45,6 +45,15 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Cloud (optional)**: any OpenAI-compatible service (OpenAI, Groq ...). Off by default; the song's audio is uploaded only when you press Generate, and the API key is stored encrypted for your Windows account.
 - **Batch**: tick songs, More > Generate lyrics. It runs in the background at low priority; a card in the side bar shows "Song n of N" and progress, and each result is saved in the hidden lyrics folder. **More > Find lyrics online** does the same for all ticked songs using lrclib.net (only title, artist, album and length are sent).
 
+## Crossfade and gapless (Settings > Audio > Between songs)
+- **Crossfade between songs**: the end of a song fades out while the next fades in (equal-power curves, 2-12 s). **Gapless playback**: the next song starts just before the current one ends, so there is no silence; Tempo learns how long a song takes to start on your PC and starts it that much early. Crossfade wins when both are on. Both are off by default, songs only (never videos, repeat-one or Anonymous Mode). Two LibVLC players are used, because LibVLC plays one song per player; seeking, pausing or skipping during the overlap ends it at once.
+
+## Smarter covers and lyrics
+- **Names are cleaned first**: "Official Music Video", "Visualizer", "Lyric Video", "HD", "Audio", hashtags, track numbers and "- Topic" are removed (also when not in brackets), and the same clean name is shown and searched for.
+- **Cross-checked online** (`SongResolver.cs`): Deezer and iTunes are asked at the same time and each result is scored against the file (every title word must be in the file's name, the artist must match, the length must be close, karaoke / tribute / remix versions are punished). The winner gives the real artist and title and the cover; if nothing matches, the tidy local name is used.
+- **Covers**: cover from the match, then the album (iTunes), then MusicBrainz. "No cover" is remembered for 2 days, and only when a catalogue really answered (being offline is never remembered).
+- **Lyrics**: matched on the verified name, and of the matching uploads the one whose length is closest to the song wins.
+
 ## Handled problems
 Things Tempo recovers from by itself (an unusable Whisper model, a blocked registry write, a visualiser hiccup) are written to `%LOCALAPPDATA%\Tempo\tempo.log`. `crash.log` stays reserved for real crashes.
 
