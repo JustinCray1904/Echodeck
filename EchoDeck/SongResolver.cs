@@ -222,6 +222,12 @@ internal static class SongText
             title = fromName.Title;
             if (artist.Length == 0) artist = fromName.Artist;
         }
+        else if (artist.Length == 0)
+        {
+            // the tags hold only a title ("Flex"): the file name ("Polo G - Flex.mp3") may know the artist, when it names the same song
+            var fromName = FromFileName(path);
+            if (fromName.Artist.Length > 0 && TextMatch.SameTitle(title, fromName.Title)) artist = fromName.Artist;
+        }
 
         string bare = TextMatch.StripFeature(title);
         return (TextMatch.StripFeature(artist), bare.Length > 0 ? bare : title);
