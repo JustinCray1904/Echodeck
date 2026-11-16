@@ -54,6 +54,14 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Covers**: cover from the match, then the album (iTunes), then MusicBrainz. "No cover" is remembered for 2 days, and only when a catalogue really answered (being offline is never remembered).
 - **Lyrics**: matched on the verified name, and of the matching uploads the one whose length is closest to the song wins.
 
+## Smart queue, queue drag and drop, Anonymous folders, bouncy lyrics
+- **Smart queue** (Settings > Playback): open one episode from Explorer (or drop one file) and the rest of the series in its folder is queued in order, matched by file name (quality tags, release groups and other seasons are ignored). `SmartQueue.cs`.
+- **Queue panel**: drop files or folders from Explorer onto it, and drag its items to reorder them.
+- **Anonymous Mode**: the Videos page and the Music songs list are grouped by the folders the items came from; the selection bar has a **Restore** button; folders have "Restore this folder".
+- **Bouncy lyrics** (Settings > Lyrics): the sung line springs up, the lines around it settle with a stretchy delay.
+- **Covers**: YouTube thumbnails as a last resort and for unofficial remixes (Settings > Covers).
+- **Playback rules** live in `PlaybackCoordinator.cs` (stop vs start, crossfade timing) and `OperationScope` (stale background results); `PlaybackCoordinatorTests` replays the races without a window.
+
 ## Handled problems
 Things Tempo recovers from by itself (an unusable Whisper model, a blocked registry write, a visualiser hiccup) are written to `%LOCALAPPDATA%\Tempo\tempo.log`. `crash.log` stays reserved for real crashes.
 
