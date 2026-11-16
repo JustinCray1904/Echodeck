@@ -22,7 +22,7 @@ Push to GitHub: the **Build Tempo** workflow publishes a self-contained x64 app 
 ## Anonymous Mode
 The lock icon in the title bar shows that the mode is on and holds **Import files / Import folder / Restore selected / Anonymous settings / Exit**. Recent, Home, Videos, Music, Playlists and the queue work as usual but show only vault files (normal files are never shown, and vault files never appear in normal mode).
 - Song / video details (title, artist, album, genre, length) are read at import and stored in the encrypted file header; Home shows virtual folders built from each file's original folder.
-- Playlists are kept in `vault.db` (AES-GCM, key derived from the master key). Thumbnails are small encrypted sidecar files (`.svt`).
+- Playlists are kept in `vault.db` (AES-GCM, key derived from the master key). Thumbnails are small encrypted sidecar files (`.svt`): song covers are read from the tags by Tempo itself; video preview frames would have to come from Windows (which caches them in plaintext), so they are off unless you switch on "Preview pictures for videos" in the Anonymous settings.
 - "Recent" in Anonymous Mode lives in memory only and is wiped on exit. Files imported by earlier builds have no stored details (shown as Unknown artist / album); import them again to add them.
 
 ## Lyrics, keys and Windows integration
