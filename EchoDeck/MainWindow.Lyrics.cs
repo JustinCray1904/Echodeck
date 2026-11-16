@@ -302,8 +302,75 @@ public partial class MainWindow
     private TextBlock? LyricTextAt(int index) =>
         LyricsList.ItemContainerGenerator.ContainerFromIndex(index) is DependencyObject item ? FindChild<TextBlock>(item) : null;
 
+    private int _bounceShown = -1;   // the line that was last made the active one (for the springy hand-over to the next)
+
+    private static (ScaleTransform Scale, TranslateTransform Shift) LyricTransforms(TextBlock text)
+    {
+        if (text.RenderTransform is TransformGroup { Children.Count: 2 } group &&
+            group.Children[0] is ScaleTransform scale && group.Children[1] is TranslateTransform shift)
+            return (scale, shift);
+
+        var newScale = new ScaleTransform(1, 1);
+        var newShift = new TranslateTransform();
+        text.RenderTransformOrigin = new Point(0, 0.5);   // lines grow from their left edge, like Apple Music
+        var created = new TransformGroup();
+        created.Children.Add(newScale);
+        created.Children.Add(newShift);
+        text.RenderTransform = created;
+        return (newScale, newShift);
+    }
+
+    /// <summary>
+    /// Apple Music style motion: the line being sung springs up to full size (an elastic overshoot), the others rest a little smaller, and
+    /// when the song moves on to the next line the lines around it settle into place one after another - the further from the active line,
+    /// the later and the longer - which makes the list feel stretchy. Only render transforms: nothing is re-laid-out, so it stays smooth.
+    /// </summary>
+    private void ApplyLyricBounce(TextBlock text, int distance, bool cascade)
+    {
+        if (!_cfg.LyricsBounce)
+        {
+            if (text.RenderTransform is TransformGroup) text.RenderTransform = Transform.Identity;
+            return;
+        }
+
+        var (scale, shift) = LyricTransforms(text);
+        double target = distance == 0 ? 1.0 : 0.92;
+
+        if (distance > 6)
+        {
+            // far away: no animation, just the resting size
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = scale.ScaleY = target;
+            shift.BeginAnimation(TranslateTransform.YProperty, null);
+            shift.Y = 0;
+            return;
+        }
+
+        IEasingFunction ease = distance == 0
+            ? new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 5 }
+            : new CubicEase { EasingMode = EasingMode.EaseOut };
+        var span = TimeSpan.FromMilliseconds(distance == 0 ? 650 : 380);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(target, span) { EasingFunction = ease });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(target, span) { EasingFunction = ease });
+
+        if (cascade)
+        {
+            // the lines lag behind the scroll by a little more the further they are, then spring into place
+            double lag = Math.Min(30, 5 + 4 * distance);
+            shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(lag, 0, TimeSpan.FromMilliseconds(520 + distance * 80))
+                { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 6 } });
+        }
+        else if (shift.Y != 0 && !cascade)
+        {
+            shift.BeginAnimation(TranslateTransform.YProperty, null);
+            shift.Y = 0;
+        }
+    }
+
     private void ApplyLyricFocus(int active)
     {
+        bool cascade = active >= 0 && active == _bounceShown + 1;   // only when the song moves on by one line (a seek does not wobble)
         // the previous line's lit words go back to plain text (it fades with the others now)
         if (_wordBlock != null)
         {
@@ -334,7 +401,10 @@ public partial class MainWindow
                 text.BeginAnimation(UIElement.OpacityProperty, null);
                 text.Opacity = opacity;   // the far ones simply jump, and only when they really change
             }
+
+            ApplyLyricBounce(text, d, cascade);
         }
+        _bounceShown = active;
 
         if (active >= 0 && LyricTextAt(active) is { } activeText) PrepareWords(_lyricLines[active], activeText);
     }

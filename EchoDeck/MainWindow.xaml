@@ -674,6 +674,8 @@
                                             Foreground="{DynamicResource AccentBrush}" Padding="4,2" Click="SelClear_Click"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <Button x:Name="SelRestoreButton" Content="Restore" Style="{StaticResource AccentButton}" Padding="18,7" Margin="0,0,6,0"
+                                            Visibility="Collapsed" ToolTip="Decrypt the ticked items and put them back where they came from" Click="SelRestore_Click"/>
                                     <Button Content="Play" Style="{StaticResource AccentButton}" Padding="18,7" Margin="0,0,6,0" Click="SelPlay_Click"/>
                                     <Button Content="Play next" Style="{StaticResource FlatButton}" Padding="14,7" Margin="0,0,6,0" Click="SelPlayNext_Click"/>
                                     <Button x:Name="SelAddToButton" Content="Add to" Style="{StaticResource FlatButton}" Padding="14,7" Margin="0,0,6,0" Click="SelAddTo_Click"/>
@@ -865,7 +867,9 @@
                                 <Rectangle x:Name="SideWatermark" Style="{StaticResource Watermark}" Width="130" Height="130" Opacity="0.11" Visibility="Collapsed"/>
                             <ListBox x:Name="SideList" Style="{StaticResource PlaylistList}" VirtualizingPanel.ScrollUnit="Pixel"
                                          ItemContainerStyle="{StaticResource PlaylistItem}" ItemTemplate="{StaticResource SideTpl}"
-                                         MouseDoubleClick="SideList_MouseDoubleClick"/>
+                                         MouseDoubleClick="SideList_MouseDoubleClick"
+                                         AllowDrop="True" DragOver="SideList_DragOver" Drop="SideList_Drop"
+                                         PreviewMouseLeftButtonDown="SideList_PreviewMouseDown" PreviewMouseMove="SideList_PreviewMouseMove"/>
                                 <StackPanel x:Name="SideEmptyPanel" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,34,0,0">
                                     <TextBlock x:Name="SideEmptyHint" TextWrapping="Wrap" TextAlignment="Center" FontSize="13" MaxWidth="260"
                                                Foreground="{DynamicResource Fg3Brush}" Text="Your queue is empty."/>

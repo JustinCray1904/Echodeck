@@ -89,6 +89,7 @@ public partial class SettingsWindow : Window
         SidebarSwitch.IsChecked = _cfg.ShowSidebarAtStart;
         RememberRecentSwitch.IsChecked = _cfg.RememberRecent;
         AutoAdvanceSwitch.IsChecked = _cfg.AutoAdvance;
+        SmartQueueSwitch.IsChecked = _cfg.SmartQueue;
         FullscreenSwitch.IsChecked = _cfg.StartFullscreen;
         AwakeSwitch.IsChecked = _cfg.KeepAwake;
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
@@ -112,6 +113,7 @@ public partial class SettingsWindow : Window
         LyricsAutoSwitch.IsChecked = _cfg.AutoLoadLyrics;
         LyricsSaveSwitch.IsChecked = _cfg.SaveGeneratedLyrics;
         LyricsWordsSwitch.IsChecked = _cfg.LyricsWordByWord;
+        LyricsBounceSwitch.IsChecked = _cfg.LyricsBounce;
         LyricsOffsetSlider.Value = Math.Clamp(_cfg.LyricsOffsetMs, -2000, 2000);
         LyricsOffsetValue.Text = FormatOffset(_cfg.LyricsOffsetMs);
         HideUiSwitch.IsChecked = _cfg.HideInterface;
@@ -125,6 +127,7 @@ public partial class SettingsWindow : Window
         CrossfadeCombo.SelectedIndex = Math.Clamp(_cfg.CrossfadeSeconds / 2 - 1, 0, 5);
         CrossfadeCombo.IsEnabled = _cfg.CrossfadeEnabled;
         CoversSwitch.IsChecked = _cfg.FetchCoversOnline;
+        YouTubeCoversSwitch.IsChecked = _cfg.CoverFromYouTube;
         MotionCombo.SelectedIndex = Math.Clamp(_cfg.MotionMode, 0, 2);
         VisualizerCombo.SelectedIndex = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
         HwModeCombo.SelectedIndex = Math.Max(0, Array.IndexOf(HwModes, _cfg.HardwareMode));
@@ -369,6 +372,7 @@ public partial class SettingsWindow : Window
             case nameof(SidebarSwitch): _cfg.ShowSidebarAtStart = on; break;
             case nameof(RememberRecentSwitch): _cfg.RememberRecent = on; break;
             case nameof(AutoAdvanceSwitch): _cfg.AutoAdvance = on; break;
+            case nameof(SmartQueueSwitch): _cfg.SmartQueue = on; break;
             case nameof(FullscreenSwitch): _cfg.StartFullscreen = on; break;
             case nameof(AwakeSwitch): _cfg.KeepAwake = on; break;
             case nameof(HwSwitch): _cfg.HardwareDecoding = on; HwModeCombo.IsEnabled = on; break;
@@ -381,12 +385,14 @@ public partial class SettingsWindow : Window
             case nameof(LyricsAutoSwitch): _cfg.AutoLoadLyrics = on; break;
             case nameof(LyricsSaveSwitch): _cfg.SaveGeneratedLyrics = on; break;
             case nameof(LyricsWordsSwitch): _cfg.LyricsWordByWord = on; break;
+            case nameof(LyricsBounceSwitch): _cfg.LyricsBounce = on; break;
             case nameof(HideUiSwitch): _cfg.HideInterface = on; break;
             case nameof(CleanTitlesSwitch): _cfg.CleanTitles = on; break;
             case nameof(CrossfadeSwitch): _cfg.CrossfadeEnabled = on; CrossfadeCombo.IsEnabled = on; break;
             case nameof(GaplessSwitch): _cfg.GaplessEnabled = on; break;
             case nameof(DiscordSwitch): _cfg.DiscordPresence = on; break;
             case nameof(CoversSwitch): _cfg.FetchCoversOnline = on; break;
+            case nameof(YouTubeCoversSwitch): _cfg.CoverFromYouTube = on; break;
             case nameof(AssocSwitch): ToggleAssociation(box, on); return;
             default: return;
         }

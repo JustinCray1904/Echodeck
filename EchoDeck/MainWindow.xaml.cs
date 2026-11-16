@@ -210,7 +210,7 @@ public partial class MainWindow : Window
 
         // Command line / "Open with": Tempo.exe "C:\path\video.mp4"
         var file = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(MediaTypes.IsSupportedFile);
-        if (file != null) PlayNormal(file);
+        if (file != null) PlayOpenedFile(file);
 
         // from now on, files opened from Explorer arrive here instead of starting another Tempo
         App.ExternalOpenRequested += OnExternalOpen;
@@ -232,7 +232,7 @@ public partial class MainWindow : Window
         bool burst = (DateTime.UtcNow - _lastExternalOpen).TotalMilliseconds < 1500;
         _lastExternalOpen = DateTime.UtcNow;
         if (burst) Enqueue(path, next: false);
-        else PlayNormal(path);
+        else PlayOpenedFile(path);
     }
 
     private void BringToFront()
@@ -409,13 +409,16 @@ public partial class MainWindow : Window
         ApplyMotion();   // the moving-background setting always applies to the song that starts
         if (stayInLibrary && _libraryVisible) UpdateMiniPlayer(); else ShowLibrary(false);
         StartPlayback(path, 0, isMrl: false);
-        LoadLyricsFor(path, audio);
+
+        // while a crossfade / gapless overlap is opening, the heavy parts wait until the new song is really playing (no crackling)
+        if (_xfActive) { ClearLyrics(); WaveBar.Peaks = null; }
+        RunWhenQuiet(path, () => LoadLyricsFor(path, audio));
         BeginResumeTracking(path, audio);
         MaybeOfferResume(path, audio, inMini: stayInLibrary && _libraryVisible);
 
-        if (audio) LoadWaveform(path, null);
+        if (audio) RunWhenQuiet(path, () => LoadWaveform(path, null));
         else WaveBar.Peaks = null;
-        LoadCover(path);
+        RunWhenQuiet(path, () => LoadCover(path));
         RefreshSide();
         UpdateTransportEnabled();
     }
@@ -427,13 +430,10 @@ public partial class MainWindow : Window
         MiniTitle.Text = name == AppName ? "" : name;
     }
 
-    private bool _stopping;   // a Stop is running off the UI thread: playback requests wait for it
-    private (string Path, long StartMs, bool IsMrl)? _pendingStart;
-
     private void StartPlayback(string pathOrMrl, long startMs, bool isMrl)
     {
         if (_libVlc is null || _player is null) return;
-        if (_stopping) { _pendingStart = (pathOrMrl, startMs, isMrl); return; }
+        if (_playback.Park(pathOrMrl, startMs, isMrl)) return;   // a Stop is running: this request waits for it (PlaybackCoordinator)
 
         try
         {
@@ -447,6 +447,7 @@ public partial class MainWindow : Window
             {
                 _pendingSeekMs = null;
             }
+            if (_xfPlanned && !isMrl) media.AddOption(":file-caching=1500");   // a bigger read-ahead: the next song opens without stalling the audio
 
             _hasMedia = true;
             _firstPlay = true;
@@ -501,7 +502,7 @@ public partial class MainWindow : Window
 
     private void TogglePlayPause()
     {
-        if (_player is null || _stopping) return;
+        if (_player is null || _playback.IsStopping) return;
         if (_xfActive) FinishCrossfadeNow();   // pausing in the middle of a crossfade: the old song is let go first
 
         if (_playbackEnded && _hasMedia)
@@ -1190,10 +1191,33 @@ public partial class MainWindow : Window
         var dir = Path.GetDirectoryName(files[0]);
         if (dir != null) NavigateTo(dir);
 
+        if (files.Count == 1) { PlayOpenedFile(files[0]); return; }
+
         foreach (var f in files.Skip(1))
             if (!_queue.Any(q => string.Equals(q.FullPath, f, StringComparison.OrdinalIgnoreCase)))
                 _queue.Add(new QueueItem(f));
         PlayNormal(files[0]);
+    }
+
+    /// <summary>
+    /// A single file opened from outside (Explorer, "Open with", a drop). With the smart queue on, the other files of its series in the
+    /// same folder are queued in order around it (Episode 1 to 7), and the opened one plays.
+    /// </summary>
+    private void PlayOpenedFile(string path)
+    {
+        if (_cfg.SmartQueue && !_anon && File.Exists(path))
+        {
+            var series = SmartQueue.SeriesOf(path);
+            if (series.Count > 1)
+            {
+                _queue.Clear();
+                foreach (var p in series) _queue.Add(new QueueItem(p));
+                PlayNormal(path);
+                ShowOsd("Queued " + series.Count + " in order");
+                return;
+            }
+        }
+        PlayNormal(path);
     }
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e)

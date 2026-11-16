@@ -157,6 +157,17 @@ internal static class OnlineCovers
         // 1) cross-check the song online; the cover that came with the matching entry is the one
         var id = await SongResolver.ResolveAsync(path, tags, ct).ConfigureAwait(false);
         if (id.Title.Length == 0) return (null, false);   // nothing to search with: not remembered
+
+        // An unofficial remix / slowed / sped-up version: the catalogues only know the original, whose cover is not this version's.
+        // Its own YouTube thumbnail is tried first; the original's cover stays as the fallback.
+        bool useYouTube = AppSettings.Current.CoverFromYouTube;
+        string rawName = (tags.Title ?? "") + " " + Path.GetFileNameWithoutExtension(path);
+        bool unofficialVersion = id.Verified && SongText.Junk.IsMatch(rawName) && !SongText.Junk.IsMatch(id.Title);
+        if (useYouTube && unofficialVersion)
+        {
+            var youtube = await FromYouTubeAsync(path, tags, ct).ConfigureAwait(false);
+            if (youtube != null) return (youtube, true);
+        }
         if (id.CoverUrls.Count > 0) return (new Found(id.CoverUrls, null), true);
 
         // 2) the song is not in the catalogues (or has no picture there), but its album may be
@@ -173,7 +184,37 @@ internal static class OnlineCovers
             var fromMb = await FromMusicBrainzAsync(id.Artist, id.TitleBare, album, ct).ConfigureAwait(false);
             if (fromMb != null) return (fromMb, true);
         }
+
+        // 4) the song's YouTube thumbnail
+        if (useYouTube && !unofficialVersion)
+        {
+            var youtube = await FromYouTubeAsync(path, tags, ct).ConfigureAwait(false);
+            if (youtube != null) return (youtube, true);
+        }
         return (null, id.Answered);
+    }
+
+    private static async Task<Found?> FromYouTubeAsync(string path, TagInfo tags, CancellationToken ct)
+    {
+        try
+        {
+            string? videoId = YouTubeCovers.IdFromFile(path);
+            if (videoId == null)
+            {
+                var local = SongText.Local(path, tags);
+                videoId = await YouTubeCovers.SearchAsync(local.Artist, local.Title, tags.DurationSeconds, ct).ConfigureAwait(false);
+            }
+            if (videoId == null) return null;
+
+            var thumbnail = await YouTubeCovers.ThumbnailAsync(videoId, ct).ConfigureAwait(false);
+            return thumbnail is { } t ? new Found(new[] { t.Url }, t.Bytes) : null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            AppLog.Write("YouTube cover", ex);   // blocked or changed page: this source just gives nothing
+            return null;
+        }
     }
 
     private static string Str(JsonElement e, string name) =>

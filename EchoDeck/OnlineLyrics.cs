@@ -48,6 +48,21 @@ internal static class OnlineLyrics
     /// each other). A result for a different song is never taken just because its length happens to be close, and when the artist is
     /// known it must match (SameArtist tolerates "A &amp; B" and "feat." credits); length only vouches for a song whose artist is unknown.
     /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex Stamp = new(@"\[(\d{1,3}):(\d{2}(?:\.\d+)?)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The time of the last timed line, in seconds (0 when there are none).</summary>
+    internal static double LastStampSeconds(string synced)
+    {
+        double last = 0;
+        foreach (System.Text.RegularExpressions.Match m in Stamp.Matches(synced))
+        {
+            double t = int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) * 60 +
+                       double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+            if (t > last) last = t;
+        }
+        return last;
+    }
+
     /// <summary>One wanted title and artist (the form the tests use).</summary>
     internal static Hit? Pick(IEnumerable<Hit> hits, string title, string artist, double seconds, out double gap) =>
         Pick(hits, new[] { title }, new[] { artist }, seconds, out gap);
@@ -66,6 +81,9 @@ internal static class OnlineLyrics
         {
             if (h.Instrumental || (h.Synced.Length == 0 && h.Plain.Length == 0)) continue;
             if (!titles.Any(t => TextMatch.SameTitle(t, h.Title))) continue;
+
+            // timed lyrics whose last line comes long after the song ends are another song's (or another cut's): not this one
+            if (seconds > 0 && h.Synced.Length > 0 && LastStampSeconds(h.Synced) > seconds + 10) continue;
 
             bool haveLength = seconds > 0 && h.Duration > 0;
             double diff = haveLength ? Math.Abs(h.Duration - seconds) : 0;

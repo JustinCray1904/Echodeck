@@ -75,6 +75,8 @@ public partial class MainWindow
         _openPlaylist = null;
         _currentDir = null;
         _musicScope = null;
+        _anonSubDir = "";
+        _anonSubBack.Clear();
         _loadingText = null;
         HideLoading();
         if (SearchBox.Text.Length > 0) SearchBox.Text = "";
@@ -120,13 +122,13 @@ public partial class MainWindow
             LibMode.Recent => "Recent",
             LibMode.Playlists => "Playlists",
             LibMode.PlaylistDetail => _openPlaylist?.Name ?? "Playlist",
-            LibMode.Videos => "Videos",
-            LibMode.Music => _musicScope != null ? _musicScope.Name : "Music",
+            LibMode.Videos => AnonFolderPage && _anonSubDir.Length > 0 ? "Videos  ›  " + LastSegment(_anonSubDir) : "Videos",
+            LibMode.Music => _musicScope != null ? _musicScope.Name : AnonFolderPage && _anonSubDir.Length > 0 ? "Music  ›  " + LastSegment(_anonSubDir) : "Music",
             LibMode.Blank => "Tempo",
             _ => _currentDir != null ? BuildBreadcrumb(_currentDir) : "Home"
         };
 
-        bool canToggleView = _mode is LibMode.Home or LibMode.Videos or LibMode.Recent;
+        bool canToggleView = _mode is LibMode.Home or LibMode.Videos or LibMode.Recent || AnonFolderPage;
         ViewToggleButton.Visibility = canToggleView ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateNavButtons();
@@ -284,10 +286,7 @@ public partial class MainWindow
 
         if (_anon)
         {
-            var vids = _anonList.Where(x => !x.IsAudio)
-                .OrderBy(x => DisplayTitle(x), StringComparer.CurrentCultureIgnoreCase).Select(x => VaultEntry(x)).ToList();
-            if (_sortDesc) vids.Reverse();
-            _allEntries = vids;
+            _allEntries = AnonFolderEntries(audio: false);   // grouped by the folders they came from, like the Home page
             FinishPage();
             return;
         }
@@ -394,7 +393,9 @@ public partial class MainWindow
         int tab = _musicScope != null ? 0 : _musicTab;
         if (tab == 0)
         {
-            _allEntries = tracks.Select((t, i) => SongEntry(t, i % 2 == 0)).ToList();
+            _allEntries = _anon && _musicScope == null
+                ? AnonFolderEntries(audio: true)   // Anonymous Mode: songs grouped by the folders they came from
+                : tracks.Select((t, i) => SongEntry(t, i % 2 == 0)).ToList();
         }
         else if (tab == 1)
         {
@@ -616,6 +617,7 @@ public partial class MainWindow
     {
         bool can = _mode switch
         {
+            LibMode.Videos or LibMode.Music when AnonFolderPage && _anonSubBack.Count > 0 => true,
             LibMode.Home => _navBack.Count > 0 || (_currentDir != null && (_anon ? _anonRootMulti : HomeRoots().Count > 1)),
             LibMode.PlaylistDetail => true,
             LibMode.Music => _musicScope != null,
@@ -631,6 +633,10 @@ public partial class MainWindow
     {
         switch (_mode)
         {
+            case LibMode.Videos or LibMode.Music when AnonFolderPage && _anonSubBack.Count > 0:
+                _anonSubDir = _anonSubBack.Pop();
+                RebuildAnonFolderPage();
+                return;
             case LibMode.PlaylistDetail: SetMode(LibMode.Playlists); return;
             case LibMode.Music when _musicScope != null:
                 _musicScope = null;
@@ -664,6 +670,7 @@ public partial class MainWindow
     private string RowTemplateKey() => _mode switch
     {
         LibMode.Playlists => "RowSquareTpl",
+        LibMode.Music when AnonFolderPage => _cfg.LibraryGrid ? "RowGridTpl" : "RowListTpl",   // folders and songs, like the Home page
         LibMode.Music => _musicScope != null || _musicTab == 0 ? "RowSongTpl" : _musicTab == 1 ? "RowSquareTpl" : "RowArtistTpl",
         LibMode.PlaylistDetail => "RowListTpl",
         _ => _cfg.LibraryGrid ? "RowGridTpl" : "RowListTpl"
@@ -967,7 +974,7 @@ public partial class MainWindow
     /// <summary>Double-click / play: folders, playlists, albums and artists open; files play with the visible files as the queue.</summary>
     private void ActivateEntry(BrowserEntry entry)
     {
-        if (entry.IsDirectory) { NavigateTo(entry.FullPath); return; }
+        if (entry.IsDirectory) { OpenFolderEntry(entry.FullPath); return; }
         if (entry.IsPlaylist && entry.Playlist != null) { OpenPlaylist(entry.Playlist); return; }
         if (entry.IsAlbum || entry.IsArtist) { OpenMusicScope(entry); return; }
         if (!entry.IsFile) return;
@@ -984,6 +991,7 @@ public partial class MainWindow
     {
         int n = SelectionState.Instance.Count;
         SelectionBar.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SelRestoreButton.Visibility = _anon ? Visibility.Visible : Visibility.Collapsed;   // restoring only exists in Anonymous Mode
         SelCountText.Text = n == 1 ? "1 item selected" : $"{n} items selected";
         int total = _visibleEntries.Count(x => x.IsFile);
         SelectAllCheck.IsChecked = n > 0 && n >= total;
@@ -999,6 +1007,8 @@ public partial class MainWindow
     {
         foreach (var entry in _visibleEntries) entry.IsChecked = false;
     }
+
+    private void SelRestore_Click(object sender, RoutedEventArgs e) => RestoreSelected_Click(sender, e);
 
     private void SelPlay_Click(object sender, RoutedEventArgs e)
     {
@@ -1071,8 +1081,10 @@ public partial class MainWindow
         }
         else if (entry.IsDirectory)
         {
-            menu.Items.Add(MenuEntry("Open", "IcoFolder", (_, _) => NavigateTo(entry.FullPath)));
+            menu.Items.Add(MenuEntry("Open", "IcoFolder", (_, _) => OpenFolderEntry(entry.FullPath)));
             menu.Items.Add(MenuEntry("Add folder to queue", "IcoAdd", (_, _) => EnqueueFolder(entry.FullPath)));
+            if (_anon)
+                menu.Items.Add(MenuEntry("Restore this folder", "IcoExport", (_, _) => _ = RestoreEntriesAsync(VaultItemsUnder(entry.FullPath))));
             if (!_anon)
             {
                 menu.Items.Add(new Separator());
@@ -1491,6 +1503,119 @@ public partial class MainWindow
     {
         _sidePlaylist = null;
         RefreshSide();
+    }
+
+    // ------------------------------------------------------------------ queue: drop files in, drag items to reorder
+
+    private const string QueueDragFormat = "TempoQueuePath";
+    private Point _sideDragStart;
+    private BrowserEntry? _sideDragEntry;
+
+    /// <summary>The list item that contains <paramref name="d"/> (the element can be a Run or other non-visual: those go up the logical tree).</summary>
+    private static ListBoxItem? ListItemOf(DependencyObject? d)
+    {
+        while (d != null && d is not ListBoxItem)
+            d = d is System.Windows.Media.Visual || d is System.Windows.Media.Media3D.Visual3D ? System.Windows.Media.VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+        return d as ListBoxItem;
+    }
+
+    private void SideList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _sideDragStart = e.GetPosition(null);
+        _sideDragEntry = _sideMode == SideMode.Queue ? ListItemOf(e.OriginalSource as DependencyObject)?.DataContext as BrowserEntry : null;
+    }
+
+    private void SideList_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _sideDragEntry == null || _sideMode != SideMode.Queue) return;
+        if (SideSearch.Text.Trim().Length > 0) return;   // a filtered list cannot be reordered
+
+        var moved = e.GetPosition(null) - _sideDragStart;
+        if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+
+        var entry = _sideDragEntry;
+        _sideDragEntry = null;
+        DragDrop.DoDragDrop(SideList, new DataObject(QueueDragFormat, entry.FullPath), DragDropEffects.Move);
+    }
+
+    private void SideList_DragOver(object sender, DragEventArgs e)
+    {
+        if (_sideMode != SideMode.Queue) return;   // the playlists panel: the window's own handling
+
+        if (e.Data.GetDataPresent(QueueDragFormat)) { e.Effects = DragDropEffects.Move; e.Handled = true; }
+        else if (!_anon && e.Data.GetDataPresent(DataFormats.FileDrop)) { e.Effects = DragDropEffects.Copy; e.Handled = true; }
+        // Anonymous Mode: dropped files are imported by the window's handler
+    }
+
+    /// <summary>Where in the queue a drop at the mouse position goes (the queue's length = the end).</summary>
+    private int QueueDropIndex(DragEventArgs e)
+    {
+        var hit = System.Windows.Media.VisualTreeHelper.HitTest(SideList, e.GetPosition(SideList));
+        var item = ListItemOf(hit?.VisualHit);
+        if (item == null) return _queue.Count;
+
+        int index = SideList.ItemContainerGenerator.IndexFromContainer(item);
+        if (index < 0) return _queue.Count;
+        if (e.GetPosition(item).Y > item.ActualHeight / 2) index++;   // the lower half of a row: after it
+        return Math.Min(index, _queue.Count);
+    }
+
+    private void SideList_Drop(object sender, DragEventArgs e)
+    {
+        if (_sideMode != SideMode.Queue) return;
+        int target = SideSearch.Text.Trim().Length > 0 ? _queue.Count : QueueDropIndex(e);
+
+        if (e.Data.GetData(QueueDragFormat) is string moving)
+        {
+            MoveQueueItem(moving, target);
+            e.Handled = true;
+            return;
+        }
+
+        if (_anon || e.Data.GetData(DataFormats.FileDrop) is not string[] items) return;   // Anonymous Mode: the window imports them
+
+        var files = new List<string>();
+        foreach (var dropped in items)
+        {
+            try
+            {
+                if (Directory.Exists(dropped))
+                    files.AddRange(Directory.EnumerateFiles(dropped).Where(IsSupportedPath).OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
+                else if (IsSupportedPath(dropped)) files.Add(dropped);
+            }
+            catch { /* an unreadable folder */ }
+        }
+
+        int added = 0;
+        foreach (var f in files)
+        {
+            if (_queue.Any(q => string.Equals(q.FullPath, f, StringComparison.OrdinalIgnoreCase))) continue;
+            _queue.Insert(Math.Min(target + added, _queue.Count), new QueueItem(f));
+            added++;
+        }
+        if (target <= _queueIndex && added > 0) _queueIndex += added;   // the song that is playing keeps its place
+
+        e.Handled = true;
+        RefreshSide();
+        UpdateTransportEnabled();
+        if (added > 0) ShowOsd(added == 1 ? "Added to queue" : added + " added to queue");
+    }
+
+    private void MoveQueueItem(string path, int target)
+    {
+        int from = _queue.FindIndex(q => string.Equals(q.FullPath, path, StringComparison.OrdinalIgnoreCase));
+        if (from < 0) return;
+
+        var playing = _queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex] : null;
+        var item = _queue[from];
+        _queue.RemoveAt(from);
+        if (target > from) target--;   // the list got shorter above the target
+        _queue.Insert(Math.Clamp(target, 0, _queue.Count), item);
+        if (playing != null) _queueIndex = _queue.IndexOf(playing);   // the same song keeps playing
+
+        RefreshSide();
+        UpdateTransportEnabled();
     }
 
     private void SideList_MouseDoubleClick(object sender, MouseButtonEventArgs e)

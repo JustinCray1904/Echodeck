@@ -47,6 +47,23 @@ internal static class WaveformLoader
     /// so the bar fills in as it loads instead of staying empty until the very end.</param>
     private static AudioAnalysis? Analyze(WaveStream reader, CancellationToken ct, Action<float[]>? partial = null)
     {
+        // Reading a whole song takes a full CPU core for a moment. At normal priority that competed with the audio of the song that
+        // is playing (crackling, most audible when the next song was starting): the analysis now only uses what is left over.
+        var thread = Thread.CurrentThread;
+        var before = thread.Priority;
+        try
+        {
+            thread.Priority = ThreadPriority.Lowest;
+            return AnalyzeCore(reader, ct, partial);
+        }
+        finally
+        {
+            try { thread.Priority = before; } catch { /* the pool thread is going away */ }
+        }
+    }
+
+    private static AudioAnalysis? AnalyzeCore(WaveStream reader, CancellationToken ct, Action<float[]>? partial)
+    {
         var total = reader.TotalTime;
         if (total.TotalSeconds < 1) return null;
 

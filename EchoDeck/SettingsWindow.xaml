@@ -145,6 +145,14 @@
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Use YouTube covers as a last resort"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="For unofficial remixes and songs no music catalogue knows, use the thumbnail of the song's YouTube video. Works with the setting above. Only the artist and title are sent."/>
+                            </StackPanel>
+                            <CheckBox x:Name="YouTubeCoversSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Moving background"/>
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The colours behind the music view flow like a liquid. Automatic keeps them still only when Windows animations are turned off."/>
                             </StackPanel>
@@ -397,6 +405,14 @@
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Smart queue"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Open one episode from Explorer and Tempo queues the rest of the series from the same folder, in order (Episode 1 to 7), and plays the one you opened. Works by file name, and only for a single file you open or drop."/>
+                            </StackPanel>
+                            <CheckBox x:Name="SmartQueueSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Repeat"/>
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="What happens when the queue ends."/>
                             </StackPanel>
@@ -572,6 +588,14 @@
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Off: the whole line being sung is highlighted. On: its words light up in turn (an estimate, so it can drift on songs with timing for lines only)."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsWordsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Bouncy lyrics"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Apple Music style motion: the line being sung springs up to full size and the lines around it settle with a stretchy delay."/>
+                            </StackPanel>
+                            <CheckBox x:Name="LyricsBounceSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

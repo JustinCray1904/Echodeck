@@ -41,6 +41,7 @@ public sealed class AppSettings
 
     // ---- playback
     public bool AutoAdvance { get; set; } = true;
+    public bool SmartQueue { get; set; } = true;          // a single opened file also queues the rest of its series (Episode 1 to 7) from its folder
     public LoopMode Loop { get; set; } = LoopMode.Off;
     public double DefaultSpeed { get; set; } = 1.0;
     public int SkipSeconds { get; set; } = 10;
@@ -87,6 +88,7 @@ public sealed class AppSettings
     // ---- lyrics
     public int LyricsOffsetMs { get; set; }                // timing of every song's lyrics (positive = later); each song can add its own nudge
     public bool CleanTitles { get; set; } = true;          // show tidy song names (no site names or quality tags); files are never renamed
+    public bool CoverFromYouTube { get; set; } = true;    // part of "find missing covers": the song's YouTube thumbnail as a last resort (remixes, new uploads)
     public bool FetchCoversOnline { get; set; }           // look up missing covers at MusicBrainz / Cover Art Archive (sends artist and title)
     public bool DiscordPresence { get; set; }             // show the playing song as a Discord status (needs the application ID below)
     public string DiscordClientId { get; set; } = "";      // application ID from discord.com/developers
@@ -96,6 +98,7 @@ public sealed class AppSettings
     public int CrossfadeSeconds { get; set; } = 6;        // length of the crossfade, 1-12 seconds
     public bool GaplessEnabled { get; set; }              // start the next song just before the end so there is no silence between songs
     public int MotionMode { get; set; } = 1;              // moving background: 0 automatic (still when Windows animations are off), 1 always moving, 2 always still
+    public bool LyricsBounce { get; set; } = true;       // Apple Music style: the sung line springs up, the lines around it settle with a stretchy lag
     public bool LyricsWordByWord { get; set; }            // light up the sung line word by word (off: the whole line is highlighted)
     public bool HideInterface { get; set; }               // hide the title bar, side bar and controls while playing (H, or the right-click menu)
     public bool AutoLoadLyrics { get; set; } = true;      // lyrics from the hidden Tempo lyrics folder (or an .lrc / .txt next to the song)

@@ -8,8 +8,7 @@ public partial class MainWindow
 {
     private DiscordRpc? _discord;
     private string? _discordKey;
-    private readonly object _discordLock = new();
-    private int _discordGen;   // bumped for every new status and every clear: a late cover update from an older song is dropped
+    private readonly OperationScope _discordScope = new();   // a late cover lookup of an older song (or after Anonymous Mode) is dropped, see OperationScope
 
     /// <summary>Called whenever the play / pause state may have changed; shows, updates or removes the Discord status.</summary>
     private void UpdateDiscord(bool playing)
@@ -36,14 +35,13 @@ public partial class MainWindow
             if (key == _discordKey) return;
             _discordKey = key;
 
-            int gen;
-            lock (_discordLock) gen = ++_discordGen;
+            var token = _discordScope.Renew();   // cancels the lookup of the previous status
             long elapsedMs = _player?.Time ?? 0;
             string detailsTemplate = _cfg.DiscordDetailsText, stateTemplate = _cfg.DiscordStateText;
             var discord = _discord;
             _ = Task.Run(async () =>
             {
-                try { await PostDiscordAsync(discord, path, playing, elapsedMs, detailsTemplate, stateTemplate, gen).ConfigureAwait(false); }
+                try { await PostDiscordAsync(discord, path, playing, elapsedMs, detailsTemplate, stateTemplate, token).ConfigureAwait(false); }
                 catch (Exception ex) { AppLog.Write("Discord status", ex); }
             });
         }
@@ -53,7 +51,7 @@ public partial class MainWindow
         }
     }
 
-    private async Task PostDiscordAsync(DiscordRpc discord, string path, bool playing, long elapsedMs, string detailsTemplate, string stateTemplate, int gen)
+    private async Task PostDiscordAsync(DiscordRpc discord, string path, bool playing, long elapsedMs, string detailsTemplate, string stateTemplate, CancellationToken token)
     {
         var tags = LibraryScanner.ReadTags(path);
         var (artist, title) = OnlineLyrics.Identity(path, tags);
@@ -66,29 +64,29 @@ public partial class MainWindow
         string? album = string.IsNullOrWhiteSpace(tags.Album) ? null : tags.Album;
 
         // first at once, without a picture ("tempo" is the name of a picture you can upload to the application in the Discord developer portal) ...
-        lock (_discordLock)
+        _discordScope.RunIfCurrent(token, () =>
         {
-            if (gen != _discordGen || _anon || !_cfg.DiscordPresence) return;   // another song (or Anonymous Mode) took over while the tags were read
-            discord.Post(new DiscordActivity(details, state, start, "tempo", album ?? "Tempo"));
-        }
+            if (!_anon && _cfg.DiscordPresence)   // another song (or Anonymous Mode) may have taken over while the tags were read
+                discord.Post(new DiscordActivity(details, state, start, "tempo", album ?? "Tempo"));
+        });
 
         // ... then with the song's cover, if one can be found online (Discord can only show pictures that are on the web)
         var cover = await OnlineCovers.GetUrlAsync(path).ConfigureAwait(false);
         if (string.IsNullOrEmpty(cover)) return;
-        lock (_discordLock)
+        // the lookup may have taken seconds: only publish if this song is still the one playing and Discord is still wanted
+        _discordScope.RunIfCurrent(token, () =>
         {
-            // the lookup may have taken seconds: only publish if this song is still the one playing and Discord is still wanted
-            if (gen != _discordGen || _anon || !_cfg.DiscordPresence) return;
-            discord.Post(new DiscordActivity(details, state, start, cover, album ?? title));
-        }
+            if (!_anon && _cfg.DiscordPresence)
+                discord.Post(new DiscordActivity(details, state, start, cover, album ?? title));
+        });
     }
 
     private void ClearDiscord()
     {
-        lock (_discordLock) _discordGen++;   // invalidates every lookup that is still running
+        _discordScope.Cancel();   // invalidates every lookup that is still running (and waits for a post in progress)
         if (_discord == null) return;
         _discordKey = null;
-        lock (_discordLock) _discord.Post(null);
+        _discord.Post(null);
         if (!_cfg.DiscordPresence || _anon)
         {
             // switched off: let go of the connection once the removal has been sent

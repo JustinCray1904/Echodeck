@@ -82,6 +82,8 @@ public partial class MainWindow
 
     private void ClearAnonData()
     {
+        _anonSubDir = "";
+        _anonSubBack.Clear();
         _anonItems.Clear();
         _anonList = new List<VaultItem>();
         _vFiles.Clear();
@@ -231,6 +233,86 @@ public partial class MainWindow
 
     private static string VirtualBreadcrumb(string dir) =>
         dir.Length == 0 ? "Home" : "Home  ›  " + string.Join("  ›  ", dir.Split('\\'));
+
+    // ------------------------------------------------------------------ Videos / Music pages grouped by folder
+    // In Anonymous Mode the Videos page and the Songs list of the Music page show the folders the items came from (like the Home page),
+    // not one long list of everything. A folder opens in place; Back returns. Only items of the page's kind are shown (videos or songs).
+
+    private string _anonSubDir = "";                           // the folder open inside the page ("" = the list of folders)
+    private readonly Stack<string> _anonSubBack = new();
+
+    private bool AnonFolderPage => _anon && (_mode == LibMode.Videos || (_mode == LibMode.Music && _musicScope == null && _musicTab == 0));
+
+    private bool HasKind(string dir, bool audio, int depth = 0)
+    {
+        if (depth > 40) return false;
+        if (_vFiles.TryGetValue(dir, out var files) && files.Any(i => i.IsAudio == audio)) return true;
+        if (_vKids.TryGetValue(dir, out var kids))
+            foreach (var kid in kids)
+                if (HasKind(kid, audio, depth + 1)) return true;
+        return false;
+    }
+
+    private List<BrowserEntry> AnonFolderEntries(bool audio)
+    {
+        // a folder that no longer holds anything of this kind (everything was restored): back to the list of folders
+        if (_anonSubDir.Length > 0 && !HasKind(_anonSubDir, audio)) { _anonSubDir = ""; _anonSubBack.Clear(); }
+
+        for (int guard = 0; guard < 40; guard++)
+        {
+            var list = new List<BrowserEntry>();
+            var kids = KidsOf(_anonSubDir).Where(k => HasKind(k, audio)).ToList();
+            foreach (var kid in kids) list.Add(VirtualFolderEntry(kid));
+
+            var files = VirtualFiles(_anonSubDir).Where(i => i.IsAudio == audio)
+                .OrderBy(DisplayTitle, StringComparer.CurrentCultureIgnoreCase).ToList();
+            if (_sortDesc) files.Reverse();
+
+            // at the top, a single folder with nothing beside it is opened for you (as on the Home page)
+            if (_anonSubDir.Length == 0 && kids.Count == 1 && files.Count == 0)
+            {
+                _anonSubDir = list[0].FullPath;
+                continue;
+            }
+
+            foreach (var f in files) list.Add(VaultEntry(f, f.SizeText));
+            return list;
+        }
+        return new List<BrowserEntry>();
+    }
+
+    private void RebuildAnonFolderPage()
+    {
+        _pageToken++;
+        if (_mode == LibMode.Videos) BuildVideos();
+        else { BuildMusicEntries(); FinishPage(); }
+    }
+
+    /// <summary>A folder tile was opened: inside the Videos / Music pages (Anonymous Mode) it opens in place, elsewhere it is browsed.</summary>
+    private void OpenFolderEntry(string dir)
+    {
+        if (AnonFolderPage)
+        {
+            _anonSubBack.Push(_anonSubDir);
+            _anonSubDir = dir;
+            RebuildAnonFolderPage();
+            return;
+        }
+        NavigateTo(dir);
+    }
+
+    /// <summary>Every vault item inside a virtual folder (and its sub-folders); on the Videos / Music pages only that page's kind.</summary>
+    private List<VaultItem> VaultItemsUnder(string dir)
+    {
+        bool filter = AnonFolderPage;
+        bool audio = _mode == LibMode.Music;
+        return _anonList.Where(i =>
+        {
+            if (filter && i.IsAudio != audio) return false;
+            string key = VKey(i.Origin);
+            return key.Equals(dir, StringComparison.OrdinalIgnoreCase) || key.StartsWith(dir + "\\", StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+    }
 
     // ------------------------------------------------------------------ lock icon menu
 

@@ -99,21 +99,23 @@ public partial class MainWindow
     private async void MiniClose_Click(object sender, RoutedEventArgs e)
     {
         var player = _player;
-        if (player == null || _stopping) return;
+        if (player == null || !_playback.BeginStop()) return;
 
         // Stop runs off the UI thread. While it runs no new playback may start on the same player (it would be stopped, or have its
-        // screen cleared, by this stop): StartPlayback parks the request in _pendingStart until the stop is done.
-        _stopping = true;
-        CancelCrossfade();   // both sides: the outgoing player of a crossfade would otherwise keep sounding
-        StopResumeTracking();
-        _waveCts?.Cancel();
-        try { await Task.Run(() => player.Stop()); }
-        finally { _stopping = false; }
-
-        if (_pendingStart is { } pending)
+        // screen cleared, by this stop): StartPlayback parks the request in the coordinator until the stop is done.
+        (string Path, long StartMs, bool IsMrl)? pending;
+        try
         {
-            _pendingStart = null;
-            StartPlayback(pending.Path, pending.StartMs, pending.IsMrl);   // the user picked something else meanwhile: it plays now
+            CancelCrossfade();   // both sides: the outgoing player of a crossfade would otherwise keep sounding
+            StopResumeTracking();
+            _waveCts?.Cancel();
+            await Task.Run(() => player.Stop());
+        }
+        finally { pending = _playback.EndStop(); }
+
+        if (pending is { } next)
+        {
+            StartPlayback(next.Path, next.StartMs, next.IsMrl);   // the user picked something else meanwhile: it plays now
             return;
         }
 
