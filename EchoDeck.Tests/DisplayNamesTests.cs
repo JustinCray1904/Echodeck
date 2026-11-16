@@ -18,6 +18,33 @@ public class DisplayNamesTests
     }
 
     [Theory]
+    [InlineData("Polo G - Flex Official Music Video", "Polo G - Flex")]
+    [InlineData("Polo G - Flex - Official Audio", "Polo G - Flex")]
+    [InlineData("Polo G - Flex (Visualizer)", "Polo G - Flex")]
+    [InlineData("Polo G - Flex Visualizer", "Polo G - Flex")]
+    [InlineData("Polo G - Flex Lyric Video", "Polo G - Flex")]
+    [InlineData("Polo G - Flex | HD", "Polo G - Flex")]
+    [InlineData("Polo G - Flex Audio", "Polo G - Flex")]
+    [InlineData("Polo G - Flex - Audio", "Polo G - Flex")]
+    [InlineData("Polo G - Flex Official Music Video HD", "Polo G - Flex")]
+    [InlineData("Polo G - Flex (Official Video) #shorts", "Polo G - Flex")]
+    [InlineData("Davido - Unavailable (Visualizer) ft. Musa Keys", "Davido - Unavailable ft. Musa Keys")]
+    public void Tidy_RemovesNoiseThatIsNotInBrackets(string raw, string expected)
+    {
+        Assert.Equal(expected, DisplayNames.Tidy(raw));
+    }
+
+    [Theory]
+    [InlineData("India.Arie - Video")]                 // here the word IS the title
+    [InlineData("Lana Del Rey - Video Games")]
+    [InlineData("Artist - #1 Crush")]
+    [InlineData("Taylor Swift - Love Story (Taylor's Version)")]
+    public void Tidy_KeepsRealTitlesThatLookLikeNoise(string name)
+    {
+        Assert.Equal(name, DisplayNames.Tidy(name));
+    }
+
+    [Theory]
     [InlineData("Zenitsu Uk Drill Kaigaku Diss (Demon Slayer Rap)")]   // brackets that are part of the title stay
     [InlineData("Dr. Dre - Still DRE")]
     [InlineData("Plain Title")]
