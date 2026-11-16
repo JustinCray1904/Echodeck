@@ -15,7 +15,7 @@ internal static class OnlineLyrics
     /// <param name="Approximate">Matched by title only: no upload with a length close to the file's. The timing may be off.</param>
     internal sealed record Result(string Text, bool Synced, string Title, string Artist, bool Approximate = false);
 
-    private sealed record Hit(string Title, string Artist, double Duration, string Synced, string Plain, bool Instrumental);
+    internal sealed record Hit(string Title, string Artist, double Duration, string Synced, string Plain, bool Instrumental);
 
     private static readonly HttpClient Http = CreateClient();
 
@@ -48,7 +48,11 @@ internal static class OnlineLyrics
     /// each other). A result for a different song is never taken just because its length happens to be close, and when the artist is
     /// known it must match (SameArtist tolerates "A &amp; B" and "feat." credits); length only vouches for a song whose artist is unknown.
     /// </summary>
-    private static Hit? Pick(IEnumerable<Hit> hits, IReadOnlyList<string> titles, IReadOnlyList<string> artists, double seconds, out double gap)
+    /// <summary>One wanted title and artist (the form the tests use).</summary>
+    internal static Hit? Pick(IEnumerable<Hit> hits, string title, string artist, double seconds, out double gap) =>
+        Pick(hits, new[] { title }, new[] { artist }, seconds, out gap);
+
+    internal static Hit? Pick(IEnumerable<Hit> hits, IReadOnlyList<string> titles, IReadOnlyList<string> artists, double seconds, out double gap)
     {
         gap = 0;
         Hit? best = null;
