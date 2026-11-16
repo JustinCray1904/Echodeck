@@ -142,3 +142,9 @@ jobs:
         with:
           files: installer-output/*
           generate_release_notes: true
+
+      # Unit tests (EchoDeck.Tests: the lyrics parser, the vault's stored data, title cleaning). They run after the installer is built (building the
+      # test project restores Tempo again without the self-contained setting) and do not fail the run yet: once they have passed on CI once, delete the "continue-on-error" line so a failing test fails the build.
+      - name: Unit tests
+        continue-on-error: true
+        run: dotnet test EchoDeck.Tests/EchoDeck.Tests.csproj -c Release
