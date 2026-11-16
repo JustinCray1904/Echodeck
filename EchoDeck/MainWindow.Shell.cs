@@ -308,6 +308,9 @@ public partial class MainWindow
     private void OnPlaybackError()
     {
         if (_player is null || _transition) return;
+        // If the incoming side of an overlap fails, retire the outgoing side as well; otherwise it can
+        // continue audibly while the UI believes playback has stopped or moved to another queue item.
+        CancelCrossfade();
 
         string name = "this item";
         if (_queueIndex >= 0 && _queueIndex < _queue.Count)

@@ -15,7 +15,7 @@ internal static class OnlineLyrics
     /// <param name="Approximate">Matched by title only: no upload with a length close to the file's. The timing may be off.</param>
     internal sealed record Result(string Text, bool Synced, string Title, string Artist, bool Approximate = false);
 
-    private sealed record Hit(string Title, string Artist, double Duration, string Synced, string Plain, bool Instrumental);
+    internal sealed record Hit(string Title, string Artist, double Duration, string Synced, string Plain, bool Instrumental);
 
     private static readonly HttpClient Http = CreateClient();
 
@@ -51,23 +51,48 @@ internal static class OnlineLyrics
         string artist = (tags.Artist ?? "").Trim();
         string title = DisplayNames.Tidy(tags.Title ?? "");
 
-        if (title.Length > 0 && artist.Length == 0)
+        if (title.Length > 0 && (artist.Length == 0 || IsGenericArtist(artist)))
         {
             var split = SplitArtistTitle(title);
-            artist = split.Artist;
-            title = split.Title;
+            if (split.Artist.Length > 0)
+            {
+                artist = split.Artist;
+                title = split.Title;
+            }
+            else if (IsGenericArtist(artist)) artist = "";
         }
-        if (title.Length == 0)
+
+        // Downloader tags are sometimes incomplete. Use a filename artist/title pair when it agrees with the tag title.
+        var fromName = FromFileName(path);
+        if (title.Length == 0 || IsGenericTitle(title))
         {
-            var fromName = FromFileName(path);
-            title = fromName.Title;
-            if (artist.Length == 0) artist = fromName.Artist;
+            if (fromName.Title.Length > 0) title = fromName.Title;
+            if (artist.Length == 0 || IsGenericArtist(artist)) artist = fromName.Artist;
         }
+        else if ((artist.Length == 0 || IsGenericArtist(artist)) && fromName.Artist.Length > 0 &&
+                 TextMatch.SameTitle(title, fromName.Title))
+        {
+            artist = fromName.Artist;
+            title = fromName.Title;
+        }
+        if (IsGenericArtist(artist)) artist = fromName.Artist;
+
         return (TextMatch.StripFeature(artist), TextMatch.StripFeature(title).Length > 0 ? TextMatch.StripFeature(title) : title);
     }
 
+    private static bool SameCatalogTitle(string wanted, string found) =>
+        TextMatch.Norm(wanted).Length > 0 && TextMatch.Norm(wanted) == TextMatch.Norm(found);
+
+    private static bool IsGenericTitle(string title) =>
+        new[] { "unknown", "unknown title", "audio", "video", "official audio", "official video", "youtube" }
+            .Contains(title.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsGenericArtist(string artist) =>
+        string.IsNullOrWhiteSpace(artist) || new[] { "unknown", "unknown artist", "youtube", "youtube audio library", "topic", "various artists" }
+            .Contains(artist.Trim(), StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The upload is not the same recording when it is this much longer or shorter than the file (seconds).</summary>
-    private const double MaxLengthDifference = 20;
+    private const double MaxLengthDifference = 12;
 
     /// <summary>The length difference above which the timing is flagged as possibly off (seconds).</summary>
     private const double ExactEnough = 6;
@@ -77,7 +102,7 @@ internal static class OnlineLyrics
     /// one whose length is closest to the file's wins (timed lyrics before plain ones when the lengths are about as close). A result
     /// for a different song is never taken just because its length happens to be close.
     /// </summary>
-    private static Hit? Pick(IEnumerable<Hit> hits, string title, string artist, double seconds, out double gap)
+    internal static Hit? Pick(IEnumerable<Hit> hits, string title, string artist, double seconds, out double gap)
     {
         gap = 0;
         Hit? best = null;
@@ -85,15 +110,15 @@ internal static class OnlineLyrics
         foreach (var h in hits)
         {
             if (h.Instrumental || (h.Synced.Length == 0 && h.Plain.Length == 0)) continue;
-            if (!TextMatch.SameTitle(title, h.Title)) continue;
+            if (!SameCatalogTitle(title, h.Title)) continue;
 
-            double diff = seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : 0;
-            if (diff > MaxLengthDifference) continue;
-            // an artist that does not match is only forgiven for an upload of exactly the file's length
-            if (!TextMatch.SameArtist(artist, h.Artist) && !(seconds > 0 && h.Duration > 0 && diff <= 2)) continue;
+            double diff = seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : (seconds > 0 ? 30 : 0);
+            if (seconds > 0 && h.Duration > 0 && diff > MaxLengthDifference) continue;
+            // Never accept another artist merely because its duration happens to be similar.
+            if (artist.Length > 0 && !TextMatch.SameArtist(artist, h.Artist)) continue;
 
-            // closest length first; timed lyrics win over plain ones when they are within 2 s of each other
-            double score = diff + (h.Synced.Length > 0 ? 0 : 2.5);
+            // Duration is the primary ranking criterion. Synced lyrics only break effectively equal-duration ties.
+            double score = diff * 100 + (h.Duration <= 0 && seconds > 0 ? 10000 : 0) + (h.Synced.Length > 0 ? 0 : 1);
             if (score < bestScore)
             {
                 best = h;
@@ -108,9 +133,18 @@ internal static class OnlineLyrics
     internal static async Task<Result?> FindAsync(string mediaPath, TagInfo tags, CancellationToken ct)
     {
         var (artist, title) = Identity(mediaPath, tags);
-        string album = tags.Album ?? "";
         double seconds = tags.DurationSeconds;
         if (title.Length == 0) return null;
+
+        // Cross-check the cleaned local identity against a public music catalog first. If it has no confident
+        // match (or the network is unavailable), keep using the cleaned local tags / filename.
+        var catalog = await OnlineTrackIdentity.ResolveAsync(artist, title, seconds, ct).ConfigureAwait(false);
+        if (catalog != null)
+        {
+            artist = catalog.Artist;
+            title = catalog.Title;
+        }
+        string album = tags.Album ?? "";
 
         var all = new List<Hit>();
         string Num(double v) => ((long)v).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -124,17 +158,17 @@ internal static class OnlineLyrics
                       (seconds > 0 ? "&duration=" + Num(seconds) : "");
             var body = await GetAsync(url, ct).ConfigureAwait(false);
             if (body != null && ParseHit(body.Value) is { } exact) all.Add(exact);
-
-            var best = Pick(all, title, artist, seconds, out double gap);
-            if (best != null && best.Synced.Length > 0 && gap <= ExactEnough) return ToResult(best);
         }
 
-        // 2) searches, most specific first; each is checked at once, and the next one is only made when this one was not good enough
+        // 2) Search every relevant artist/title query, then rank the combined candidates by duration.
         var searches = new List<string>();
         if (artist.Length > 0) searches.Add("track_name=" + Uri.EscapeDataString(title) + "&artist_name=" + Uri.EscapeDataString(artist));
         if (artist.Length > 0) searches.Add("q=" + Uri.EscapeDataString(artist + " " + title));
-        searches.Add("track_name=" + Uri.EscapeDataString(title));
-        searches.Add("q=" + Uri.EscapeDataString(title));
+        if (artist.Length == 0)
+        {
+            searches.Add("track_name=" + Uri.EscapeDataString(title));
+            searches.Add("q=" + Uri.EscapeDataString(title));
+        }
 
         foreach (var search in searches)
         {
@@ -144,9 +178,6 @@ internal static class OnlineLyrics
 
             foreach (var element in body.Value.EnumerateArray())
                 if (ParseHit(element) is { } hit) all.Add(hit);
-
-            var best = Pick(all, title, artist, seconds, out double gap);
-            if (best != null && best.Synced.Length > 0 && gap <= ExactEnough) return ToResult(best);
         }
 
         var pick = Pick(all, title, artist, seconds, out double finalGap);

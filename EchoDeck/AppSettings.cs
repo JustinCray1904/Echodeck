@@ -138,6 +138,7 @@ public sealed class AppSettings
         {
             Current = new AppSettings();
         }
+        if (Current.CrossfadeEnabled && Current.GaplessEnabled) Current.GaplessEnabled = false;
         Current.EnsureFolders();
     }
 

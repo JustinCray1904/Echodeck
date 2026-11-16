@@ -551,7 +551,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade between songs"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The end of a song fades out while the next one fades in. Only between songs (not videos), and not with repeat one or in Anonymous Mode. It starts the next song a few seconds early, so the title and cover change at the start of the overlap."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The end of a song fades out while the next one fades in. Only between songs (not videos), and not with repeat one or in Anonymous Mode. Starts the next song when the selected fade window begins. Crossfade and gapless are mutually exclusive."/>
                             </StackPanel>
                             <CheckBox x:Name="CrossfadeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
@@ -567,7 +567,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Gapless playback"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The next song is already running when the current one ends, so there is no silence between songs (without fading). Ignored while crossfade is on."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Starts the next song shortly before the current one ends, without fading; the current song is allowed to finish naturally. Crossfade and gapless are mutually exclusive."/>
                             </StackPanel>
                             <CheckBox x:Name="GaplessSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>

@@ -13,6 +13,9 @@ internal static class DisplayNames
     private static readonly Regex Bracketed = new(@"\s*[\(\[][^\)\]]*(?:official|video|audio|lyric|visuali[sz]er|prod\.?|kbps|\d{3,4}p\b|\bhd\b|\bhq\b|remaster|clip|music video|full song)[^\)\]]*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex VideoId = new(@"\s*\[[A-Za-z0-9_-]{11}\]", RegexOptions.Compiled);
     private static readonly Regex TrailingQuality = new(@"\s*[\(\[]?\s*\d{2,3}\s*kbps\s*[\)\]]?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TrailingNoise = new(
+        @"(?:\s+(?:official\s+(?:music\s+)?video|official\s+audio|music\s+video|visuali[sz]er|lyrics?|full\s+album)|\s*[-–—|:]+\s*(?:audio|video|hd|4k|hq|topic))\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PipeTail = new(@"\s*[|｜]\s*(?:lyrics?|official|audio|video).*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex Spaces = new(@"\s{2,}", RegexOptions.Compiled);
 
@@ -34,7 +37,14 @@ internal static class DisplayNames
         s = Bracketed.Replace(s, "");
         s = PipeTail.Replace(s, "");
         s = TrailingQuality.Replace(s, "");
-        s = Spaces.Replace(s, " ").Trim(' ', '-', '_', '.', '–', '—');
+        // Downloader / YouTube labels are often unbracketed or stacked.
+        for (int i = 0; i < 3; i++)
+        {
+            string cleaned = TrailingNoise.Replace(s, "");
+            if (cleaned == s) break;
+            s = cleaned;
+        }
+        s = Spaces.Replace(s, " ").Trim(' ', '-', '_', '.', '–', '—', '|', ':');
         return s.Length >= 2 ? s : name;   // never end up with nothing
     }
 

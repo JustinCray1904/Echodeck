@@ -116,6 +116,9 @@ public partial class SettingsWindow : Window
         LyricsOffsetValue.Text = FormatOffset(_cfg.LyricsOffsetMs);
         HideUiSwitch.IsChecked = _cfg.HideInterface;
         CleanTitlesSwitch.IsChecked = _cfg.CleanTitles;
+        // The two modes are mutually exclusive. Prefer crossfade when loading an older settings file
+        // that accidentally has both switches enabled.
+        if (_cfg.CrossfadeEnabled && _cfg.GaplessEnabled) _cfg.GaplessEnabled = false;
         CrossfadeSwitch.IsChecked = _cfg.CrossfadeEnabled;
         GaplessSwitch.IsChecked = _cfg.GaplessEnabled;
         DiscordSwitch.IsChecked = _cfg.DiscordPresence;
@@ -382,8 +385,14 @@ public partial class SettingsWindow : Window
             case nameof(LyricsWordsSwitch): _cfg.LyricsWordByWord = on; break;
             case nameof(HideUiSwitch): _cfg.HideInterface = on; break;
             case nameof(CleanTitlesSwitch): _cfg.CleanTitles = on; break;
-            case nameof(CrossfadeSwitch): _cfg.CrossfadeEnabled = on; break;
-            case nameof(GaplessSwitch): _cfg.GaplessEnabled = on; break;
+            case nameof(CrossfadeSwitch):
+                _cfg.CrossfadeEnabled = on;
+                if (on) { _cfg.GaplessEnabled = false; GaplessSwitch.IsChecked = false; }
+                break;
+            case nameof(GaplessSwitch):
+                _cfg.GaplessEnabled = on;
+                if (on) { _cfg.CrossfadeEnabled = false; CrossfadeSwitch.IsChecked = false; }
+                break;
             case nameof(DiscordSwitch): _cfg.DiscordPresence = on; break;
             case nameof(CoversSwitch): _cfg.FetchCoversOnline = on; break;
             case nameof(AssocSwitch): ToggleAssociation(box, on); return;
