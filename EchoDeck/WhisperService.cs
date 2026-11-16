@@ -151,6 +151,8 @@ internal static class WhisperService
         var (exe, model) = Resolve(cfg);
         if (exe == null) throw new WhisperException("The whisper.cpp program was not found. Choose it in Settings > Lyrics.", setupProblem: true);
 
+        if (model == null) throw new WhisperException("No Whisper model was found. Choose a ggml model file in Settings > Lyrics.", setupProblem: true);
+
         // checked again right now: the model may have been deleted or replaced since the settings were saved
         var modelProblem = CheckModel(model);
         if (modelProblem != null)

@@ -116,6 +116,13 @@ public partial class SettingsWindow : Window
         LyricsOffsetValue.Text = FormatOffset(_cfg.LyricsOffsetMs);
         HideUiSwitch.IsChecked = _cfg.HideInterface;
         CleanTitlesSwitch.IsChecked = _cfg.CleanTitles;
+        CrossfadeSwitch.IsChecked = _cfg.CrossfadeEnabled;
+        GaplessSwitch.IsChecked = _cfg.GaplessEnabled;
+        DiscordSwitch.IsChecked = _cfg.DiscordPresence;
+        DiscordIdBox.Text = _cfg.DiscordClientId;
+        DiscordDetailsBox.Text = _cfg.DiscordDetailsText;
+        DiscordStateBox.Text = _cfg.DiscordStateText;
+        CrossfadeCombo.SelectedIndex = Math.Clamp(_cfg.CrossfadeSeconds / 2 - 1, 0, 5);
         CoversSwitch.IsChecked = _cfg.FetchCoversOnline;
         MotionCombo.SelectedIndex = Math.Clamp(_cfg.MotionMode, 0, 2);
         VisualizerCombo.SelectedIndex = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
@@ -204,6 +211,16 @@ public partial class SettingsWindow : Window
         MessageBox.Show(this,
             "With the cloud engine, the audio of every song you generate lyrics for is uploaded to the online service you set below.\n\nNothing is sent until you press Generate. Use it?",
             "Cloud lyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    private void Discord_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        string id = new string(DiscordIdBox.Text.Where(char.IsDigit).ToArray());   // an application ID is only digits
+        _cfg.DiscordClientId = id;
+        _cfg.DiscordDetailsText = DiscordDetailsBox.Text.Trim();
+        _cfg.DiscordStateText = DiscordStateBox.Text.Trim();
+        _cfg.Save();
+    }
 
     private void Cloud_LostFocus(object sender, RoutedEventArgs e)
     {
@@ -365,6 +382,9 @@ public partial class SettingsWindow : Window
             case nameof(LyricsWordsSwitch): _cfg.LyricsWordByWord = on; break;
             case nameof(HideUiSwitch): _cfg.HideInterface = on; break;
             case nameof(CleanTitlesSwitch): _cfg.CleanTitles = on; break;
+            case nameof(CrossfadeSwitch): _cfg.CrossfadeEnabled = on; break;
+            case nameof(GaplessSwitch): _cfg.GaplessEnabled = on; break;
+            case nameof(DiscordSwitch): _cfg.DiscordPresence = on; break;
             case nameof(CoversSwitch): _cfg.FetchCoversOnline = on; break;
             case nameof(AssocSwitch): ToggleAssociation(box, on); return;
             default: return;
@@ -391,6 +411,7 @@ public partial class SettingsWindow : Window
             case nameof(NetCacheCombo): _cfg.NetworkCachingMs = CacheValues[i]; break;
             case nameof(VisualizerCombo): _cfg.VisualizerStyle = i; break;
             case nameof(MotionCombo): _cfg.MotionMode = i; break;
+            case nameof(CrossfadeCombo): _cfg.CrossfadeSeconds = (i + 1) * 2; break;
             case nameof(HwModeCombo): _cfg.HardwareMode = HwModes[i]; break;
             case nameof(WhisperLangCombo): _cfg.WhisperLanguage = WhisperLangs[i]; break;
             case nameof(LyricsEngineCombo):

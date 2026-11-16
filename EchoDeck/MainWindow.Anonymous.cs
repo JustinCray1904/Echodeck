@@ -662,7 +662,7 @@ public partial class MainWindow
                 // Nothing was playing before: just stop the vault media.
                 _hasMedia = false;
                 var player = _player;
-                Task.Run(() => player.Stop()).ContinueWith(_ => Dispatcher.InvokeAsync(RetireCurrentVault));
+                _ = Task.Run(() => player.Stop()).ContinueWith(_ => Dispatcher.InvokeAsync(RetireCurrentVault));   // fire and forget: the UI does not wait for the stop
                 ShowMusic(false, "", "");
                 EmptyHint.Visibility = Visibility.Visible;
             }
@@ -879,7 +879,7 @@ public partial class MainWindow
         if (input == null && media == null) return;
 
         // Give LibVLC a moment to finish closing before its native wrappers are released.
-        Task.Run(async () =>
+        _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(5));
             try { media?.Dispose(); } catch { /* already released */ }

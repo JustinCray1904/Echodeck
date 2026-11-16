@@ -87,6 +87,13 @@ public sealed class AppSettings
     public int LyricsOffsetMs { get; set; }                // timing of every song's lyrics (positive = later); each song can add its own nudge
     public bool CleanTitles { get; set; } = true;          // show tidy song names (no site names or quality tags); files are never renamed
     public bool FetchCoversOnline { get; set; }           // look up missing covers at MusicBrainz / Cover Art Archive (sends artist and title)
+    public bool DiscordPresence { get; set; }             // show the playing song as a Discord status (needs the application ID below)
+    public string DiscordClientId { get; set; } = "";      // application ID from discord.com/developers
+    public string DiscordDetailsText { get; set; } = "Playing: {title}";
+    public string DiscordStateText { get; set; } = "by {artist}";
+    public bool CrossfadeEnabled { get; set; }            // overlap and fade songs into each other (audio only)
+    public int CrossfadeSeconds { get; set; } = 6;        // length of the crossfade, 1-12 seconds
+    public bool GaplessEnabled { get; set; }              // start the next song just before the end so there is no silence between songs
     public int MotionMode { get; set; } = 1;              // moving background: 0 automatic (still when Windows animations are off), 1 always moving, 2 always still
     public bool LyricsWordByWord { get; set; }            // light up the sung line word by word (off: the whole line is highlighted)
     public bool HideInterface { get; set; }               // hide the title bar, side bar and controls while playing (H, or the right-click menu)

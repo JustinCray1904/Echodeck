@@ -38,6 +38,11 @@
     <DefineConstants>$(DefineConstants);GLOBAL_KEY_HOOK</DefineConstants>
   </PropertyGroup>
 
+  <!-- the unit tests (EchoDeck.Tests) see the internal types -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="EchoDeck.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
     <Resource Include="Assets\logo.png" />

@@ -548,6 +548,46 @@
                             <CheckBox x:Name="LyricsWordsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
                         <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade between songs"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The end of a song fades out while the next one fades in. Only between songs (not videos), and not with repeat one or in Anonymous Mode. It starts the next song a few seconds early, so the title and cover change at the start of the overlap."/>
+                            </StackPanel>
+                            <CheckBox x:Name="CrossfadeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade length"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="How long the two songs overlap."/>
+                            </StackPanel>
+                            <ComboBox x:Name="CrossfadeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="2 seconds"/><ComboBoxItem Content="4 seconds"/><ComboBoxItem Content="6 seconds"/><ComboBoxItem Content="8 seconds"/><ComboBoxItem Content="10 seconds"/><ComboBoxItem Content="12 seconds"/></ComboBox>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Gapless playback"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The next song is already running when the current one ends, so there is no silence between songs (without fading). Ignored while crossfade is on."/>
+                            </StackPanel>
+                            <CheckBox x:Name="GaplessSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Discord status"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Shows the song you are playing on your Discord profile, with its cover when one can be found. Songs only, never in Anonymous Mode. It needs an application ID: create an application at discord.com/developers, copy its Application ID, and (to have a fallback picture) upload an image named tempo under Rich Presence > Art Assets."/>
+                            </StackPanel>
+                            <CheckBox x:Name="DiscordSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Style="{StaticResource HintText}" Text="Discord application ID"/>
+                            <TextBox x:Name="DiscordIdBox" Style="{StaticResource DarkTextBox}" Margin="0,6,0,12" LostFocus="Discord_LostFocus"/>
+                            <TextBlock Style="{StaticResource HintText}" Text="First line ({title} and {artist} are replaced)"/>
+                            <TextBox x:Name="DiscordDetailsBox" Style="{StaticResource DarkTextBox}" Margin="0,6,0,12" LostFocus="Discord_LostFocus"/>
+                            <TextBlock Style="{StaticResource HintText}" Text="Second line"/>
+                            <TextBox x:Name="DiscordStateBox" Style="{StaticResource DarkTextBox}" Margin="0,6,0,0" LostFocus="Discord_LostFocus"/>
+                        </StackPanel>
+                        <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Lyrics timing"/>

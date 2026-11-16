@@ -55,7 +55,6 @@ public partial class MainWindow : Window
     private readonly Stack<string> _navBack = new();
     private readonly Stack<string> _navForward = new();
     private string? _currentDir;
-    private int _typeFilter;     // 0 all (Home), 1 videos, 2 music
     private bool _sortDesc;
     private int _queueIndex = -1;
     private bool _libraryVisible = true;
@@ -193,22 +192,9 @@ public partial class MainWindow : Window
 
         var argArray = args.ToArray();
         _libVlc = await Task.Run(() => new LibVLC(argArray));
-        _player = new MediaPlayer(_libVlc)
-        {
-            // Let WPF see keyboard/mouse instead of libvlc's native window.
-            EnableKeyInput = false,
-            EnableMouseInput = false
-        };
-
-        _player.Playing += Player_Playing;
-        _player.Paused += (_, _) => Dispatcher.InvokeAsync(() => { SetPlayGlyph(false); NativeMethods.KeepAwake(false); SetPulse(false); });
-        _player.Stopped += (_, _) => Dispatcher.InvokeAsync(ResetTransport);
-        _player.EndReached += (_, _) => Dispatcher.InvokeAsync(OnEndReached);
-        _player.LengthChanged += Player_LengthChanged;
-        _player.TimeChanged += Player_TimeChanged;
-        _player.EncounteredError += (_, _) => Dispatcher.InvokeAsync(OnPlaybackError);
-
+        _player = BuildPlayer();
         VideoView.MediaPlayer = _player;
+        InitCrossfade();
     }
 
     private async Task StartupFlowAsync()
@@ -290,6 +276,8 @@ public partial class MainWindow : Window
         _vaultService.Lock();
 
         var player = _player;
+        CancelCrossfade();
+        try { _discord?.Post(null); _discord?.Dispose(); } catch { }
         var vlc = _libVlc;
         _player = null;
         _libVlc = null;
@@ -297,7 +285,7 @@ public partial class MainWindow : Window
         base.OnClosed(e);
 
         // Stop/dispose off the UI thread to avoid LibVLC deadlocks on shutdown.
-        Task.Run(() =>
+        _ = Task.Run(() =>
         {
             try { player?.Stop(); player?.Dispose(); vlc?.Dispose(); } catch { /* shutting down */ }
         });
@@ -320,6 +308,8 @@ public partial class MainWindow : Window
         ApplyViewMode();
         ApplyHideUi();
         ApplyMotion();
+        _discordKey = null;
+        UpdateDiscord(_player?.IsPlaying == true);   // the Discord settings may have changed
         if (_lyricsOpen) ApplyLyricFocus(_lyricIndex);   // the word-by-word setting may have changed
         ApplyGlobalKeys();
         ApplyVisualizerStyle();
@@ -458,10 +448,18 @@ public partial class MainWindow : Window
             SeekBar.Progress = 0;
             WaveBar.Progress = 0;
             UpdateTransportEnabled();
-            _player.Play(media);
+
+            if (_xfPlanned) StartIncoming(media);   // crossfade / gapless: the old song carries on while this one starts
+            else
+            {
+                CancelCrossfade();                  // anything else that starts ends a crossfade that was still running
+                _player.Play(media);
+            }
         }
         catch (Exception ex)
         {
+            _xfActive = false;
+            _xfPlanned = false;
             _hasMedia = false;
             UpdateTransportEnabled();
             Notify("Couldn't start playback: " + ex.Message);
@@ -495,6 +493,7 @@ public partial class MainWindow : Window
     private void TogglePlayPause()
     {
         if (_player is null) return;
+        if (_xfActive) FinishCrossfadeNow();   // pausing in the middle of a crossfade: the old song is let go first
 
         if (_playbackEnded && _hasMedia)
         {
@@ -521,7 +520,7 @@ public partial class MainWindow : Window
         SetPlayGlyph(true);
         SetPulse(_currentIsAudio);
         EmptyHint.Visibility = Visibility.Collapsed;
-        _player.Volume = (int)VolumeSlider.Value;
+        if (!_xfActive) _player.Volume = (int)VolumeSlider.Value;   // during a crossfade the fade sets the volume
         if (_cropIndex > 0) TrySetCrop(CropValues[_cropIndex]);   // a new video starts uncropped: bring the chosen crop back
         _lengthMs = _player.Length;
         if (_lengthMs > 0) DurationText.Text = Fmt(_lengthMs);
@@ -604,6 +603,7 @@ public partial class MainWindow : Window
 
     private void SetPlayGlyph(bool playing)
     {
+        UpdateDiscord(playing);
         var data = (System.Windows.Media.Geometry)FindResource(playing ? "IcoPause" : "IcoPlay");
         PlayPauseIcon.Data = data;
         MiniPlayIcon.Data = data;
@@ -1186,7 +1186,6 @@ public partial class MainWindow : Window
         var dlg = new OpenFolderDialog { Title = "Choose a media folder" };
         if (dlg.ShowDialog(this) != true) return;
 
-        _typeFilter = 0;
         NavHome.IsChecked = true;
         ShowLibrary(true);
         NavigateTo(dlg.FolderName);
@@ -1317,7 +1316,6 @@ public partial class MainWindow : Window
         var folder = items.FirstOrDefault(Directory.Exists);
         if (folder != null)
         {
-            _typeFilter = 0;
             ShowLibrary(true);
             NavigateTo(folder);
             return;

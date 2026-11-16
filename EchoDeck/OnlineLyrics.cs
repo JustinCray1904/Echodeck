@@ -26,104 +26,132 @@ internal static class OnlineLyrics
         return http;
     }
 
-    private static readonly Regex SitePrefix = new(@"^\s*(?:[\w-]+\.)+(?:net|com|app|xyz|org|io|cc|to|me|site|co)\s*[-–—_]\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex Noise = new(@"[\(\[][^\)\]]*(?:official|video|audio|lyric|visuali[sz]er|prod\.?|kbps|\d{3,4}p|\bhd\b|\bhq\b|remaster|clip)[^\)\]]*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
     /// <summary>Best guess of artist and title from a file name such as "yt1z.net - Juice WRLD - Ten Dirty (Official Video) [320 KBps]".</summary>
     internal static (string Artist, string Title) FromFileName(string path)
     {
-        var name = Path.GetFileNameWithoutExtension(path) ?? "";
-        name = SitePrefix.Replace(name, "");
-        name = Noise.Replace(name, "");
-        name = Regex.Replace(name, @"\s+", " ").Trim(' ', '-', '_', '.');
+        var name = DisplayNames.Tidy(Path.GetFileNameWithoutExtension(path) ?? "");
+        return SplitArtistTitle(name);
+    }
 
+    private static (string Artist, string Title) SplitArtistTitle(string name)
+    {
         var parts = name.Split(new[] { " - ", " – ", " — " }, 2, StringSplitOptions.None);
         return parts.Length == 2 && parts[0].Trim().Length > 0 && parts[1].Trim().Length > 0
             ? (parts[0].Trim(), parts[1].Trim())
             : ("", name);
     }
 
+    /// <summary>
+    /// Who and what a song is, for every online lookup (lyrics, covers, Discord): the tags when they are good, else the tidied file
+    /// name (the same name the library shows). A tag like "Polo G - Flex" with no artist tag is split into artist and title, and
+    /// "(feat. ...)" is left out of the title, because databases list the featured artist separately.
+    /// </summary>
+    internal static (string Artist, string Title) Identity(string path, TagInfo tags)
+    {
+        string artist = (tags.Artist ?? "").Trim();
+        string title = DisplayNames.Tidy(tags.Title ?? "");
+
+        if (title.Length > 0 && artist.Length == 0)
+        {
+            var split = SplitArtistTitle(title);
+            artist = split.Artist;
+            title = split.Title;
+        }
+        if (title.Length == 0)
+        {
+            var fromName = FromFileName(path);
+            title = fromName.Title;
+            if (artist.Length == 0) artist = fromName.Artist;
+        }
+        return (TextMatch.StripFeature(artist), TextMatch.StripFeature(title).Length > 0 ? TextMatch.StripFeature(title) : title);
+    }
+
+    /// <summary>The upload is not the same recording when it is this much longer or shorter than the file (seconds).</summary>
+    private const double MaxLengthDifference = 20;
+
+    /// <summary>The length difference above which the timing is flagged as possibly off (seconds).</summary>
+    private const double ExactEnough = 6;
+
+    /// <summary>
+    /// Of all the candidates, the one that is this song: the title must match (and the artist, when it is known), and of those the
+    /// one whose length is closest to the file's wins (timed lyrics before plain ones when the lengths are about as close). A result
+    /// for a different song is never taken just because its length happens to be close.
+    /// </summary>
+    private static Hit? Pick(IEnumerable<Hit> hits, string title, string artist, double seconds, out double gap)
+    {
+        gap = 0;
+        Hit? best = null;
+        double bestScore = double.MaxValue;
+        foreach (var h in hits)
+        {
+            if (h.Instrumental || (h.Synced.Length == 0 && h.Plain.Length == 0)) continue;
+            if (!TextMatch.SameTitle(title, h.Title)) continue;
+
+            double diff = seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : 0;
+            if (diff > MaxLengthDifference) continue;
+            // an artist that does not match is only forgiven for an upload of exactly the file's length
+            if (!TextMatch.SameArtist(artist, h.Artist) && !(seconds > 0 && h.Duration > 0 && diff <= 2)) continue;
+
+            // closest length first; timed lyrics win over plain ones when they are within 2 s of each other
+            double score = diff + (h.Synced.Length > 0 ? 0 : 2.5);
+            if (score < bestScore)
+            {
+                best = h;
+                bestScore = score;
+                gap = diff;
+            }
+        }
+        return best;
+    }
+
     /// <summary>Null when nothing was found. Throws on network trouble (the caller shows a message).</summary>
     internal static async Task<Result?> FindAsync(string mediaPath, TagInfo tags, CancellationToken ct)
     {
-        var fromName = FromFileName(mediaPath);
-        string artist = tags.Artist.Length > 0 ? tags.Artist : fromName.Artist;
-        string title = tags.Title.Length > 0 ? tags.Title : fromName.Title;
-        string album = tags.Album;
+        var (artist, title) = Identity(mediaPath, tags);
+        string album = tags.Album ?? "";
         double seconds = tags.DurationSeconds;
         if (title.Length == 0) return null;
 
-        Hit? plainFallback = null;
-        var allHits = new List<Hit>();   // every usable search result, for the title-only second chance
+        var all = new List<Hit>();
+        string Num(double v) => ((long)v).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        // 1) the exact lookup: needs artist and title, and is the most reliable when the tags are good
+        // 1) the exact lookup (needs the artist): the database itself matches title, artist and length
         if (artist.Length > 0)
         {
             var url = "https://lrclib.net/api/get?track_name=" + Uri.EscapeDataString(title) +
                       "&artist_name=" + Uri.EscapeDataString(artist) +
                       (album.Length > 0 ? "&album_name=" + Uri.EscapeDataString(album) : "") +
-                      (seconds > 0 ? "&duration=" + ((long)seconds).ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
+                      (seconds > 0 ? "&duration=" + Num(seconds) : "");
             var body = await GetAsync(url, ct).ConfigureAwait(false);
-            if (body != null)
-            {
-                var hit = ParseHit(body.Value);
-                if (hit != null && !hit.Instrumental)
-                {
-                    if (hit.Synced.Length > 0) return ToResult(hit);
-                    if (hit.Plain.Length > 0) plainFallback = hit;
-                }
-            }
+            if (body != null && ParseHit(body.Value) is { } exact) all.Add(exact);
+
+            var best = Pick(all, title, artist, seconds, out double gap);
+            if (best != null && best.Synced.Length > 0 && gap <= ExactEnough) return ToResult(best);
         }
 
-        // 2) a search: by artist and title, then by the file name's title alone
-        var queries = new List<string>();
-        if (artist.Length > 0) queries.Add(artist + " " + title);
-        queries.Add(title);
-        if (fromName.Title.Length > 0 && !queries.Contains(fromName.Title)) queries.Add(fromName.Title);
+        // 2) searches, most specific first; each is checked at once, and the next one is only made when this one was not good enough
+        var searches = new List<string>();
+        if (artist.Length > 0) searches.Add("track_name=" + Uri.EscapeDataString(title) + "&artist_name=" + Uri.EscapeDataString(artist));
+        if (artist.Length > 0) searches.Add("q=" + Uri.EscapeDataString(artist + " " + title));
+        searches.Add("track_name=" + Uri.EscapeDataString(title));
+        searches.Add("q=" + Uri.EscapeDataString(title));
 
-        foreach (var query in queries)
+        foreach (var search in searches)
         {
             ct.ThrowIfCancellationRequested();
-            var body = await GetAsync("https://lrclib.net/api/search?q=" + Uri.EscapeDataString(query), ct).ConfigureAwait(false);
+            var body = await GetAsync("https://lrclib.net/api/search?" + search, ct).ConfigureAwait(false);
             if (body == null || body.Value.ValueKind != JsonValueKind.Array) continue;
 
-            var hits = new List<Hit>();
             foreach (var element in body.Value.EnumerateArray())
-            {
-                var hit = ParseHit(element);
-                if (hit != null && !hit.Instrumental && (hit.Synced.Length > 0 || hit.Plain.Length > 0)) hits.Add(hit);
-            }
-            if (hits.Count == 0) continue;
-            allHits.AddRange(hits);
+                if (ParseHit(element) is { } hit) all.Add(hit);
 
-            // the same length as the file (within a few seconds) is what makes it the same recording
-            Func<Hit, double> distance = h => seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : 0;
-            var closeEnough = hits.Where(h => seconds <= 0 || h.Duration <= 0 || distance(h) <= 6).ToList();
-
-            var synced = closeEnough.Where(h => h.Synced.Length > 0).OrderBy(distance).FirstOrDefault();
-            if (synced != null) return ToResult(synced);
-
-            plainFallback ??= closeEnough.Where(h => h.Plain.Length > 0).OrderBy(distance).FirstOrDefault();
+            var best = Pick(all, title, artist, seconds, out double gap);
+            if (best != null && best.Synced.Length > 0 && gap <= ExactEnough) return ToResult(best);
         }
 
-        if (plainFallback != null) return ToResult(plainFallback);
-
-        // nothing has a length close to the file's: take the best match by title (and artist), closest length first, timed before plain
-        string wantTitle = Norm(title), wantArtist = Norm(artist);
-        Func<Hit, double> gap = h => seconds > 0 && h.Duration > 0 ? Math.Abs(h.Duration - seconds) : 9999;
-        var byTitle = allHits
-            .Where(h => Norm(h.Title).Length > 0 && (Norm(h.Title) == wantTitle ||
-                        (wantTitle.Length >= 4 && (Norm(h.Title).Contains(wantTitle) || wantTitle.Contains(Norm(h.Title))))))
-            .OrderByDescending(h => wantArtist.Length > 0 && (Norm(h.Artist).Contains(wantArtist) || wantArtist.Contains(Norm(h.Artist))))
-            .ThenByDescending(h => h.Synced.Length > 0)
-            .ThenBy(gap)
-            .FirstOrDefault();
-        return byTitle != null ? ToResult(byTitle, approximate: true) : null;
+        var pick = Pick(all, title, artist, seconds, out double finalGap);
+        return pick != null ? ToResult(pick, approximate: seconds > 0 && finalGap > ExactEnough) : null;
     }
-
-    /// <summary>Letters and digits only, lower case, without bracketed extras: "Flex (Official Audio)" and "flex" compare equal.</summary>
-    private static string Norm(string s) =>
-        Regex.Replace(Regex.Replace(s ?? "", @"[\(\[][^\)\]]*[\)\]]", ""), @"[^\p{L}\p{Nd}]", "").ToLowerInvariant();
 
     private static Result ToResult(Hit hit, bool approximate = false) =>
         hit.Synced.Length > 0
