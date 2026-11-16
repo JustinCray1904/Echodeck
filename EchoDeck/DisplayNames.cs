@@ -10,13 +10,19 @@ namespace EchoDeck;
 internal static class DisplayNames
 {
     private static readonly Regex Site = new(@"^\s*(?:[\w-]+\.)+(?:net|com|app|xyz|org|io|cc|to|me|site|co|ca|info|ws|tv|pro)\s*[-–—_:]\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex Bracketed = new(@"\s*[\(\[][^\)\]]*(?:official|video|audio|lyric|visuali[sz]er|prod\.?|kbps|\d{3,4}p\b|\bhd\b|\bhq\b|remaster|clip|music video|full song)[^\)\]]*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex Bracketed = new(@"\s*[\(\[【「『][^\)\]】」』]*(?:official|video|audio|lyric|visuali[sz]er|prod\.?|kbps|\d{3,4}p\b|\bhd\b|\bhq\b|\b[48]k\b|\bmv\b|\bm/v\b|remaster|clip|music video|full song|explicit|out now|free download)[^\)\]】」』]*[\)\]】」』]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex VideoId = new(@"\s*\[[A-Za-z0-9_-]{11}\]", RegexOptions.Compiled);
     private static readonly Regex TrailingQuality = new(@"\s*[\(\[]?\s*\d{2,3}\s*kbps\s*[\)\]]?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex TrailingNoise = new(
-        @"(?:\s+(?:official\s+(?:music\s+)?video|official\s+audio|music\s+video|visuali[sz]er|lyrics?|full\s+album)|\s*[-–—|:]+\s*(?:audio|video|hd|4k|hq|topic))\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex PipeTail = new(@"\s*[|｜]\s*(?:lyrics?|official|audio|video).*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PipeTail = new(@"\s*[|｜]\s*(?:lyrics?|official|audio|video|visuali[sz]er|music|clip|mv|hd|hq|4k|full|new|explicit).*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Noise at the END of a name that is NOT in brackets: "Flex Official Music Video", "Flex - Official Audio", "Flex Lyric Video", "Flex HD".
+    private static readonly Regex StrongTail = new(@"(?:^|[\s\-–—|:~/])+(?:official\s+(?:(?:music|lyrics?|lyrical|hd|4k)\s+)?(?:video|audio|visuali[sz]er|mv|m/v|clip)|(?:music|lyrics?|lyrical|visuali[sz]er)\s+video|(?:with|w/)\s+lyrics|full\s+(?:song|audio|video)|(?:hd|hq|4k|uhd)(?:\s+(?:audio|video))?)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // A bare "Lyrics", "Audio", "Video" or "Visualizer" at the end. Whether it is noise depends on what comes before it (see StripTails).
+    private static readonly Regex WeakTail = new(@"(?<sep>\s+[-–—]\s+|\s+)(?:lyrics?|audio|video|visuali[sz]er)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // "#shorts", "#lyrics" at the end (but never "#1 Hit": a hashtag must start with a letter)
+    private static readonly Regex Hashtags = new(@"(?:\s+#(?!\d)[\p{L}_][\p{L}\p{Nd}_]*)+\s*$", RegexOptions.Compiled);
     private static readonly Regex Spaces = new(@"\s{2,}", RegexOptions.Compiled);
 
     /// <summary>A name without its extension, tidied if the "Tidy song names" setting is on.</summary>
@@ -37,15 +43,43 @@ internal static class DisplayNames
         s = Bracketed.Replace(s, "");
         s = PipeTail.Replace(s, "");
         s = TrailingQuality.Replace(s, "");
-        // Downloader / YouTube labels are often unbracketed or stacked.
-        for (int i = 0; i < 3; i++)
-        {
-            string cleaned = TrailingNoise.Replace(s, "");
-            if (cleaned == s) break;
-            s = cleaned;
-        }
-        s = Spaces.Replace(s, " ").Trim(' ', '-', '_', '.', '–', '—', '|', ':');
+        s = Hashtags.Replace(s, "");
+        s = StripTails(s);
+        s = Spaces.Replace(s, " ").Trim(' ', '-', '_', '.', '–', '—');
         return s.Length >= 2 ? s : name;   // never end up with nothing
+    }
+
+    private static bool HasDash(string s) => s.Contains(" - ") || s.Contains(" – ") || s.Contains(" — ");
+
+    /// <summary>
+    /// Takes "Official Music Video", "Lyric Video", "Visualizer", "HD" ... off the end, also when they are not in brackets. A bare
+    /// "Audio" / "Video" / "Lyrics" goes only when it is clearly an add-on: "Flex Audio" becomes "Flex", "Artist - Song - Audio" becomes
+    /// "Artist - Song", but "India.Arie - Video" stays (there the word is the song's title).
+    /// </summary>
+    private static string StripTails(string s)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            string before = s;
+            string strong = StrongTail.Replace(s, "");
+            if (strong != s)
+            {
+                s = strong.TrimEnd(' ', '-', '–', '—', '|', ':', '~', '_');   // go round again: "Official Music Video HD" needs two passes
+                continue;
+            }
+
+            var m = WeakTail.Match(s);
+            if (m.Success)
+            {
+                string rest = s.Substring(0, m.Index).TrimEnd();
+                bool dash = m.Groups["sep"].Value.IndexOfAny(new[] { '-', '–', '—' }) >= 0;
+                if (rest.Length >= 2 && (!dash || HasDash(rest))) s = rest;
+            }
+
+            s = s.TrimEnd(' ', '-', '–', '—', '|', ':', '~', '_');
+            if (s == before) break;
+        }
+        return s;
     }
 
     /// <summary>A file name with its extension (the extension is kept as it is).</summary>

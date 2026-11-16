@@ -116,9 +116,6 @@ public partial class SettingsWindow : Window
         LyricsOffsetValue.Text = FormatOffset(_cfg.LyricsOffsetMs);
         HideUiSwitch.IsChecked = _cfg.HideInterface;
         CleanTitlesSwitch.IsChecked = _cfg.CleanTitles;
-        // The two modes are mutually exclusive. Prefer crossfade when loading an older settings file
-        // that accidentally has both switches enabled.
-        if (_cfg.CrossfadeEnabled && _cfg.GaplessEnabled) _cfg.GaplessEnabled = false;
         CrossfadeSwitch.IsChecked = _cfg.CrossfadeEnabled;
         GaplessSwitch.IsChecked = _cfg.GaplessEnabled;
         DiscordSwitch.IsChecked = _cfg.DiscordPresence;
@@ -126,6 +123,7 @@ public partial class SettingsWindow : Window
         DiscordDetailsBox.Text = _cfg.DiscordDetailsText;
         DiscordStateBox.Text = _cfg.DiscordStateText;
         CrossfadeCombo.SelectedIndex = Math.Clamp(_cfg.CrossfadeSeconds / 2 - 1, 0, 5);
+        CrossfadeCombo.IsEnabled = _cfg.CrossfadeEnabled;
         CoversSwitch.IsChecked = _cfg.FetchCoversOnline;
         MotionCombo.SelectedIndex = Math.Clamp(_cfg.MotionMode, 0, 2);
         VisualizerCombo.SelectedIndex = Math.Clamp(_cfg.VisualizerStyle, 0, 2);
@@ -385,14 +383,8 @@ public partial class SettingsWindow : Window
             case nameof(LyricsWordsSwitch): _cfg.LyricsWordByWord = on; break;
             case nameof(HideUiSwitch): _cfg.HideInterface = on; break;
             case nameof(CleanTitlesSwitch): _cfg.CleanTitles = on; break;
-            case nameof(CrossfadeSwitch):
-                _cfg.CrossfadeEnabled = on;
-                if (on) { _cfg.GaplessEnabled = false; GaplessSwitch.IsChecked = false; }
-                break;
-            case nameof(GaplessSwitch):
-                _cfg.GaplessEnabled = on;
-                if (on) { _cfg.CrossfadeEnabled = false; CrossfadeSwitch.IsChecked = false; }
-                break;
+            case nameof(CrossfadeSwitch): _cfg.CrossfadeEnabled = on; CrossfadeCombo.IsEnabled = on; break;
+            case nameof(GaplessSwitch): _cfg.GaplessEnabled = on; break;
             case nameof(DiscordSwitch): _cfg.DiscordPresence = on; break;
             case nameof(CoversSwitch): _cfg.FetchCoversOnline = on; break;
             case nameof(AssocSwitch): ToggleAssociation(box, on); return;

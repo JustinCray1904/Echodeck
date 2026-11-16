@@ -87,7 +87,6 @@ public partial class MainWindow : Window
         {
             bar.Scrubbing += frac =>
             {
-                if (_player != null && _player.Length > 0) _lengthMs = _player.Length;
                 if (_lengthMs <= 0) return;
                 long ms = (long)(frac * _lengthMs);
                 TimeText.Text = Fmt(ms);
@@ -96,17 +95,17 @@ public partial class MainWindow : Window
                 if (_player != null && _hasMedia && Environment.TickCount64 - _lastScrubSeek > 150)
                 {
                     _lastScrubSeek = Environment.TickCount64;
+                    if (_xfActive) FinishCrossfadeNow();
                     _player.Time = ms;
                     OnSeeked(ms);
                 }
             };
             bar.SeekCommitted += frac =>
             {
-                if (_player == null || !_hasMedia) return;
-                if (_player.Length > 0) _lengthMs = _player.Length;
-                if (_lengthMs <= 0) return;
+                if (_player == null || !_hasMedia || _lengthMs <= 0) return;
                 long ms = (long)(frac * _lengthMs);
                 if (_playbackEnded) { _playbackEnded = false; RestartCurrent(); return; }
+                if (_xfActive) FinishCrossfadeNow();
                 _player.Time = ms;
                 OnSeeked(ms);
             };
@@ -452,25 +451,21 @@ public partial class MainWindow : Window
             WaveBar.Progress = 0;
             UpdateTransportEnabled();
 
+            _playAskedAt = Environment.TickCount64;   // learns how long a song takes to start (gapless lead time)
             if (_xfPlanned) StartIncoming(media);   // crossfade / gapless: the old song carries on while this one starts
             else
             {
+                _xfAttemptKey = null;
                 CancelCrossfade();                  // anything else that starts ends a crossfade that was still running
                 _player.Play(media);
             }
-            SetPlayGlyph(true); // update controls immediately; Playing event confirms the state shortly after
         }
         catch (Exception ex)
         {
-            // If the second player failed to open during a crossfade, retire both sides cleanly. Never
-            // leave an orphaned outgoing player playing behind a stopped / unresponsive UI.
-            AbortCrossfadeStart();
-            var failedPlayer = _player;
-            if (failedPlayer != null) _ = Task.Run(() => { try { failedPlayer.Stop(); } catch { } });
+            AppLog.Write("Start playback", ex);
+            _xfPlanned = false;
+            CancelCrossfade();
             _hasMedia = false;
-            _lengthMs = 0;
-            _pendingSeekMs = null;
-            ResetTransport();
             UpdateTransportEnabled();
             Notify("Couldn't start playback: " + ex.Message);
         }
@@ -518,28 +513,24 @@ public partial class MainWindow : Window
             if (_queue.Count > 0) PlayNormal(_queue[Math.Max(0, _queueIndex)].FullPath);
             return;
         }
-        if (_player.IsPlaying)
-        {
-            _player.Pause();
-            SetPlayGlyph(false);
-        }
-        else
-        {
-            _player.Play();
-            SetPlayGlyph(true);
-        }
+        if (_player.IsPlaying) _player.Pause(); else _player.Play();
     }
 
     // Player events arrive on LibVLC threads: marshal to the UI thread, never call back into the player inline.
     private void Player_Playing(object? sender, EventArgs e) => Dispatcher.InvokeAsync(() =>
     {
-        if (_player is null || !ReferenceEquals(sender, _player)) return;
+        if (_player is null) return;
         _errorSkips = 0;
         _playbackEnded = false;
         SetPlayGlyph(true);
         SetPulse(_currentIsAudio);
         EmptyHint.Visibility = Visibility.Collapsed;
-        if (!_xfActive) _player.Volume = (int)VolumeSlider.Value;   // during a crossfade the fade sets the volume
+        if (_xfActive)
+        {
+            ApplyCrossfadeVolumes();   // during an overlap the fade sets the volume
+            if (_xfMuted) { try { _player.Mute = true; } catch { } }
+        }
+        else _player.Volume = (int)VolumeSlider.Value;
         if (_cropIndex > 0) TrySetCrop(CropValues[_cropIndex]);   // a new video starts uncropped: bring the chosen crop back
         _lengthMs = _player.Length;
         if (_lengthMs > 0) DurationText.Text = Fmt(_lengthMs);
@@ -583,10 +574,8 @@ public partial class MainWindow : Window
         long len = e.Length;
         Dispatcher.InvokeAsync(() =>
         {
-            if (!ReferenceEquals(sender, _player)) return;
             _lengthMs = len;
             DurationText.Text = Fmt(len);
-            UpdateTransportEnabled();
         });
     }
 
@@ -595,7 +584,6 @@ public partial class MainWindow : Window
         long t = e.Time;
         Dispatcher.InvokeAsync(() =>
         {
-            if (!ReferenceEquals(sender, _player)) return;
             TimeText.Text = Fmt(t);
             UpdateLyrics(t);
             TrackResume(t);
@@ -641,9 +629,8 @@ public partial class MainWindow : Window
 
     private void SeekBy(int seconds)
     {
-        if (_player is null || !_hasMedia) return;
-        if (_player.Length > 0) _lengthMs = _player.Length;
-        if (_lengthMs <= 0) return;
+        if (_player is null || !_hasMedia || _lengthMs <= 0) return;
+        if (_xfActive) FinishCrossfadeNow();
         long target = Math.Clamp(_player.Time + seconds * 1000L, 0, _lengthMs);
         _player.Time = target;
         OnSeeked(target);
@@ -770,15 +757,7 @@ public partial class MainWindow : Window
             return raw == null ? null : ShellThumbnail.TrimBorders(raw);
         });
 
-        // Album artwork should be square. Windows can return a video-frame thumbnail for some audio
-        // containers; don't mistake that frame for the album cover and suppress the online lookup.
-        if (bmp != null)
-        {
-            double ratio = (double)Math.Max(bmp.PixelWidth, bmp.PixelHeight) / Math.Max(1, Math.Min(bmp.PixelWidth, bmp.PixelHeight));
-            if (bmp.PixelWidth < 160 || bmp.PixelHeight < 160 || ratio > 1.25) bmp = null;
-        }
-
-        // No usable embedded cover: use the catalog-backed online lookup (never in Anonymous Mode).
+        // no cover in the file: if the setting is on, look for one online (never in Anonymous Mode)
         if (bmp == null && !_anon && _cfg.FetchCoversOnline) bmp = await OnlineCovers.GetAsync(path);
         if (bmp == null || _anon) return;
         if (!string.Equals(_queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex].FullPath : "", path,

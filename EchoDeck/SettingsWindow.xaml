@@ -513,6 +513,32 @@
                             <Slider x:Name="VolumeSlider" Grid.Column="1" Style="{StaticResource FigmaSlider}" Minimum="0" Maximum="200" IsMoveToPointEnabled="True" ValueChanged="Slider_Changed"/>
                             <TextBlock x:Name="VolumeSliderValue" Grid.Column="2" Style="{StaticResource HintText}" TextAlignment="Right" VerticalAlignment="Center"/>
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
+                        <TextBlock Text="Between songs" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade between songs"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The end of a song fades out while the next one fades in, so songs blend into each other. Only between songs (not videos), and not with repeat one or in Anonymous Mode. The next song starts a few seconds early, so the title and cover change when the blend begins."/>
+                            </StackPanel>
+                            <CheckBox x:Name="CrossfadeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade length"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="How long the two songs overlap."/>
+                            </StackPanel>
+                            <ComboBox x:Name="CrossfadeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="2 seconds"/><ComboBoxItem Content="4 seconds"/><ComboBoxItem Content="6 seconds"/><ComboBoxItem Content="8 seconds"/><ComboBoxItem Content="10 seconds"/><ComboBoxItem Content="12 seconds"/></ComboBox>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Gapless playback"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Starts the next song just before the current one ends, with no fading, so there is no silence between songs. Crossfade takes priority when both are on."/>
+                            </StackPanel>
+                            <CheckBox x:Name="GaplessSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
                         <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0" Text="Switch audio tracks from the audio button in the control bar (or press A). Music files open in the dedicated music view."/>
                     </StackPanel>
                 </ScrollViewer>
@@ -546,30 +572,6 @@
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Off: the whole line being sung is highlighted. On: its words light up in turn (an estimate, so it can drift on songs with timing for lines only)."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsWordsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,24,0">
-                                <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade between songs"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The end of a song fades out while the next one fades in. Only between songs (not videos), and not with repeat one or in Anonymous Mode. Starts the next song when the selected fade window begins. Crossfade and gapless are mutually exclusive."/>
-                            </StackPanel>
-                            <CheckBox x:Name="CrossfadeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,24,0">
-                                <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade length"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="How long the two songs overlap."/>
-                            </StackPanel>
-                            <ComboBox x:Name="CrossfadeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="2 seconds"/><ComboBoxItem Content="4 seconds"/><ComboBoxItem Content="6 seconds"/><ComboBoxItem Content="8 seconds"/><ComboBoxItem Content="10 seconds"/><ComboBoxItem Content="12 seconds"/></ComboBox>
-                        </Grid>
-                        <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,24,0">
-                                <TextBlock Style="{StaticResource RowLabel}" Text="Gapless playback"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Starts the next song shortly before the current one ends, without fading; the current song is allowed to finish naturally. Crossfade and gapless are mutually exclusive."/>
-                            </StackPanel>
-                            <CheckBox x:Name="GaplessSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

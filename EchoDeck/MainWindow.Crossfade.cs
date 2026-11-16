@@ -5,10 +5,14 @@ using LibVLCSharp.Shared;
 namespace EchoDeck;
 
 // Crossfade and gapless playback between two songs of the queue. LibVLC plays one song per player, so the next song is started on a
-// second player a few seconds before the end of the current one; the two overlap while the old one fades out and the new one fades in
+// second player a little before the end of the current one; the two overlap while the old one fades out and the new one fades in
 // (crossfade), or for a moment with no fade (gapless: the next song is already running when the old one ends, so there is no silence).
 // The new player then simply becomes THE player: the title, cover, lyrics, waveform and everything else switch to the new song when the
 // overlap starts, like other players do. Only audio into audio, never a video, never Anonymous Mode, never "repeat one".
+//
+// IMPORTANT: every player event is matched to its player with the player object captured in BuildPlayer, never with the event's
+// `sender`. (An earlier version compared `sender` with `_player`; when LibVLCSharp does not pass the MediaPlayer as the sender every
+// event was dropped: the play icon, the seek bar, the arrow keys and repeat all went dead.)
 public partial class MainWindow
 {
     private DispatcherTimer? _xfWatch;       // looks for the moment to start
@@ -16,10 +20,13 @@ public partial class MainWindow
     private MediaPlayer? _xfOutgoing;        // the song that is fading out
     private bool _xfPlanned;                 // the next StartPlayback is the incoming song of a crossfade
     private bool _xfActive;                  // a crossfade or gapless overlap is under way
-    private bool _xfWaitingForPlaying;       // don't begin the fade until LibVLC confirms the incoming player is playing
     private bool _xfFade;                    // fading (crossfade) or not (gapless)
+    private bool _xfMuted;                   // the old player was muted: the new one is too
     private double _xfSeconds;
     private DateTime _xfStart;
+    private string? _xfAttemptKey;           // the song an overlap was already tried for (a failed try is not repeated 10 times a second)
+    private long _playAskedAt;               // when Play was last asked for (ms), to learn how long this PC takes to start a song
+    private double _startLatencyMs = 450;    // learned: Play() until LibVLC reports "playing"
 
     private void InitCrossfade()
     {
@@ -38,44 +45,35 @@ public partial class MainWindow
             EnableMouseInput = false,
         };
 
+        bool IsCurrent() => ReferenceEquals(player, _player);
+
         player.Playing += (s, e) =>
         {
-            if (!ReferenceEquals(s, _player)) return;
+            if (!IsCurrent()) return;
+            NoteStartLatency(Environment.TickCount64);
             Player_Playing(s, e);
-            Dispatcher.InvokeAsync(() =>
-            {
-                if (ReferenceEquals(s, _player) && _xfActive && _xfWaitingForPlaying)
-                    BeginIncomingOverlap();
-            });
         };
-        player.Paused += (s, _) =>
+        player.Paused += (_, _) =>
         {
-            if (ReferenceEquals(s, _player))
-                Dispatcher.InvokeAsync(() =>
-                {
-                    if (!ReferenceEquals(s, _player) || _player?.IsPlaying == true) return;
-                    SetPlayGlyph(false); NativeMethods.KeepAwake(false); SetPulse(false);
-                });
+            if (IsCurrent())
+                Dispatcher.InvokeAsync(() => { SetPlayGlyph(false); NativeMethods.KeepAwake(false); SetPulse(false); });
         };
-        player.Stopped += (s, _) =>
-        {
-            if (!ReferenceEquals(s, _player)) return;
-            Dispatcher.InvokeAsync(() => { if (ReferenceEquals(s, _player) && _player?.IsPlaying != true) ResetTransport(); });
-        };
-        player.EndReached += (s, _) =>
-        {
-            if (ReferenceEquals(s, _player)) Dispatcher.InvokeAsync(() =>
-            {
-                if (ReferenceEquals(s, _player)) OnEndReached();
-            });
-        };
-        player.LengthChanged += (s, e) => { if (ReferenceEquals(s, _player)) Player_LengthChanged(s, e); };
-        player.TimeChanged += (s, e) => { if (ReferenceEquals(s, _player)) Player_TimeChanged(s, e); };
-        player.EncounteredError += (s, _) =>
-        {
-            if (ReferenceEquals(s, _player)) Dispatcher.InvokeAsync(() => { if (ReferenceEquals(s, _player)) OnPlaybackError(); });
-        };
+        player.Stopped += (_, _) => { if (IsCurrent()) Dispatcher.InvokeAsync(ResetTransport); };
+        player.EndReached += (_, _) => { if (IsCurrent()) Dispatcher.InvokeAsync(OnEndReached); };
+        player.LengthChanged += (s, e) => { if (IsCurrent()) Player_LengthChanged(s, e); };
+        player.TimeChanged += (s, e) => { if (IsCurrent()) Player_TimeChanged(s, e); };
+        player.EncounteredError += (_, _) => { if (IsCurrent()) Dispatcher.InvokeAsync(OnPlaybackError); };
         return player;
+    }
+
+    /// <summary>How long this PC takes from Play() to "playing": the gapless overlap starts that much (plus a margin) before the end.</summary>
+    private void NoteStartLatency(long nowMs)
+    {
+        long asked = _playAskedAt;
+        if (asked <= 0) return;
+        _playAskedAt = 0;   // only the first "playing" after a Play(): resuming from pause raises the event again
+        double ms = nowMs - asked;
+        if (ms > 0 && ms < 5000) _startLatencyMs = Math.Clamp(_startLatencyMs * 0.5 + ms * 0.5, 150, 1500);
     }
 
     /// <summary>The song that follows the current one, decided the same way as when a song ends. Null when playback would stop.</summary>
@@ -97,100 +95,80 @@ public partial class MainWindow
 
     private void WatchSongEnd()
     {
-        if (_xfWaitingForPlaying && DateTime.UtcNow - _xfStart > TimeSpan.FromSeconds(8))
+        try
         {
-            // A slow or failed incoming source must not leave the old player orphaned indefinitely.
-            OnPlaybackError();
-            return;
+            if (!(_cfg.CrossfadeEnabled || _cfg.GaplessEnabled) || _xfActive || _anon || _transition || _libVlc is null) return;
+            var player = _player;
+            if (player is null || !_hasMedia || !_currentIsAudio || _lengthMs < 8000) return;
+            if (_cfg.Loop == LoopMode.One || _sleepAfterSong) return;
+            if (_queueIndex < 0 || _queueIndex >= _queue.Count) return;
+            if (!player.IsPlaying) return;
+
+            bool fade = _cfg.CrossfadeEnabled;
+            double lead = fade
+                ? Math.Clamp(_cfg.CrossfadeSeconds, 1, 12)
+                : Math.Clamp((_startLatencyMs + 350) / 1000.0, 0.6, 2.0);   // seconds before the end
+            long remaining = _lengthMs - player.Time;
+            if (remaining < 0 || remaining > (long)(lead * 1000)) return;
+
+            string key = _queueIndex + "|" + _queue[_queueIndex].FullPath;
+            if (string.Equals(_xfAttemptKey, key, StringComparison.OrdinalIgnoreCase)) return;   // already tried for this song
+
+            var next = PeekNextPath();
+            if (next == null || !File.Exists(next) || !MediaTypes.IsAudio(next)) return;
+
+            _xfAttemptKey = key;
+            _xfActive = true;
+            _xfPlanned = true;
+            _xfFade = fade;
+            _xfSeconds = Math.Max(0.3, Math.Min(lead, remaining / 1000.0));
+            PlayNormal(next, stayInLibrary: _libraryVisible);   // reaches StartIncoming() through StartPlayback
+            if (_xfPlanned) { _xfActive = false; _xfPlanned = false; }   // playback never got that far: nothing is running
         }
-        if (!(_cfg.CrossfadeEnabled || _cfg.GaplessEnabled) || _xfActive || _anon || _libVlc is null) return;
-        if (_player is not { IsPlaying: true } || !_currentIsAudio || _lengthMs < 8000) return;
-        if (_cfg.Loop == LoopMode.One || _sleepAfterSong) return;
-
-        bool fade = _cfg.CrossfadeEnabled;
-        double lead = fade ? Math.Clamp(_cfg.CrossfadeSeconds, 1, 12) : 0.7;   // seconds before the end
-        long remaining = _lengthMs - _player.Time;
-        if (remaining < 0 || remaining > lead * 1000) return;
-
-        var next = PeekNextPath();
-        if (next == null || !File.Exists(next) || !MediaTypes.IsAudio(next)) return;
-
-        _xfActive = true;
-        _xfPlanned = true;
-        _xfFade = fade;
-        _xfSeconds = Math.Max(0.3, Math.Min(lead, remaining / 1000.0));
-        PlayNormal(next, stayInLibrary: _libraryVisible);   // reaches StartIncoming() through StartPlayback
-        if (_xfPlanned) { _xfActive = false; _xfPlanned = false; _xfWaitingForPlaying = false; }   // playback never got that far
+        catch (Exception ex)
+        {
+            _xfActive = false;
+            _xfPlanned = false;
+            AppLog.Write("Crossfade", ex);
+        }
     }
 
     /// <summary>Called by StartPlayback for the incoming song: it plays on a new player while the old one carries on.</summary>
     private void StartIncoming(Media media)
     {
         _xfPlanned = false;
-        var outgoing = _player;
+        var outgoing = _player!;
         var incoming = BuildPlayer();
         if (_equalizer != null)
         {
             try { incoming.SetEqualizer(_equalizer); } catch { /* sound without the equaliser rather than no sound */ }
         }
 
-        // Keep the incoming player muted while it opens / buffers. Crossfade raises it gradually;
-        // gapless raises it at the outgoing player's natural end.
-        incoming.Volume = 0;
-        _xfOutgoing = outgoing;
-        _player = incoming; // retire the outgoing player's normal event routing before attaching the gapless hand-off
-        VideoView.MediaPlayer = incoming;
-        if (!_xfFade)
-        {
-            // Gapless mode must keep the outgoing player alive until its natural end, not stop it after
-            // an arbitrary overlap duration. The incoming track is already running underneath it.
-            outgoing.EndReached += OutgoingGapless_EndReached;
-        }
-        _xfWaitingForPlaying = true;
-        _xfStart = DateTime.UtcNow; // also bounds a player that never reaches Playing
-        incoming.Play(media);
-        // Do not start the fade clock here: Play() is asynchronous and opening a slow file can take time.
-        // The incoming player's Playing event starts the overlap only after audio is actually ready.
-    }
+        int volume = (int)VolumeSlider.Value;
+        try { _xfMuted = outgoing.Mute; } catch { _xfMuted = false; }
+        try { incoming.Volume = _xfFade ? 0 : volume; } catch { /* set again once the song is playing */ }
 
-    private void BeginIncomingOverlap()
-    {
-        if (!_xfActive || !_xfWaitingForPlaying || _player is null || _xfOutgoing is null) return;
-        _xfWaitingForPlaying = false;
+        _xfOutgoing = outgoing;
+        _player = incoming;
+        VideoView.MediaPlayer = incoming;   // the old player must not stay attached to the video view: it is disposed later
+        incoming.Play(media);
+        if (_xfMuted) { try { incoming.Mute = true; } catch { } }
+
         _xfStart = DateTime.UtcNow;
-        if (_xfFade && _xfOutgoing != null)
-        {
-            long oldRemaining = _xfOutgoing.Length - _xfOutgoing.Time;
-            if (oldRemaining > 0) _xfSeconds = Math.Max(0.3, Math.Min(_xfSeconds, oldRemaining / 1000.0));
-        }
-        if (!_xfFade)
-        {
-            // Keep the pre-rolled incoming track muted until the outgoing player's natural EndReached.
-            // FinishCrossfadeNow restores its normal volume at that exact hand-off point.
-            return;
-        }
         _xfFadeTimer?.Stop();
-        _xfFadeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(35) };
+        _xfFadeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         _xfFadeTimer.Tick += (_, _) => FadeStep();
         _xfFadeTimer.Start();
     }
 
-    private void OutgoingGapless_EndReached(object? sender, EventArgs e)
-    {
-        if (!ReferenceEquals(sender, _xfOutgoing) || _xfFade) return;
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (ReferenceEquals(sender, _xfOutgoing) && !_xfFade) FinishCrossfadeNow();
-        });
-    }
-
-    private void FadeStep()
+    /// <summary>The volumes of the two songs for this moment of the overlap. Also called when the new song reports "playing".</summary>
+    private void ApplyCrossfadeVolumes()
     {
         var incoming = _player;
         var outgoing = _xfOutgoing;
-        if (incoming == null || outgoing == null) { FinishCrossfadeNow(); return; }
+        if (incoming == null || outgoing == null) return;
 
-        double t = Math.Clamp((DateTime.UtcNow - _xfStart).TotalSeconds / _xfSeconds, 0, 1);
+        double t = Math.Clamp((DateTime.UtcNow - _xfStart).TotalSeconds / Math.Max(0.1, _xfSeconds), 0, 1);
         int volume = (int)VolumeSlider.Value;   // follows the volume slider while it fades
         try
         {
@@ -200,10 +178,29 @@ public partial class MainWindow
                 incoming.Volume = (int)Math.Round(volume * Math.Sin(t * Math.PI / 2));
                 outgoing.Volume = (int)Math.Round(volume * Math.Cos(t * Math.PI / 2));
             }
+            else
+            {
+                incoming.Volume = volume;
+                outgoing.Volume = volume;
+            }
         }
         catch { /* a player that is going away */ }
+    }
 
-        if (t >= 1) FinishCrossfadeNow();
+    private void FadeStep()
+    {
+        if (_player == null || _xfOutgoing == null) { FinishCrossfadeNow(); return; }
+
+        ApplyCrossfadeVolumes();
+
+        double elapsed = (DateTime.UtcNow - _xfStart).TotalSeconds;
+        if (elapsed < _xfSeconds) return;
+        if (_xfFade) { FinishCrossfadeNow(); return; }
+
+        // gapless: no fading, so the old song is left to play out its last moments instead of being cut
+        bool oldDone;
+        try { oldDone = !_xfOutgoing.IsPlaying; } catch { oldDone = true; }
+        if (oldDone || elapsed >= _xfSeconds + 1.5) FinishCrossfadeNow();
     }
 
     /// <summary>Ends the overlap at once: the old player goes away, the new one is at the normal volume.</summary>
@@ -214,10 +211,9 @@ public partial class MainWindow
 
         var outgoing = _xfOutgoing;
         _xfOutgoing = null;
-        if (outgoing != null) outgoing.EndReached -= OutgoingGapless_EndReached;
         _xfActive = false;
         _xfPlanned = false;
-        _xfWaitingForPlaying = false;
+        _xfAttemptKey = null;
 
         try { if (_player != null) _player.Volume = (int)VolumeSlider.Value; } catch { }
 
@@ -229,32 +225,10 @@ public partial class MainWindow
             });
     }
 
-    /// <summary>Clean up both players when creating or starting the incoming player throws synchronously.</summary>
-    private void AbortCrossfadeStart()
-    {
-        _xfFadeTimer?.Stop();
-        _xfFadeTimer = null;
-        var outgoing = _xfOutgoing;
-        _xfOutgoing = null;
-        if (outgoing != null)
-        {
-            outgoing.EndReached -= OutgoingGapless_EndReached;
-            _ = Task.Run(() =>
-            {
-                try { outgoing.Stop(); } catch { }
-                try { outgoing.Dispose(); } catch { }
-            });
-        }
-        _xfActive = false;
-        _xfPlanned = false;
-        _xfWaitingForPlaying = false;
-    }
-
     /// <summary>Something else started playing (or the window closes) while a crossfade was running.</summary>
     private void CancelCrossfade()
     {
         if (_xfActive || _xfOutgoing != null) FinishCrossfadeNow();
         _xfPlanned = false;
-        _xfWaitingForPlaying = false;
     }
 }
