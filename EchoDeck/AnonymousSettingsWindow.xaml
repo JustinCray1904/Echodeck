@@ -50,7 +50,8 @@
                         </StackPanel>
                     </Grid>
 
-                    <Grid Grid.Row="1" Margin="0,18,0,12">
+                    <StackPanel Grid.Row="1" Margin="0,18,0,12">
+                    <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -63,6 +64,20 @@
                         <CheckBox x:Name="DeleteOriginalsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}"
                                   Click="DeleteOriginals_Click"/>
                     </Grid>
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,24,0">
+                            <TextBlock Style="{StaticResource RowLabel}" Text="Preview pictures for videos"/>
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                       Text="Off by default. Song covers are read by Tempo itself. A video frame can only come from Windows, which keeps its own copy in the Windows thumbnail cache, even after the original is deleted. Turn this on only if you accept that."/>
+                        </StackPanel>
+                        <CheckBox x:Name="VideoThumbsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}"
+                                  Click="VideoThumbs_Click"/>
+                    </Grid>
+                    </StackPanel>
 
                     <ListBox x:Name="LibList" Grid.Row="2" Style="{StaticResource DarkList}"
                              ItemContainerStyle="{StaticResource DarkItem}"

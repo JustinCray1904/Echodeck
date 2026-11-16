@@ -207,20 +207,25 @@ public partial class WhisperSetupWindow : Window
         var json = await http.GetStringAsync("https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest", ct);
 
         string? url = null;
+        string digest = "";   // "sha256:..." as published with the release (empty when GitHub gives none)
         using (var doc = JsonDocument.Parse(json))
         {
             var assets = doc.RootElement.GetProperty("assets").EnumerateArray()
-                .Select(a => (Name: a.GetProperty("name").GetString() ?? "", Url: a.GetProperty("browser_download_url").GetString() ?? ""))
+                .Select(a => (Name: a.GetProperty("name").GetString() ?? "", Url: a.GetProperty("browser_download_url").GetString() ?? "",
+                              Digest: a.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() ?? "" : ""))
                 .ToList();
 
             // the plain 64-bit CPU build: it runs on every PC (the BLAS / CUDA builds need extra libraries or hardware)
-            url = assets.FirstOrDefault(a => a.Name.Equals("whisper-bin-x64.zip", StringComparison.OrdinalIgnoreCase)).Url;
-            url ??= assets.FirstOrDefault(a => a.Name.Contains("bin-x64", StringComparison.OrdinalIgnoreCase) &&
+            var chosen = assets.FirstOrDefault(a => a.Name.Equals("whisper-bin-x64.zip", StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrEmpty(chosen.Url))
+                chosen = assets.FirstOrDefault(a => a.Name.Contains("bin-x64", StringComparison.OrdinalIgnoreCase) &&
                                                a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
                                                !a.Name.Contains("blas", StringComparison.OrdinalIgnoreCase) &&
                                                !a.Name.Contains("cuda", StringComparison.OrdinalIgnoreCase) &&
                                                !a.Name.Contains("cublas", StringComparison.OrdinalIgnoreCase) &&
-                                               !a.Name.Contains("vulkan", StringComparison.OrdinalIgnoreCase)).Url;
+                                               !a.Name.Contains("vulkan", StringComparison.OrdinalIgnoreCase));
+            url = chosen.Url;
+            digest = chosen.Digest ?? "";
         }
         if (string.IsNullOrEmpty(url)) throw new InvalidOperationException("The latest whisper.cpp release has no Windows 64-bit download I recognise.");
 
@@ -229,14 +234,37 @@ public partial class WhisperSetupWindow : Window
         {
             await DownloadFileAsync(http, url, zip, "whisper.cpp program", 0.0, 0.0, progress, ct, scaleToTotal: false);
 
-            var binDir = Path.Combine(WhisperService.DefaultFolder, "bin");
-            if (Directory.Exists(binDir)) Directory.Delete(binDir, recursive: true);
-            progress.Report((0, "Unpacking…"));
-            ZipFile.ExtractToDirectory(zip, binDir, overwriteFiles: true);
+            // the release publishes its checksum: the download must match it (skipped only when GitHub gives none)
+            if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+            {
+                progress.Report((0, "Checking the download…"));
+                string actual;
+                await using (var fs = File.OpenRead(zip))
+                    actual = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(fs, ct)).ToLowerInvariant();
+                if (!string.Equals(actual, digest.Substring(7).Trim(), StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The downloaded program does not match the checksum GitHub publishes for it, so it was not installed.");
+            }
 
-            var exe = Directory.EnumerateFiles(binDir, "whisper-cli.exe", SearchOption.AllDirectories).FirstOrDefault();
-            if (exe == null) throw new InvalidOperationException("The download didn't contain whisper-cli.exe.");
-            return exe;
+            // unpack into a staging folder first: the working copy is only replaced once the new one is complete
+            var binDir = Path.Combine(WhisperService.DefaultFolder, "bin");
+            var staging = binDir + ".new";
+            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+            progress.Report((0, "Unpacking…"));
+            try
+            {
+                ZipFile.ExtractToDirectory(zip, staging, overwriteFiles: true);
+                if (!Directory.EnumerateFiles(staging, "whisper-cli.exe", SearchOption.AllDirectories).Any())
+                    throw new InvalidOperationException("The download didn't contain whisper-cli.exe.");
+
+                if (Directory.Exists(binDir)) Directory.Delete(binDir, recursive: true);
+                Directory.Move(staging, binDir);
+            }
+            finally
+            {
+                try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch { /* leftover staging folder */ }
+            }
+
+            return Directory.EnumerateFiles(binDir, "whisper-cli.exe", SearchOption.AllDirectories).First();
         }
         finally
         {
@@ -276,6 +304,10 @@ public partial class WhisperSetupWindow : Window
                     }
                 }
             }
+
+            // a connection that dropped early must not pass as a finished file
+            if (total > 0 && new FileInfo(part).Length != total)
+                throw new IOException("The download stopped early (" + new FileInfo(part).Length + " of " + total + " bytes).");
 
             if (File.Exists(dest)) File.Delete(dest);
             File.Move(part, dest);

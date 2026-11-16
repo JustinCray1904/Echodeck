@@ -427,9 +427,13 @@ public partial class MainWindow : Window
         MiniTitle.Text = name == AppName ? "" : name;
     }
 
+    private bool _stopping;   // a Stop is running off the UI thread: playback requests wait for it
+    private (string Path, long StartMs, bool IsMrl)? _pendingStart;
+
     private void StartPlayback(string pathOrMrl, long startMs, bool isMrl)
     {
         if (_libVlc is null || _player is null) return;
+        if (_stopping) { _pendingStart = (pathOrMrl, startMs, isMrl); return; }
 
         try
         {
@@ -497,7 +501,7 @@ public partial class MainWindow : Window
 
     private void TogglePlayPause()
     {
-        if (_player is null) return;
+        if (_player is null || _stopping) return;
         if (_xfActive) FinishCrossfadeNow();   // pausing in the middle of a crossfade: the old song is let go first
 
         if (_playbackEnded && _hasMedia)
@@ -527,6 +531,7 @@ public partial class MainWindow : Window
         EmptyHint.Visibility = Visibility.Collapsed;
         if (_xfActive)
         {
+            NoteIncomingPlaying();
             ApplyCrossfadeVolumes();   // during an overlap the fade sets the volume
             if (_xfMuted) { try { _player.Mute = true; } catch { } }
         }

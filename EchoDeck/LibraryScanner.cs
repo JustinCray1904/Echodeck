@@ -41,7 +41,10 @@ internal sealed class LibraryCacheFile
 /// </summary>
 internal static class LibraryScanner
 {
-    private const int MaxFiles = 30000;
+    private const int MaxFiles = 100000;
+
+    /// <summary>Raised (with a message) when a scan stopped at <see cref="MaxFiles"/> files: the library shown is then incomplete.</summary>
+    public static event Action<string>? Notice;
     private const int CheckpointEvery = 400;
 
     private static readonly object CacheLock = new();
@@ -144,7 +147,7 @@ internal static class LibraryScanner
     // ------------------------------------------------------------------ file enumeration
 
     private static List<FileInfo> EnumerateInfos(IEnumerable<string> folders, Func<string, bool> match,
-        CancellationToken ct, Action<int>? onCount)
+        CancellationToken ct, Action<int>? onCount, Action? onLimit = null)
     {
         var found = new List<FileInfo>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -166,7 +169,7 @@ internal static class LibraryScanner
                     if (!match(fi.Extension)) continue;
                     if (!seen.Add(fi.FullName)) continue;
                     found.Add(fi);
-                    if (found.Count >= MaxFiles) return found;
+                    if (found.Count >= MaxFiles) { onLimit?.Invoke(); return found; }
                     if (found.Count % 250 == 0) onCount?.Invoke(found.Count);
                 }
             }
@@ -213,7 +216,8 @@ internal static class LibraryScanner
             try
             {
                 var infos = EnumerateInfos(folders, e => MediaTypes.IsSupportedExtension(e) && !MediaTypes.IsAudioExtension(e), ct,
-                    n => Report(false, n, 0, true, "Looking for videos…  " + n.ToString("N0") + " found"));
+                    n => Report(false, n, 0, true, "Looking for videos…  " + n.ToString("N0") + " found"),
+                    () => Notice?.Invoke("Your video folders hold more than " + MaxFiles.ToString("N0") + " files: only the first " + MaxFiles.ToString("N0") + " are shown."));
                 var list = infos.Select(f => f.FullName).ToList();
                 list.Sort((a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b), StringComparison.CurrentCultureIgnoreCase));
 
@@ -304,9 +308,9 @@ internal static class LibraryScanner
     internal static async Task<List<CachedTrack>> ScannedAsync(IReadOnlyList<string> folders)
     {
         await TracksAsync(folders).ConfigureAwait(false);
-        return TrackCache.Values
-            .Where(c => folders.Any(f => c.P.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        // RootsOf adds the directory separator, so "C:\Music" never matches "C:\Music2\..." (the duplicate finder can recycle files)
+        var roots = RootsOf(folders);
+        return TrackCache.Values.Where(c => UnderAny(c.P, roots)).ToList();
     }
 
     public static Task<List<Track>> CachedTracksAsync(IReadOnlyList<string> folders) => Task.Run(() =>
@@ -342,8 +346,12 @@ internal static class LibraryScanner
         try
         {
             Report(true, 0, 0, true, "Looking for music files…");
+            bool truncated = false;
             var infos = EnumerateInfos(folders, MediaTypes.IsAudioExtension, ct,
-                n => Report(true, n, 0, true, "Looking for music files…  " + n.ToString("N0") + " found"));
+                n => Report(true, n, 0, true, "Looking for music files…  " + n.ToString("N0") + " found"),
+                () => truncated = true);
+            if (truncated)
+                Notice?.Invoke("Your music folders hold more than " + MaxFiles.ToString("N0") + " songs: only the first " + MaxFiles.ToString("N0") + " are shown. Songs beyond that are not forgotten, just not listed.");
 
             var result = new Track?[infos.Count];
             var pending = new List<int>();
@@ -383,8 +391,10 @@ internal static class LibraryScanner
             // forget songs that were deleted since last time (only inside the folders just scanned)
             var live = new HashSet<string>(infos.Select(f => f.FullName), StringComparer.OrdinalIgnoreCase);
             var roots = RootsOf(folders);
-            foreach (var path in TrackCache.Keys.ToList())
-                if (UnderAny(path, roots) && !live.Contains(path)) TrackCache.TryRemove(path, out _);
+            // an incomplete scan (limit reached) says nothing about what was deleted: nothing is forgotten then
+            if (!truncated)
+                foreach (var path in TrackCache.Keys.ToList())
+                    if (UnderAny(path, roots) && !live.Contains(path)) TrackCache.TryRemove(path, out _);
             SaveCache();
 
             var list = result.Where(t => t != null).Select(t => t!).ToList();

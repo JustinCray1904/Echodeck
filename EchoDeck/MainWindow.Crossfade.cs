@@ -24,6 +24,8 @@ public partial class MainWindow
     private bool _xfMuted;                   // the old player was muted: the new one is too
     private double _xfSeconds;
     private DateTime _xfStart;
+    private bool _xfStarted;                // the incoming song reported "playing": only then does the overlap clock run
+    private DateTime _xfAskedAt;             // when the incoming song was asked to play (gives up after 10 s)
     private string? _xfAttemptKey;           // the song an overlap was already tried for (a failed try is not repeated 10 times a second)
     private long _playAskedAt;               // when Play was last asked for (ms), to learn how long this PC takes to start a song
     private double _startLatencyMs = 450;    // learned: Play() until LibVLC reports "playing"
@@ -97,7 +99,7 @@ public partial class MainWindow
     {
         try
         {
-            if (!(_cfg.CrossfadeEnabled || _cfg.GaplessEnabled) || _xfActive || _anon || _transition || _libVlc is null) return;
+            if (!(_cfg.CrossfadeEnabled || _cfg.GaplessEnabled) || _xfActive || _anon || _transition || _stopping || _libVlc is null) return;
             var player = _player;
             if (player is null || !_hasMedia || !_currentIsAudio || _lengthMs < 8000) return;
             if (_cfg.Loop == LoopMode.One || _sleepAfterSong) return;
@@ -154,7 +156,9 @@ public partial class MainWindow
         incoming.Play(media);
         if (_xfMuted) { try { incoming.Mute = true; } catch { } }
 
-        _xfStart = DateTime.UtcNow;
+        _xfStarted = false;                 // the clock starts in NoteIncomingPlaying, not now
+        _xfAskedAt = DateTime.UtcNow;
+        _xfStart = _xfAskedAt;
         _xfFadeTimer?.Stop();
         _xfFadeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         _xfFadeTimer.Tick += (_, _) => FadeStep();
@@ -168,7 +172,7 @@ public partial class MainWindow
         var outgoing = _xfOutgoing;
         if (incoming == null || outgoing == null) return;
 
-        double t = Math.Clamp((DateTime.UtcNow - _xfStart).TotalSeconds / Math.Max(0.1, _xfSeconds), 0, 1);
+        double t = _xfStarted ? Math.Clamp((DateTime.UtcNow - _xfStart).TotalSeconds / Math.Max(0.1, _xfSeconds), 0, 1) : 0;
         int volume = (int)VolumeSlider.Value;   // follows the volume slider while it fades
         try
         {
@@ -193,6 +197,14 @@ public partial class MainWindow
 
         ApplyCrossfadeVolumes();
 
+        // The new song may still be opening (slow disk, hard file). Until it reports "playing" the old song stays at full volume and
+        // is kept; if the new one never starts, the overlap is given up after 10 s.
+        if (!_xfStarted)
+        {
+            if ((DateTime.UtcNow - _xfAskedAt).TotalSeconds > 10) FinishCrossfadeNow();
+            return;
+        }
+
         double elapsed = (DateTime.UtcNow - _xfStart).TotalSeconds;
         if (elapsed < _xfSeconds) return;
         if (_xfFade) { FinishCrossfadeNow(); return; }
@@ -201,6 +213,24 @@ public partial class MainWindow
         bool oldDone;
         try { oldDone = !_xfOutgoing.IsPlaying; } catch { oldDone = true; }
         if (oldDone || elapsed >= _xfSeconds + 1.5) FinishCrossfadeNow();
+    }
+
+    /// <summary>The incoming song reports "playing": from now on the overlap clock runs, over what is left of the old song.</summary>
+    private void NoteIncomingPlaying()
+    {
+        if (!_xfActive || _xfStarted) return;
+        _xfStarted = true;
+        _xfStart = DateTime.UtcNow;
+        try
+        {
+            var outgoing = _xfOutgoing;
+            if (outgoing != null && outgoing.Length > 0)
+            {
+                double left = (outgoing.Length - outgoing.Time) / 1000.0;
+                _xfSeconds = Math.Max(0.3, Math.Min(_xfSeconds, left));   // never longer than the old song has left
+            }
+        }
+        catch { /* keep the planned length */ }
     }
 
     /// <summary>Ends the overlap at once: the old player goes away, the new one is at the normal volume.</summary>
@@ -214,6 +244,7 @@ public partial class MainWindow
         _xfActive = false;
         _xfPlanned = false;
         _xfAttemptKey = null;
+        _xfStarted = false;
 
         try { if (_player != null) _player.Volume = (int)VolumeSlider.Value; } catch { }
 

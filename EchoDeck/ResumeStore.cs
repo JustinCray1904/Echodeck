@@ -9,6 +9,7 @@ internal sealed class ResumeEntry
     public long Pos { get; set; }         // position in ms
     public long Len { get; set; }         // length in ms
     public long Size { get; set; }        // file size, so a replaced file doesn't resume at a stale spot
+    public long Modified { get; set; }    // LastWriteTimeUtc ticks: a different file of the SAME size is caught too (0 = saved by an older build)
     public long At { get; set; }          // when it was saved (UTC ticks), oldest are dropped first
 }
 
@@ -48,7 +49,8 @@ internal static class ResumeStore
             if (!Items.TryGetValue(path, out var e)) return null;
             try
             {
-                if (new FileInfo(path).Length != e.Size) { Items.Remove(path); return null; }
+                var info = new FileInfo(path);
+                if (info.Length != e.Size || (e.Modified != 0 && info.LastWriteTimeUtc.Ticks != e.Modified)) { Items.Remove(path); return null; }
             }
             catch { return null; }
             return e;
@@ -71,10 +73,10 @@ internal static class ResumeStore
             }
             if (positionMs < MinPositionMs) return;               // leave any earlier spot alone
 
-            long size;
-            try { size = new FileInfo(path).Length; } catch { return; }
+            long size, modified;
+            try { var info = new FileInfo(path); size = info.Length; modified = info.LastWriteTimeUtc.Ticks; } catch { return; }
 
-            Items[path] = new ResumeEntry { P = path, Pos = positionMs, Len = lengthMs, Size = size, At = DateTime.UtcNow.Ticks };
+            Items[path] = new ResumeEntry { P = path, Pos = positionMs, Len = lengthMs, Size = size, Modified = modified, At = DateTime.UtcNow.Ticks };
             if (Items.Count > Max)
                 foreach (var old in Items.Values.OrderBy(v => v.At).Take(Items.Count - Max).ToList())
                     Items.Remove(old.P);

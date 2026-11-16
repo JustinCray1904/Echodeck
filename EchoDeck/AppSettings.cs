@@ -37,6 +37,7 @@ public sealed class AppSettings
     public bool RememberRecent { get; set; } = true;
     public bool AnonymousExitOnMinimize { get; set; } = true;
     public bool AnonymousDeleteOriginals { get; set; }
+    public bool AnonymousVideoThumbnails { get; set; }   // off: vault videos get no preview picture (Windows' thumbnail cache would keep a copy)
 
     // ---- playback
     public bool AutoAdvance { get; set; } = true;
@@ -138,7 +139,6 @@ public sealed class AppSettings
         {
             Current = new AppSettings();
         }
-        if (Current.CrossfadeEnabled && Current.GaplessEnabled) Current.GaplessEnabled = false;
         Current.EnsureFolders();
     }
 

@@ -457,6 +457,7 @@ public partial class MainWindow
             // 3) Under cover of the black screen: STOP the normal media (it must not keep sounding or be resumable
             //    from the Anonymous controls), set the normal state aside, switch every page over to the vault.
             var player = _player;
+            CancelCrossfade();   // an outgoing crossfade player must not keep sounding either
             await Task.Run(() => player.Stop());
             _hasMedia = false;
             _lengthMs = 0;

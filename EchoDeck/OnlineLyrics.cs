@@ -45,8 +45,8 @@ internal static class OnlineLyrics
     /// <summary>
     /// Of all the candidates, the one that is this song: the title must match (and the artist, when it is known), and of those the one
     /// whose length is CLOSEST to the file's wins (timed lyrics before plain ones only when the lengths are within a couple of seconds of
-    /// each other). A result for a different song is never taken just because its length happens to be close, and a different artist
-    /// is only forgiven for an upload of exactly the file's length and a title that is not a common short word.
+    /// each other). A result for a different song is never taken just because its length happens to be close, and when the artist is
+    /// known it must match (SameArtist tolerates "A &amp; B" and "feat." credits); length only vouches for a song whose artist is unknown.
     /// </summary>
     private static Hit? Pick(IEnumerable<Hit> hits, IReadOnlyList<string> titles, IReadOnlyList<string> artists, double seconds, out double gap)
     {
@@ -68,10 +68,10 @@ internal static class OnlineLyrics
             if (diff > limit) continue;
 
             bool artistOk = !artistKnown || artists.Any(a => a.Length > 0 && TextMatch.SameArtist(a, h.Artist));
-            if (!artistOk && !(haveLength && diff <= 2 && titleLength >= 8)) continue;
+            if (!artistOk) continue;   // a known artist must match; length never excuses a different artist
             if (!artistKnown && haveLength && diff > 5) continue;   // no artist to check: the length has to vouch for the song
 
-            double score = diff + (h.Synced.Length > 0 ? 0 : 2.5) + (artistOk ? 0 : 3);
+            double score = diff + (h.Synced.Length > 0 ? 0 : 2.5);
             if (score < bestScore)
             {
                 best = h;

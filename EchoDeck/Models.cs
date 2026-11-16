@@ -315,7 +315,10 @@ public static class RecentStore
         try
         {
             Directory.CreateDirectory(AppPaths.DataDir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(_items));
+            // write beside it and swap: a crash or power cut mid-write can no longer leave a half-written recent.json
+            var tmp = FilePath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(_items));
+            File.Move(tmp, FilePath, overwrite: true);
         }
         catch { /* best effort */ }
     }

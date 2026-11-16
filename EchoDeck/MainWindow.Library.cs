@@ -49,6 +49,7 @@ public partial class MainWindow
             }
         };
         LibraryScanner.Progress += p => Dispatcher.InvokeAsync(() => OnScanProgress(p));
+        LibraryScanner.Notice += message => Dispatcher.InvokeAsync(() => Notify(message));
     }
 
     // ------------------------------------------------------------------ roots

@@ -207,16 +207,19 @@ public sealed class VaultService
     private static string ThumbPathFor(string vaultFile) => Path.ChangeExtension(vaultFile, ThumbExtension);
 
     /// <summary>
-    /// At import the original is still readable, so Explorer's thumbnail (video frame / album art) is encrypted into a
-    /// small sidecar file. The picture is never written anywhere in the clear.
+    /// At import the original is still readable, so a small picture (a song's embedded cover) is encrypted into a sidecar file.
+    /// Songs are read with TagLib, inside Tempo: nothing is handed to Windows. A video frame can only come from Windows' own thumbnail
+    /// extraction, which keeps a plaintext copy in the Windows thumbnail cache (thumbcache_*.db) that survives deleting the original, so
+    /// that is used ONLY when "Preview pictures for videos" is switched on in the Anonymous settings (off by default).
     /// </summary>
     private static void SaveThumb(string sourcePath, string vaultFile, byte[] master)
     {
         try
         {
-            var bmp = ShellThumbnail.Get(sourcePath, 320, 180);
+            System.Windows.Media.Imaging.BitmapSource? bmp;
+            if (MediaTypes.IsAudio(sourcePath)) bmp = EmbeddedCover(sourcePath);
+            else bmp = AppSettings.Current.AnonymousVideoThumbnails ? ShellThumbnail.Get(sourcePath, 320, 180) : null;
             if (bmp == null) return;
-            if (MediaTypes.IsAudio(sourcePath)) bmp = ShellThumbnail.TrimBorders(bmp);
 
             var encoder = new JpegBitmapEncoder { QualityLevel = 80 };
             encoder.Frames.Add(BitmapFrame.Create(bmp));
@@ -240,6 +243,34 @@ public sealed class VaultService
             finally { CryptographicOperations.ZeroMemory(key); }
         }
         catch { /* no thumbnail: the tile shows its icon */ }
+    }
+
+    /// <summary>The cover picture stored inside a song's tags, scaled down; read by Tempo itself (no Windows thumbnail cache involved).</summary>
+    private static System.Windows.Media.Imaging.BitmapSource? EmbeddedCover(string path)
+    {
+        try
+        {
+            var file = TagLib.File.Create(path, TagLib.ReadStyle.Average);
+            try
+            {
+                var pictures = file.Tag?.Pictures;
+                if (pictures == null || pictures.Length == 0) return null;
+                byte[] data = pictures[0].Data.Data;
+                if (data == null || data.Length < 100) return null;
+
+                using var stream = new MemoryStream(data);
+                var image = new System.Windows.Media.Imaging.BitmapImage();
+                image.BeginInit();
+                image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                image.DecodePixelWidth = 320;
+                image.StreamSource = stream;
+                image.EndInit();
+                image.Freeze();
+                return image;
+            }
+            finally { (file as IDisposable)?.Dispose(); }
+        }
+        catch { return null; }   // no tags, no picture, or a picture format WPF can't read: the tile shows its icon
     }
 
     /// <summary>Decrypts a vault file's thumbnail in memory (null when it has none).</summary>
