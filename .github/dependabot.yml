@@ -19,11 +19,17 @@ updates:
       safe-updates:
         update-types: ["minor", "patch"]
 
+  # The test project references the app project, so Dependabot also sees the app's packages (LibVLC, NAudio ...) through it.
+  # Only the test tools are allowed here; the app's packages are handled by the entry above.
   - package-ecosystem: "nuget"
     directory: "/EchoDeck.Tests"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 1
+    allow:
+      - dependency-name: "xunit*"
+      - dependency-name: "Microsoft.NET.Test.Sdk"
+      - dependency-name: "coverlet.collector"
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
