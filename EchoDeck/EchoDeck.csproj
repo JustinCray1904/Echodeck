@@ -59,7 +59,7 @@
     <PackageReference Include="LibVLCSharp.WPF" Version="3.8.5" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.20" />
     <!-- DPAPI: protects the vault's master key with the current Windows account -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
   </ItemGroup>
 
   <!-- Fail loudly at build/publish time instead of crashing on a fresh machine. -->
