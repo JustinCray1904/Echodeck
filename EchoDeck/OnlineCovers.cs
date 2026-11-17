@@ -89,6 +89,13 @@ internal static class OnlineCovers
         catch (Exception ex) { AppLog.Write("Reject cover", ex); }
     }
 
+    /// <summary>"Look again": forgets an earlier "nothing found" so the next look-up really searches.</summary>
+    public static void Retry(string path)
+    {
+        try { File.Delete(Path.Combine(Dir, KeyFor(path) + ".none")); }
+        catch { /* nothing to forget */ }
+    }
+
     /// <summary>True once the user rejected this file's cover: the picture inside the file is then not used.</summary>
     public static bool SkipsEmbedded(string path)
     {

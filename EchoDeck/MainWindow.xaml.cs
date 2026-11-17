@@ -114,6 +114,7 @@ public partial class MainWindow : Window
         RootGrid.MouseRightButtonUp += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject d && IsInside(d, TopBar)) return;
+            if (TryShowCoverMenu(e)) return;
             ShowContextMenu();
         };
 
@@ -794,17 +795,40 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Right click on the cover: "wrong cover" forgets it and finds the next best one.</summary>
-    private void CoverCircle_RightClick(object sender, MouseButtonEventArgs e)
+    /// <summary>
+    /// Right click on the cover (or the ring around it): offers "wrong cover" / "look again" instead of the general player menu. The cover
+    /// sits inside containers that are not hit-testable, so the position is worked out here instead of with a mouse handler on it.
+    /// </summary>
+    private bool TryShowCoverMenu(MouseButtonEventArgs e)
     {
-        if (_anon || _queueIndex < 0 || _queueIndex >= _queue.Count) return;
-        string path = _queue[_queueIndex].FullPath;
-        if (!MediaTypes.IsAudio(path)) return;
+        if (_anon || _libraryVisible || !_currentIsAudio || MusicPanel.Visibility != Visibility.Visible) return false;
+        if (_queueIndex < 0 || _queueIndex >= _queue.Count) return false;
 
-        var menu = new ContextMenu { PlacementTarget = CoverCircle, Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint };
-        menu.Items.Add(MenuEntry("This cover is wrong - find another", "IcoCamera", (_, _) => ResetCover(path)));
+        double radius = CoverCircle.ActualWidth / 2;
+        if (radius <= 0) return false;
+        var p = e.GetPosition(CoverCircle);   // in the cover's own coordinates, whatever the scaling
+        double distance = Math.Sqrt((p.X - radius) * (p.X - radius) + (p.Y - radius) * (p.Y - radius));
+        if (distance > radius * 1.3) return false;
+
+        string path = _queue[_queueIndex].FullPath;
+        bool hasCover = MusicGlyph.Visibility != Visibility.Visible;
+        var menu = new ContextMenu { Placement = PlacementMode.MousePoint };
+        if (hasCover) menu.Items.Add(MenuEntry("This cover is wrong - find another", "IcoCamera", (_, _) => ResetCover(path)));
+        else menu.Items.Add(MenuEntry("Look for a cover again", "IcoCamera", (_, _) => RetryCover(path)));
         menu.IsOpen = true;
-        e.Handled = true;
+        return true;
+    }
+
+    private void RetryCover(string path)
+    {
+        if (!_cfg.FetchCoversOnline)
+        {
+            Notify("Turn on \"Find missing covers online\" in Settings to look for a cover.");
+            return;
+        }
+        OnlineCovers.Retry(path);
+        ShowOsd("Looking for a cover…");
+        LoadCover(path);
     }
 
     private void ResetCover(string path)

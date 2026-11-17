@@ -645,6 +645,14 @@ public partial class MainWindow
     private void ApplyAnonymousUi(bool on)
     {
         ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex, anonymous: on);
+
+        // The moving background keeps the colours it last had (the cover's, or the accent's): going in or out it must not carry the
+        // other mode's colours (violet after leaving, the normal song's colours inside). Back to the current accent; a normal song's
+        // cover colours are applied again right after the exit.
+        var around = CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor"));
+        Aurora.SetPalette(around, null);
+        WindowAurora.SetPalette(around, null);
+        BreadcrumbText.Text = "Library";   // a folder name from the other mode must not stay in the title bar (pages set their own)
         SyncAmbience();
         AnonButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         ClosePopup(QuickPopup, animate: false);
@@ -731,7 +739,9 @@ public partial class MainWindow
             if (snapshot != null)
             {
                 // Reload the saved path, resume at the saved timestamp.
-                ShowMusic(snapshot.WasAudio, Path.GetFileNameWithoutExtension(snapshot.Title), "");
+                string folder = "";
+                try { folder = Path.GetFileName(Path.GetDirectoryName(new Uri(snapshot.Mrl).LocalPath) ?? ""); } catch { /* no subtitle */ }
+                ShowMusic(snapshot.WasAudio, DisplayNames.Clean(Path.GetFileNameWithoutExtension(snapshot.Title)), folder);
                 StartPlayback(snapshot.Mrl, snapshot.TimeMs, isMrl: true);
                 RetireCurrentVault();
                 _normalTitle = snapshot.Title;
@@ -758,6 +768,11 @@ public partial class MainWindow
             _vaultService.Lock(); // zero the master key in memory
             ApplyAnonymousUi(false);
             SetTitles(snapshot != null ? _normalTitle : AppName);
+            if (snapshot != null && snapshot.WasAudio)
+            {
+                // the song's cover and the background colours made from it (they were not touched while the vault was open)
+                try { LoadCover(new Uri(snapshot.Mrl).LocalPath); } catch { /* the plain accent colours stay */ }
+            }
 
             // side panel tabs back to what they were
             if (_sideModeStash == SideMode.Playlists) SideTabPlaylists.IsChecked = true; else SideTabQueue.IsChecked = true;
