@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ImplicitUsings>disable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <RootNamespace>EchoDeck</RootNamespace>
