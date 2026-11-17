@@ -6,6 +6,11 @@ on:
   push:
   pull_request:
 
+# Restores must match packages.lock.json exactly: a package version can never change silently. To update packages on purpose, run
+# the Maintenance workflow (lock-files) after changing a version, and commit the new lock files.
+env:
+  RestoreLockedMode: "true"
+
 jobs:
   test:
     runs-on: windows-latest
