@@ -51,7 +51,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="LibVLCSharp" Version="3.8.5" />
+    <PackageReference Include="LibVLCSharp" Version="3.10.2" />
     <!-- Decodes a few hundred short slices of an audio file to draw the waveform seek bar -->
     <PackageReference Include="NAudio" Version="2.2.1" />
     <!-- Reads song tags (title, artist, album, genre, length) straight from the file headers: fast, parallel, no COM -->
