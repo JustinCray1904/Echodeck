@@ -308,7 +308,7 @@ public class PlaybackCoordinatorTests
         Assert.Equal("last", h.Current.Track);
         Assert.Null(h.Outgoing);
         Assert.Equal(OverlapPhase.None, h.Coord.Phase);
-        Assert.Single(h.All.Where(p => p.Playing && !p.Stopped));   // exactly one thing is playing
+        Assert.Single(h.All, p => p.Playing && !p.Stopped);   // exactly one thing is playing
     }
 
     [Fact]
@@ -370,7 +370,7 @@ public class OperationScopeTests
     }
 
     [Fact]
-    public void ACancelWaitsForAPublishThatIsInProgress()
+    public async Task ACancelWaitsForAPublishThatIsInProgress()
     {
         var scope = new OperationScope();
         var job = scope.Renew();
@@ -391,7 +391,7 @@ public class OperationScopeTests
         Assert.DoesNotContain("cancel", order);       // the cancel (and the "clear" after it) cannot overtake the publish
         release.Set();
 
-        Task.WaitAll(publisher, canceller);
+        await Task.WhenAll(publisher, canceller);
         Assert.Equal(new[] { "publish", "cancel" }, order);
     }
 
