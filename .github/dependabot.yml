@@ -4,11 +4,35 @@ updates:
     directory: "/EchoDeck"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      # the playback engine: the .NET wrapper and the native LibVLC must match each other, and Tempo trims and tunes the native part
+      - dependency-name: "LibVLCSharp"
+      - dependency-name: "LibVLCSharp.WPF"
+      - dependency-name: "VideoLAN.LibVLC.Windows"
+      # protects the vault's master key (DPAPI): changed only on purpose
+      - dependency-name: "System.Security.Cryptography.ProtectedData"
+      # no jumps to a new major version by themselves
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      safe-updates:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: "nuget"
     directory: "/EchoDeck.Tests"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      test-tooling:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
