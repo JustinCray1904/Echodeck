@@ -1007,7 +1007,7 @@
                                             </Ellipse>
                                             <local:CircleVisualizer x:Name="Visualizer" Width="440" Height="440" HorizontalAlignment="Center"
                                                                     VerticalAlignment="Center" Visibility="Collapsed"/>
-                                            <Ellipse x:Name="CoverCircle" Width="310" Height="310" Fill="{StaticResource CoverFallback}" RenderTransformOrigin="0.5,0.5">
+                                            <Ellipse x:Name="CoverCircle" MouseRightButtonUp="CoverCircle_RightClick" Width="310" Height="310" Fill="{StaticResource CoverFallback}" RenderTransformOrigin="0.5,0.5">
                                                 <Ellipse.RenderTransform>
                                                     <ScaleTransform x:Name="CoverScale" ScaleX="1" ScaleY="1"/>
                                                 </Ellipse.RenderTransform>

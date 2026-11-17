@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace EchoDeck;
@@ -126,6 +127,53 @@ internal static class YouTubeCovers
         return null;
     }
 
+    /// <summary>
+    /// The picture inside black bars, when there are bars and what is inside them is about square (a cover art upload: the cover in
+    /// the middle of a black 16:9 frame). Null for an ordinary video frame, which is cut to its middle instead.
+    /// </summary>
+    private static Int32Rect? ArtworkBounds(BitmapSource frame)
+    {
+        try
+        {
+            var bgra = new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
+            int w = bgra.PixelWidth, h = bgra.PixelHeight, stride = w * 4;
+            var px = new byte[stride * h];
+            bgra.CopyPixels(px, stride, 0);
+
+            bool Dark(int x, int y) { int i = y * stride + x * 4; return px[i] + px[i + 1] + px[i + 2] <= 3 * 28; }
+
+            bool ColumnDark(int x, int y0, int y1)
+            {
+                int dark = 0, total = 0;
+                for (int y = y0; y <= y1; y += 3) { total++; if (Dark(x, y)) dark++; }
+                return dark >= total * 0.97;
+            }
+
+            bool RowDark(int y, int x0, int x1)
+            {
+                int dark = 0, total = 0;
+                for (int x = x0; x <= x1; x += 3) { total++; if (Dark(x, y)) dark++; }
+                return dark >= total * 0.97;
+            }
+
+            int left = 0, right = w - 1, top = 0, bottom = h - 1;
+            while (left < right && ColumnDark(left, 0, h - 1)) left++;
+            while (right > left && ColumnDark(right, 0, h - 1)) right--;
+            while (top < bottom && RowDark(top, left, right)) top++;
+            while (bottom > top && RowDark(bottom, left, right)) bottom--;
+
+            int cw = right - left + 1, ch = bottom - top + 1;
+            bool hasBars = left > w * 0.03 || w - 1 - right > w * 0.03 || top > h * 0.03 || h - 1 - bottom > h * 0.03;
+            double aspect = (double)cw / Math.Max(1, ch);
+            if (!hasBars || cw < w * 0.3 || ch < h * 0.3 || aspect < 0.85 || aspect > 1.18) return null;
+
+            // a pixel or two in from the edge: the border of the cover is not part of it
+            int trim = 2;
+            return new Int32Rect(left + trim, top + trim, Math.Max(16, cw - 2 * trim), Math.Max(16, ch - 2 * trim));
+        }
+        catch { return null; }
+    }
+
     /// <summary>The middle square of a 16:9 thumbnail (hqdefault is 16:9 with black bars above and below: the bars are left out).</summary>
     internal static byte[]? CropSquare(byte[] data)
     {
@@ -136,9 +184,19 @@ internal static class YouTubeCovers
             int w = frame.PixelWidth, h = frame.PixelHeight;
             if (w < 64 || h < 64) return null;
 
-            int pictureHeight = (double)w / h < 1.5 ? (int)(w * 9.0 / 16) : h;
-            int side = Math.Min(pictureHeight, w);
-            var area = new Int32Rect((w - side) / 2, (h - side) / 2, side, side);
+            Int32Rect area;
+            if (ArtworkBounds(frame) is { } art)
+            {
+                // black bars around a roughly square picture (the album cover of a "Topic" upload): cut to the cover itself
+                int side = Math.Min(art.Width, art.Height);
+                area = new Int32Rect(art.X + (art.Width - side) / 2, art.Y + (art.Height - side) / 2, side, side);
+            }
+            else
+            {
+                int pictureHeight = (double)w / h < 1.5 ? (int)(w * 9.0 / 16) : h;
+                int side = Math.Min(pictureHeight, w);
+                area = new Int32Rect((w - side) / 2, (h - side) / 2, side, side);
+            }
 
             var encoder = new JpegBitmapEncoder { QualityLevel = 92 };
             encoder.Frames.Add(BitmapFrame.Create(new CroppedBitmap(frame, area)));

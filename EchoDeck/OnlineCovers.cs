@@ -50,6 +50,70 @@ internal static class OnlineCovers
         return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
     }
 
+    // ---- covers the user says are wrong, and covers saved by an earlier build
+
+    /// <summary>
+    /// Earlier builds took MusicBrainz covers without checking WHO made the recording (a "Girlfriend" by another artist gave its
+    /// cover). Covers saved from there by those builds carry no ".v3" marker and are dropped once, so they are looked up again with the
+    /// artist check. Covers from the catalogues and everything saved by this build are kept.
+    /// </summary>
+    private static void PurgeLegacyMusicBrainzCover(string key)
+    {
+        try
+        {
+            string urlFile = Path.Combine(Dir, key + ".url");
+            if (File.Exists(Path.Combine(Dir, key + ".v3")) || !File.Exists(urlFile)) return;
+            if (!File.ReadAllText(urlFile).Contains("coverartarchive.org", StringComparison.OrdinalIgnoreCase)) return;
+            foreach (var ext in new[] { ".jpg", ".url" })
+                try { File.Delete(Path.Combine(Dir, key + ext)); } catch { /* in use: next time */ }
+        }
+        catch { /* best effort */ }
+    }
+
+    /// <summary>
+    /// "This cover is wrong": the online cover is forgotten, its web address is remembered as bad (it is never picked again for this
+    /// file), and the picture inside the file is no longer used for it either, so the next look-up takes the next best match.
+    /// </summary>
+    public static void Reject(string path)
+    {
+        try
+        {
+            string key = KeyFor(path);
+            Directory.CreateDirectory(Dir);
+            string urlFile = Path.Combine(Dir, key + ".url");
+            if (File.Exists(urlFile)) File.AppendAllText(Path.Combine(Dir, key + ".bad"), File.ReadAllText(urlFile).Trim() + "\n");
+            foreach (var ext in new[] { ".jpg", ".url", ".none", ".v3" })
+                try { File.Delete(Path.Combine(Dir, key + ext)); } catch { /* ignore */ }
+            File.WriteAllText(Path.Combine(Dir, key + ".skip"), "1");
+        }
+        catch (Exception ex) { AppLog.Write("Reject cover", ex); }
+    }
+
+    /// <summary>True once the user rejected this file's cover: the picture inside the file is then not used.</summary>
+    public static bool SkipsEmbedded(string path)
+    {
+        try { return File.Exists(Path.Combine(Dir, KeyFor(path) + ".skip")); }
+        catch { return false; }
+    }
+
+    private static bool IsBad(string key, string url)
+    {
+        try
+        {
+            string bad = Path.Combine(Dir, key + ".bad");
+            return File.Exists(bad) && File.ReadAllLines(bad).Any(l => string.Equals(l.Trim(), url, StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return false; }
+    }
+
+    private static Found? WithoutBad(Found? found, string key)
+    {
+        if (found == null) return null;
+        if (found.Bytes != null) return found.Urls.Count > 0 && IsBad(key, found.Urls[0]) ? null : found;
+        var kept = found.Urls.Where(u => !IsBad(key, u)).ToList();
+        return kept.Count == 0 ? null : new Found(kept, null);
+    }
+
     private sealed record Found(IReadOnlyList<string> Urls, byte[]? Bytes);
 
     /// <summary>The cover as a frozen picture, or null (none found, offline, or nothing to search with).</summary>
@@ -61,6 +125,7 @@ internal static class OnlineCovers
             string file = Path.Combine(Dir, key + ".jpg");
             string none = Path.Combine(Dir, key + ".none");
 
+            PurgeLegacyMusicBrainzCover(key);
             if (File.Exists(file)) return Decode(await File.ReadAllBytesAsync(file).ConfigureAwait(false));
             if (RecentlyNone(none)) return null;
 
@@ -128,6 +193,7 @@ internal static class OnlineCovers
 
             File.WriteAllBytes(Path.Combine(Dir, key + ".jpg"), bytes);
             File.WriteAllText(Path.Combine(Dir, key + ".url"), used);
+            File.WriteAllText(Path.Combine(Dir, key + ".v3"), "1");   // saved by a build that checks the artist
             try { File.Delete(Path.Combine(Dir, key + ".none")); } catch { /* ignore */ }
             return bytes;
         }
@@ -153,6 +219,7 @@ internal static class OnlineCovers
     private static async Task<(Found? Found, bool Answered)> SearchAsync(string path, CancellationToken ct)
     {
         var tags = LibraryScanner.ReadTags(path);
+        string coverKey = KeyFor(path);
 
         // 1) cross-check the song online; the cover that came with the matching entry is the one
         var id = await SongResolver.ResolveAsync(path, tags, ct).ConfigureAwait(false);
@@ -165,30 +232,31 @@ internal static class OnlineCovers
         bool unofficialVersion = id.Verified && SongText.Junk.IsMatch(rawName) && !SongText.Junk.IsMatch(id.Title);
         if (useYouTube && unofficialVersion)
         {
-            var youtube = await FromYouTubeAsync(path, tags, ct).ConfigureAwait(false);
+            var youtube = WithoutBad(await FromYouTubeAsync(path, tags, ct).ConfigureAwait(false), coverKey);
             if (youtube != null) return (youtube, true);
         }
-        if (id.CoverUrls.Count > 0) return (new Found(id.CoverUrls, null), true);
+        var fromCatalogue = WithoutBad(id.CoverUrls.Count > 0 ? new Found(id.CoverUrls, null) : null, coverKey);
+        if (fromCatalogue != null) return (fromCatalogue, true);
 
         // 2) the song is not in the catalogues (or has no picture there), but its album may be
         string album = (tags.Album ?? "").Trim();
         if (id.Artist.Length > 0 && album.Length > 0 && SongResolver.ITunesAvailable)
         {
-            var fromAlbum = await FromITunesAlbumAsync(id.Artist, album, ct).ConfigureAwait(false);
+            var fromAlbum = WithoutBad(await FromITunesAlbumAsync(id.Artist, album, ct).ConfigureAwait(false), coverKey);
             if (fromAlbum != null) return (fromAlbum, true);
         }
 
         // 3) MusicBrainz + Cover Art Archive, with the true artist and title when they were found
         if (id.Artist.Length > 0)
         {
-            var fromMb = await FromMusicBrainzAsync(id.Artist, id.TitleBare, album, ct).ConfigureAwait(false);
+            var fromMb = WithoutBad(await FromMusicBrainzAsync(id.Artist, id.TitleBare, album, ct).ConfigureAwait(false), coverKey);
             if (fromMb != null) return (fromMb, true);
         }
 
         // 4) the song's YouTube thumbnail
         if (useYouTube && !unofficialVersion)
         {
-            var youtube = await FromYouTubeAsync(path, tags, ct).ConfigureAwait(false);
+            var youtube = WithoutBad(await FromYouTubeAsync(path, tags, ct).ConfigureAwait(false), coverKey);
             if (youtube != null) return (youtube, true);
         }
         return (null, id.Answered);
@@ -243,6 +311,18 @@ internal static class OnlineCovers
 
     // ---- MusicBrainz + Cover Art Archive
 
+    /// <summary>Whether a MusicBrainz recording is credited to <paramref name="artist"/> (any of its credited artists).</summary>
+    private static bool CreditedTo(JsonElement recording, string artist)
+    {
+        if (!recording.TryGetProperty("artist-credit", out var credits) || credits.ValueKind != JsonValueKind.Array) return false;
+        foreach (var credit in credits.EnumerateArray())
+        {
+            if (TextMatch.SameArtist(artist, Str(credit, "name"))) return true;
+            if (credit.TryGetProperty("artist", out var who) && TextMatch.SameArtist(artist, Str(who, "name"))) return true;
+        }
+        return false;
+    }
+
     private static async Task<Found?> FromMusicBrainzAsync(string artist, string title, string album, CancellationToken ct)
     {
         static string Plain(string s) => s.Replace('"', ' ').Replace('\\', ' ');
@@ -257,6 +337,7 @@ internal static class OnlineCovers
         foreach (var recording in recordings.EnumerateArray())
         {
             if (!TextMatch.SameTitle(title, Str(recording, "title"))) continue;   // only recordings that really are this song
+            if (!CreditedTo(recording, artist)) continue;                          // ...and by this artist (a "Girlfriend" by another act is not it)
             if (!recording.TryGetProperty("releases", out var releases) || releases.ValueKind != JsonValueKind.Array) continue;
             foreach (var release in releases.EnumerateArray())
             {

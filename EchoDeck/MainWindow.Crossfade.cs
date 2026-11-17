@@ -23,6 +23,8 @@ public partial class MainWindow
     private bool _xfActive => _playback.Phase != OverlapPhase.None;   // a crossfade or gapless overlap is under way
     private bool _xfFade => _playback.Fade;  // fading (crossfade) or not (gapless)
     private bool _xfMuted;                   // the old player was muted: the new one is too
+    private bool _xfIndependentAudio;        // the audio output gives each song its own volume (needed to fade; set when the player is created)
+    private bool _xfRestartNoted;
     private string? _xfAttemptKey;           // the song an overlap was already tried for (a failed try is not repeated 10 times a second)
     private long _playAskedAt;               // when Play was last asked for (ms), to learn how long this PC takes to start a song
     private double _startLatencyMs = 450;    // learned: Play() until LibVLC reports "playing"
@@ -103,7 +105,12 @@ public partial class MainWindow
             if (_queueIndex < 0 || _queueIndex >= _queue.Count) return;
             if (!player.IsPlaying) return;
 
-            bool fade = _cfg.CrossfadeEnabled;
+            bool fade = _cfg.CrossfadeEnabled && _xfIndependentAudio;
+            if (_cfg.CrossfadeEnabled && !_xfIndependentAudio && !_xfRestartNoted)
+            {
+                _xfRestartNoted = true;   // crossfade was switched on while Tempo was running: songs play gaplessly until it is restarted
+                Notify("Restart Tempo to start crossfading. Until then songs play one after the other without a gap.");
+            }
             double lead = fade
                 ? Math.Clamp(_cfg.CrossfadeSeconds, 1, 12)
                 : Math.Clamp((_startLatencyMs + 350) / 1000.0, 0.6, 2.0);   // seconds before the end
@@ -171,8 +178,9 @@ public partial class MainWindow
             if (_xfFade)
             {
                 // equal-power curves: the loudness stays even in the middle of the crossfade
-                incoming.Volume = (int)Math.Round(volume * Math.Sin(t * Math.PI / 2));
-                outgoing.Volume = (int)Math.Round(volume * Math.Cos(t * Math.PI / 2));
+                double eased = t * t * (3 - 2 * t);   // eases in and out: no sudden start or end
+                incoming.Volume = (int)Math.Round(volume * Math.Sin(eased * Math.PI / 2));
+                outgoing.Volume = (int)Math.Round(volume * Math.Cos(eased * Math.PI / 2));
             }
             else
             {

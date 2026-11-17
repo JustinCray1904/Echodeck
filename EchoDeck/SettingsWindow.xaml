@@ -535,7 +535,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Crossfade between songs"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The end of a song fades out while the next one fades in, so songs blend into each other. Only between songs (not videos), and not with repeat one or in Anonymous Mode. The next song starts a few seconds early, so the title and cover change when the blend begins."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Restart Tempo after switching this on. The end of a song fades out while the next one fades in, so songs blend into each other. Only between songs (not videos), and not with repeat one or in Anonymous Mode. The next song starts a few seconds early, so the title and cover change when the blend begins."/>
                             </StackPanel>
                             <CheckBox x:Name="CrossfadeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
@@ -593,7 +593,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Bouncy lyrics"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Apple Music style motion: the line being sung springs up to full size and the lines around it settle with a stretchy delay."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Experimental, off by default (the normal lyric animation is used). Apple Music style motion: the line being sung springs up to full size and the lines around it settle with a stretchy delay."/>
                             </StackPanel>
                             <CheckBox x:Name="LyricsBounceSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>

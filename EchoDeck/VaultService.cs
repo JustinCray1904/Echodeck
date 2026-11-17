@@ -354,9 +354,31 @@ public sealed class VaultService
 
     // ------------------------------------------------------------------ files
 
+    private static bool _stalePartsCleaned;
+
+    /// <summary>
+    /// Encrypted files are written to "name.part" and renamed when complete. If Tempo was killed, crashed or lost power in the middle
+    /// of one, that unfinished file is still there (never under a real name, and the original was not touched). It is removed once per
+    /// run, before anything of this run is written, so nothing half-finished piles up in the vault folder.
+    /// </summary>
+    private void CleanStaleParts()
+    {
+        if (_stalePartsCleaned) return;
+        _stalePartsCleaned = true;
+        try
+        {
+            foreach (var part in Directory.EnumerateFiles(VaultPath, "*" + VaultFormat.Extension + ".part"))
+            {
+                try { File.Delete(part); } catch { /* in use or locked: next run */ }
+            }
+        }
+        catch { /* best effort */ }
+    }
+
     private void EnsureDirectory()
     {
         var dir = Directory.CreateDirectory(VaultPath);
+        CleanStaleParts();
         try
         {
             dir.Refresh();
@@ -428,11 +450,22 @@ public sealed class VaultService
 
             if (!deleteOriginal) return;
 
+            // The original is only destroyed after the encrypted copy has been read back IN FULL and is byte for byte the same file
+            // (SHA-256 of the decrypted copy against SHA-256 of the original). Comparing sizes alone would not notice damaged data.
             try
             {
                 using var verify = new EncryptedVaultStream(dest, key);
                 if (verify.Length != new FileInfo(sourcePath).Length)
                     throw new InvalidDataException("Verification failed.");
+
+                byte[] copyHash = SHA256.HashData(verify);
+                byte[] originalHash;
+                using (var original = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
+                           FileShare.ReadWrite | FileShare.Delete, 1 << 20, FileOptions.SequentialScan))
+                    originalHash = SHA256.HashData(original);
+
+                if (!CryptographicOperations.FixedTimeEquals(copyHash, originalHash))
+                    throw new InvalidDataException("Verification failed: the encrypted copy does not match the original, which was kept.");
             }
             catch
             {
@@ -457,20 +490,25 @@ public sealed class VaultService
         var key = KeyCopy();
         try
         {
+            // Written to "name.part" and renamed only when complete: an interruption (exit, crash, power loss) can never leave a
+            // half-written file that looks like the real one. The encrypted copy stays until the caller deletes it after success.
             long expected;
+            var temp = target + ".part";
             using (var source = new EncryptedVaultStream(item.FullPath, key))
-            using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
+            using (var output = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
             {
                 expected = source.Length;
                 await source.CopyToAsync(output);
+                output.Flush(true);
             }
 
-            if (new FileInfo(target).Length != expected) throw new InvalidDataException("The restored file is incomplete.");
+            if (new FileInfo(temp).Length != expected) throw new InvalidDataException("The restored file is incomplete.");
+            File.Move(temp, target);
             return target;
         }
         catch
         {
-            try { if (File.Exists(target)) File.Delete(target); } catch { /* leave nothing half-written behind */ }
+            try { if (File.Exists(target + ".part")) File.Delete(target + ".part"); } catch { /* leave nothing half-written behind */ }
             throw;
         }
         finally { Zero(key); }

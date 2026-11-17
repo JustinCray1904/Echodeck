@@ -192,6 +192,13 @@ public partial class MainWindow : Window
         else if (_cfg.HardwareMode == "dxva2") args.Add("--avcodec-hw=dxva2");
         else args.Add("--avcodec-hw=any");
 
+        // On Windows the default audio output (WASAPI) gives every player of this program ONE shared volume, so a crossfade (one song
+        // fading out while another fades in) cannot work: whichever volume was set last applied to both songs (sudden jumps, crackling,
+        // or both songs going silent). DirectSound gives every song its own volume. Used only when crossfade is switched on; if it
+        // is not available LibVLC falls back to its normal output ("any").
+        _xfIndependentAudio = _cfg.CrossfadeEnabled;
+        if (_xfIndependentAudio) args.Add("--aout=directsound,any");
+
         var argArray = args.ToArray();
         _libVlc = await Task.Run(() => new LibVLC(argArray));
         _player = BuildPlayer();
@@ -759,6 +766,7 @@ public partial class MainWindow : Window
         if (!MediaTypes.IsAudio(path)) return;
         System.Windows.Media.Imaging.BitmapSource? bmp = await Task.Run(() =>
         {
+            if (OnlineCovers.SkipsEmbedded(path)) return null;   // the user said the picture in this file is wrong
             var raw = ShellThumbnail.Get(path, 600, 600, biggerOk: true);
             return raw == null ? null : ShellThumbnail.TrimBorders(raw);
         });
@@ -784,6 +792,35 @@ public partial class MainWindow : Window
             Visualizer.Tint = new System.Windows.Media.SolidColorBrush(color);
             GlowStop.Color = color;
         }
+    }
+
+    /// <summary>Right click on the cover: "wrong cover" forgets it and finds the next best one.</summary>
+    private void CoverCircle_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_anon || _queueIndex < 0 || _queueIndex >= _queue.Count) return;
+        string path = _queue[_queueIndex].FullPath;
+        if (!MediaTypes.IsAudio(path)) return;
+
+        var menu = new ContextMenu { PlacementTarget = CoverCircle, Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint };
+        menu.Items.Add(MenuEntry("This cover is wrong - find another", "IcoCamera", (_, _) => ResetCover(path)));
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void ResetCover(string path)
+    {
+        if (!_cfg.FetchCoversOnline)
+        {
+            Notify("Turn on \"Find missing covers online\" in Settings to look for another cover.");
+            return;
+        }
+        OnlineCovers.Reject(path);
+
+        // back to the plain disc while the next best cover is looked for
+        CoverCircle.Fill = (System.Windows.Media.Brush)FindResource("CoverFallback");
+        MusicGlyph.Visibility = Visibility.Visible;
+        ShowOsd("Looking for another cover…");
+        LoadCover(path);
     }
 
     private void SetPulse(bool on)

@@ -98,7 +98,7 @@ public sealed class AppSettings
     public int CrossfadeSeconds { get; set; } = 6;        // length of the crossfade, 1-12 seconds
     public bool GaplessEnabled { get; set; }              // start the next song just before the end so there is no silence between songs
     public int MotionMode { get; set; } = 1;              // moving background: 0 automatic (still when Windows animations are off), 1 always moving, 2 always still
-    public bool LyricsBounce { get; set; } = true;       // Apple Music style: the sung line springs up, the lines around it settle with a stretchy lag
+    public bool LyricsBounce { get; set; }       // Apple Music style: the sung line springs up, the lines around it settle with a stretchy lag
     public bool LyricsWordByWord { get; set; }            // light up the sung line word by word (off: the whole line is highlighted)
     public bool HideInterface { get; set; }               // hide the title bar, side bar and controls while playing (H, or the right-click menu)
     public bool AutoLoadLyrics { get; set; } = true;      // lyrics from the hidden Tempo lyrics folder (or an .lrc / .txt next to the song)
