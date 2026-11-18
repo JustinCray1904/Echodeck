@@ -319,7 +319,7 @@ internal static class SongResolver
     private static HttpClient CreateClient()
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Tempo", "3.0"));
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Tempo", "1.0"));
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(desktop media player)"));
         return http;
     }

@@ -22,7 +22,7 @@ internal static class OnlineLyrics
     private static HttpClient CreateClient()
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Tempo", "3.0"));
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Tempo", "1.0"));
         return http;
     }
 

@@ -140,7 +140,7 @@ public partial class WhisperSetupWindow : Window
         try
         {
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Tempo/3.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Tempo/1.0");
 
             Directory.CreateDirectory(WhisperService.DefaultFolder);
 
