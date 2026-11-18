@@ -222,7 +222,7 @@ public sealed class AuroraBackground : Grid
     private long _lastTicks;
 
     private readonly System.Windows.Threading.DispatcherTimer _timer = new(System.Windows.Threading.DispatcherPriority.Render)
-        { Interval = TimeSpan.FromMilliseconds(33) };
+    { Interval = TimeSpan.FromMilliseconds(33) };
 
     // how fast each colour point wanders along its own path (different on each axis, so the paths loop and curve)
     private static readonly double[] SpeedX = { 0.21, 0.17, 0.26, 0.19, 0.23, 0.15 };

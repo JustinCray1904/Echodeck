@@ -359,7 +359,7 @@ public partial class MainWindow
             // the lines lag behind the scroll by a little more the further they are, then spring into place
             double lag = Math.Min(30, 5 + 4 * distance);
             shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(lag, 0, TimeSpan.FromMilliseconds(520 + distance * 80))
-                { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 6 } });
+            { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 6 } });
         }
         else if (shift.Y != 0 && !cascade)
         {
@@ -394,7 +394,7 @@ public partial class MainWindow
             {
                 // the lines near the active one change gently
                 text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(300))
-                    { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
             }
             else if (Math.Abs(text.Opacity - opacity) > 0.01)
             {

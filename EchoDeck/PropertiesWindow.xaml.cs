@@ -53,7 +53,8 @@ public partial class PropertiesWindow : Window
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                "explorer.exe", "/select,\"" + _path + "\"") { UseShellExecute = true });
+                "explorer.exe", "/select,\"" + _path + "\"")
+            { UseShellExecute = true });
         }
         catch { /* nothing to open */ }
     }

@@ -87,10 +87,10 @@ public static class ThemeManager
         }
 
         Color accentHover = dark ? Blend(accent, Colors.White, 0.18) : Blend(accent, Colors.Black, 0.12);
-        Color accentMid   = Blend(track, accent, dark ? 0.60 : 0.55);   // seek / volume fill
-        Color accentDim   = Blend(bg, accent, dark ? 0.22 : 0.20);      // selection, pressed
-        Color accentSoft  = Color.FromArgb(dark ? (byte)0x2E : (byte)0x26, accent.R, accent.G, accent.B); // action bundles
-        Color onAccent    = Luminance(accent) > 0.50 ? Parse("#0B1320") : Colors.White;
+        Color accentMid = Blend(track, accent, dark ? 0.60 : 0.55);   // seek / volume fill
+        Color accentDim = Blend(bg, accent, dark ? 0.22 : 0.20);      // selection, pressed
+        Color accentSoft = Color.FromArgb(dark ? (byte)0x2E : (byte)0x26, accent.R, accent.G, accent.B); // action bundles
+        Color onAccent = Luminance(accent) > 0.50 ? Parse("#0B1320") : Colors.White;
 
         Set(res, "Bg", bg); Set(res, "Rail", rail); Set(res, "Panel", panel); Set(res, "Track", track);
         Set(res, "Raised", raised); Set(res, "Slate", slate); Set(res, "Text", text); Set(res, "Fg1", fg1);

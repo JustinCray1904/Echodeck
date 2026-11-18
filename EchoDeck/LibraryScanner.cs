@@ -298,8 +298,14 @@ internal static class LibraryScanner
         var tags = ReadTags(fi.FullName);
         return new CachedTrack
         {
-            P = fi.FullName, S = fi.Length, M = fi.LastWriteTimeUtc.Ticks,
-            T = tags.Title, A = tags.Artist, B = tags.Album, G = tags.Genre, D = tags.DurationSeconds
+            P = fi.FullName,
+            S = fi.Length,
+            M = fi.LastWriteTimeUtc.Ticks,
+            T = tags.Title,
+            A = tags.Artist,
+            B = tags.Album,
+            G = tags.Genre,
+            D = tags.DurationSeconds
         };
     }
 
