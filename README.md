@@ -1,6 +1,6 @@
 # Tempo
 
-A modern Windows media player for video and music, built on LibVLC (WPF, .NET 8), with a private encrypted space called **Anonymous Mode**. The interface follows the community *VLC Redesign* Figma file, with a light-blue accent.
+A modern Windows media player for video and music, built on LibVLC (WPF, .NET 8), with a private encrypted space called **Anonymous Mode**. The interface follows the community *VLC Redesign*, with a light-blue accent.
 
 ## Get a build
 Push to GitHub: the **Build Tempo** workflow publishes a self-contained x64 app and compiles the Inno Setup installer. Download `Tempo-Setup-<version>.exe` from the run's **Artifacts**. Tag a commit `v2.0.1` to also attach a portable zip to a GitHub Release.
