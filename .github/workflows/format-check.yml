@@ -1,0 +1,25 @@
+name: Format check
+
+# Fails when the C# code is not formatted the way .editorconfig says. It is a separate workflow on purpose: a style slip shows up here
+# as its own red item and never blocks Tests or Build Tempo. To fix it: Actions > Maintenance > Run workflow > format, then push nothing else.
+on:
+  push:
+  pull_request:
+
+jobs:
+  format:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Check the app project
+        run: dotnet format EchoDeck/EchoDeck.csproj --verify-no-changes
+
+      - name: Check the test project
+        run: dotnet format EchoDeck.Tests/EchoDeck.Tests.csproj --verify-no-changes
