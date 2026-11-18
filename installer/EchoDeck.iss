@@ -2,7 +2,7 @@
 ; the defaults below also let you compile it by hand after `dotnet publish -c Release -o ..\publish`.
 
 #ifndef AppVersion
-  #define AppVersion "3.0.0"
+  #define AppVersion "1.0.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\publish"
