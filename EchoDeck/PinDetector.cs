@@ -21,6 +21,9 @@ internal sealed class PinDetector
         _length = length;
     }
 
+    /// <summary>How many digits of a passcode in progress have been typed (0 when nothing is pending).</summary>
+    public int Count => _buffer.Length;
+
     public static bool TryGetDigit(int vk, out char digit)
     {
         if (vk is >= 0x30 and <= 0x39) { digit = (char)vk; return true; }                  // top row

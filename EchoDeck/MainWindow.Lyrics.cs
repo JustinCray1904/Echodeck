@@ -359,7 +359,7 @@ public partial class MainWindow
             // the lines lag behind the scroll by a little more the further they are, then spring into place
             double lag = Math.Min(30, 5 + 4 * distance);
             shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(lag, 0, TimeSpan.FromMilliseconds(520 + distance * 80))
-            { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 6 } });
+                { EasingFunction = new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 6 } });
         }
         else if (shift.Y != 0 && !cascade)
         {
@@ -394,7 +394,7 @@ public partial class MainWindow
             {
                 // the lines near the active one change gently
                 text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(300))
-                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+                    { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
             }
             else if (Math.Abs(text.Opacity - opacity) > 0.01)
             {
@@ -617,7 +617,7 @@ public partial class MainWindow
         }
         if (!ConfirmCloudUpload(1)) return;
 
-        if (_lyrics != null && MessageBox.Show(this, "Replace the lyrics shown for this song with AI-generated ones?", "Generate lyrics",
+        if (_lyrics != null && TempoDialog.Show(this, "Replace the lyrics shown for this song with AI-generated ones?", "Generate lyrics",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         var cts = _lyricsCts = new CancellationTokenSource();
@@ -664,7 +664,7 @@ public partial class MainWindow
             }
 
             if (coverage != null)
-                MessageBox.Show(this, coverage, "Lyrics may be incomplete", MessageBoxButton.OK, MessageBoxImage.Information);
+                TempoDialog.Show(this, coverage, "Lyrics may be incomplete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (OperationCanceledException)
         {
@@ -678,7 +678,7 @@ public partial class MainWindow
         {
             // a failed transcription (or anything unexpected) is reported, never allowed to reach the crash handler
             AppLog.Write("Generate lyrics", ex);
-            try { MessageBox.Show(this, "Couldn't generate lyrics.\n\n" + ex.Message, "Generate lyrics", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            try { TempoDialog.Show(this, "Couldn't generate lyrics.\n\n" + ex.Message, "Generate lyrics", MessageBoxButton.OK, MessageBoxImage.Warning); }
             catch { /* window closing */ }
         }
         finally
@@ -709,7 +709,7 @@ public partial class MainWindow
         }
         if (_lyricsOnlineBusy) return;
 
-        if (_lyrics != null && MessageBox.Show(this, "Replace the lyrics shown for this song with the ones found online?", "Find lyrics online",
+        if (_lyrics != null && TempoDialog.Show(this, "Replace the lyrics shown for this song with the ones found online?", "Find lyrics online",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         _lyricsOnlineBusy = true;
@@ -767,7 +767,7 @@ public partial class MainWindow
     {
         try
         {
-            if (MessageBox.Show(this, message, "Generate lyrics", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+            if (TempoDialog.Show(this, message, "Generate lyrics", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
                 ShowSettings("lyrics");
         }
         catch (Exception ex) { AppLog.Write("Whisper prompt", ex); }

@@ -146,7 +146,7 @@ public partial class MainWindow : Window
         _keys.CtrlReleased += _pinDetector.Reset;
         if (!_keys.Start())
         {
-            MessageBox.Show(this, "Keyboard input could not be initialised; Ctrl+passcode and Esc won't work.",
+            TempoDialog.Show(this, "Keyboard input could not be initialised; Ctrl+passcode and Esc won't work.",
                 AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
@@ -1043,7 +1043,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        MessageBox.Show(this, $"Tempo {v?.Major}.{v?.Minor}.{v?.Build}\nA modern media player built on LibVLC.",
+        TempoDialog.Show(this, $"Tempo {v?.Major}.{v?.Minor}.{v?.Build}\nA modern media player built on LibVLC.",
             "About Tempo", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -1556,18 +1556,27 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_modalOpen || _transition) return; // typing in a dialog must not trigger hotkeys
+        if (_modalOpen || _transition || TempoDialog.IsOpen) return; // typing in a dialog must not trigger hotkeys
 
         if (!appActive)
         {
             _pinDetector.Reset();
+            HidePasscodeBox();
             return;
         }
 
         // Ctrl + passcode digits
         if (ctrl && PinDetector.TryGetDigit(vk, out char digit))
         {
-            if (!_anon && PinStore.IsSet && _pinDetector.Push(digit)) EnterAnonymous();
+            if (!_anon && PinStore.IsSet)
+            {
+                if (_pinDetector.Push(digit))
+                {
+                    HidePasscodeBox();   // the box goes before the "going dark" animation starts
+                    EnterAnonymous();
+                }
+                else ShowPasscodeProgress();
+            }
             return;
         }
 
@@ -1577,6 +1586,7 @@ public partial class MainWindow : Window
             return;
 
         _pinDetector.Reset();
+        HidePasscodeBox();
 
         if (Keyboard.FocusedElement is TextBox or PasswordBox) return; // typing in the search box
 

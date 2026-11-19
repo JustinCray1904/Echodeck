@@ -37,6 +37,7 @@ public sealed class AppSettings
     public bool RememberRecent { get; set; } = true;
     public bool AnonymousExitOnMinimize { get; set; } = true;
     public bool AnonymousDeleteOriginals { get; set; }
+    public bool AnonymousPasscodeBox { get; set; } = true;   // a box with one dot per digit appears in the middle of Tempo while the passcode is typed
     public bool AnonymousVideoThumbnails { get; set; }   // off: vault videos get no preview picture (Windows' thumbnail cache would keep a copy)
 
     // ---- playback

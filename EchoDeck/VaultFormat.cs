@@ -55,8 +55,16 @@ public static class VaultFormat
     private static byte[] DeriveFileKey(byte[] masterKey, byte[] salt) =>
         HKDF.DeriveKey(HashAlgorithmName.SHA256, masterKey, 32, salt, KeyInfo);
 
-    /// <summary>Encrypts <paramref name="sourcePath"/> into a new vault file (written to .part, then renamed).</summary>
-    internal static void EncryptFile(string sourcePath, string destPath, byte[] masterKey, string originalName,
+    // ---- speed: the file is processed in batches of 16 chunks (4 MiB). The format on disk is exactly the same as before.
+    private const int BatchChunks = 16;
+    private static int Workers => Math.Clamp(Environment.ProcessorCount, 1, 8);
+
+    /// <summary>
+    /// Encrypts <paramref name="sourcePath"/> into a new vault file (written to .part, then renamed) and returns the SHA-256 of the
+    /// plaintext, worked out in the same pass. The chunks of a batch are independent (each has its own nonce), so they are encrypted on
+    /// several CPU cores at once, and hashing + writing a batch overlaps with reading and encrypting the next one.
+    /// </summary>
+    internal static byte[] EncryptFile(string sourcePath, string destPath, byte[] masterKey, string originalName,
         string? origin = null, TagInfo? tags = null)
     {
         using var src = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
@@ -69,13 +77,14 @@ public static class VaultFormat
 
         try
         {
-            using var aes = new AesGcm(fileKey, TagSize);
-            var meta = JsonSerializer.SerializeToUtf8Bytes(new VaultMeta(originalName, length, origin,
-                Cap(tags?.Title), Cap(tags?.Artist), Cap(tags?.Album), Cap(tags?.Genre),
-                Math.Max(0, (tags?.DurationSeconds ?? 0) * 1000)), MetaJson);
-
+            byte[] hash;
+            using (var aes = new AesGcm(fileKey, TagSize))
             using (var dst = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
             {
+                var meta = JsonSerializer.SerializeToUtf8Bytes(new VaultMeta(originalName, length, origin,
+                    Cap(tags?.Title), Cap(tags?.Artist), Cap(tags?.Album), Cap(tags?.Genre),
+                    Math.Max(0, (tags?.DurationSeconds ?? 0) * 1000)), MetaJson);
+
                 Span<byte> nonce = stackalloc byte[NonceSize];
                 Span<byte> lenBytes = stackalloc byte[4];
                 BinaryPrimitives.WriteUInt32LittleEndian(lenBytes, (uint)meta.Length);
@@ -91,28 +100,12 @@ public static class VaultFormat
                 dst.Write(metaCipher);
                 dst.Write(metaTag);
 
-                var plain = new byte[ChunkSize];
-                var cipher = new byte[ChunkSize];
-                var tag = new byte[TagSize];
-                ulong index = 0;
-                long remaining = length;
-
-                while (remaining > 0)
-                {
-                    int want = (int)Math.Min(ChunkSize, remaining);
-                    src.ReadExactly(plain, 0, want);
-                    ChunkNonce(nonce, index++);
-                    aes.Encrypt(nonce, plain.AsSpan(0, want), cipher.AsSpan(0, want), tag);
-                    dst.Write(cipher, 0, want);
-                    dst.Write(tag);
-                    remaining -= want;
-                }
-
-                CryptographicOperations.ZeroMemory(plain);
+                hash = EncryptBody(src, dst, fileKey, length);
                 dst.Flush(true);
             }
 
             File.Move(tmpPath, destPath);
+            return hash;
         }
         catch
         {
@@ -121,6 +114,159 @@ public static class VaultFormat
         }
         finally
         {
+            CryptographicOperations.ZeroMemory(fileKey);
+        }
+    }
+
+    private static byte[] EncryptBody(Stream src, Stream dst, byte[] fileKey, long length)
+    {
+        const int stride = ChunkSize + TagSize;
+        int batchBytes = BatchChunks * ChunkSize;
+        var plain = new[] { new byte[batchBytes], new byte[batchBytes] };
+        var packed = new[] { new byte[BatchChunks * stride], new byte[BatchChunks * stride] };
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var workers = new ThreadLocal<AesGcm>(() => new AesGcm(fileKey, TagSize), trackAllValues: true);
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Workers };
+
+        Task? writing = null;   // the batch being hashed and written; at most one is in flight
+        int slot = 0;
+        ulong index = 0;
+        long remaining = length;
+        try
+        {
+            while (remaining > 0)
+            {
+                var p = plain[slot];
+                var o = packed[slot];
+                int n = (int)Math.Min(batchBytes, remaining);
+                src.ReadExactly(p, 0, n);
+
+                int chunks = (n + ChunkSize - 1) / ChunkSize;
+                ulong first = index;
+                RunParallel(chunks, options, i =>
+                {
+                    Span<byte> nonce = stackalloc byte[NonceSize];
+                    ChunkNonce(nonce, first + (ulong)i);
+                    int from = i * ChunkSize;
+                    int want = Math.Min(ChunkSize, n - from);
+                    int to = i * stride;
+                    workers.Value!.Encrypt(nonce, p.AsSpan(from, want), o.AsSpan(to, want), o.AsSpan(to + want, TagSize));
+                });
+                int packedLength = n + chunks * TagSize;
+
+                writing?.GetAwaiter().GetResult();   // the previous batch is on disk now (rethrows its error)
+                writing = Task.Run(() =>
+                {
+                    hash.AppendData(p, 0, n);
+                    dst.Write(o, 0, packedLength);
+                });
+
+                slot ^= 1;
+                index += (ulong)chunks;
+                remaining -= n;
+            }
+
+            writing?.GetAwaiter().GetResult();
+            writing = null;
+            return hash.GetHashAndReset();
+        }
+        finally
+        {
+            try { writing?.GetAwaiter().GetResult(); } catch { /* the error that got us here is the one that is thrown */ }
+            CryptographicOperations.ZeroMemory(plain[0]);
+            CryptographicOperations.ZeroMemory(plain[1]);
+            foreach (var worker in workers.Values) worker.Dispose();
+        }
+    }
+
+    /// <summary>Parallel.For that throws the real exception (not an AggregateException around it).</summary>
+    private static void RunParallel(int count, ParallelOptions options, Action<int> body)
+    {
+        try
+        {
+            if (count == 1) body(0);
+            else Parallel.For(0, count, options, body);
+        }
+        catch (AggregateException ex) when (ex.InnerException != null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+        }
+    }
+
+    /// <summary>
+    /// Reads a vault file back completely, authenticating every chunk, and returns the SHA-256 of what it holds. The plaintext is written
+    /// to <paramref name="output"/> when one is given (restoring), or only hashed (verifying). Throws if anything was changed or cut short.
+    /// Chunks of a batch are decrypted on several CPU cores at once, and writing a batch overlaps with reading and decrypting the next.
+    /// </summary>
+    internal static byte[] DecryptFile(string path, byte[] masterKey, Stream? output, CancellationToken ct = default)
+    {
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+        using var headerKey = ReadHeader(file, masterKey, out var meta, out long dataOffset);   // authenticates the header and the file size
+
+        // the per-file key once more: every worker thread needs a decryptor of its own
+        var salt = new byte[SaltSize];
+        file.Seek(4, SeekOrigin.Begin);
+        file.ReadExactly(salt);
+        var fileKey = DeriveFileKey(masterKey, salt);
+        file.Seek(dataOffset, SeekOrigin.Begin);
+
+        const int stride = ChunkSize + TagSize;
+        var cipher = new[] { new byte[BatchChunks * stride], new byte[BatchChunks * stride] };
+        var plain = new[] { new byte[BatchChunks * ChunkSize], new byte[BatchChunks * ChunkSize] };
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var workers = new ThreadLocal<AesGcm>(() => new AesGcm(fileKey, TagSize), trackAllValues: true);
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Workers, CancellationToken = ct };
+
+        long chunksTotal = (meta.Length + ChunkSize - 1) / ChunkSize;
+        long chunkIndex = 0;
+        long plainRemaining = meta.Length;
+        Task? writing = null;
+        int slot = 0;
+        try
+        {
+            while (chunkIndex < chunksTotal)
+            {
+                ct.ThrowIfCancellationRequested();
+                int chunks = (int)Math.Min(BatchChunks, chunksTotal - chunkIndex);
+                int plainLength = (int)Math.Min((long)chunks * ChunkSize, plainRemaining);
+                int cipherLength = plainLength + chunks * TagSize;
+                var c = cipher[slot];
+                var p = plain[slot];
+                file.ReadExactly(c, 0, cipherLength);
+
+                ulong first = (ulong)chunkIndex;
+                RunParallel(chunks, options, i =>
+                {
+                    Span<byte> nonce = stackalloc byte[NonceSize];
+                    ChunkNonce(nonce, first + (ulong)i);
+                    int pFrom = i * ChunkSize;
+                    int want = Math.Min(ChunkSize, plainLength - pFrom);
+                    int cFrom = i * stride;
+                    workers.Value!.Decrypt(nonce, c.AsSpan(cFrom, want), c.AsSpan(cFrom + want, TagSize), p.AsSpan(pFrom, want));
+                });
+
+                writing?.GetAwaiter().GetResult();
+                writing = Task.Run(() =>
+                {
+                    hash.AppendData(p, 0, plainLength);
+                    output?.Write(p, 0, plainLength);
+                });
+
+                slot ^= 1;
+                chunkIndex += chunks;
+                plainRemaining -= plainLength;
+            }
+
+            writing?.GetAwaiter().GetResult();
+            writing = null;
+            return hash.GetHashAndReset();
+        }
+        finally
+        {
+            try { writing?.GetAwaiter().GetResult(); } catch { /* the error that got us here is the one that is thrown */ }
+            CryptographicOperations.ZeroMemory(plain[0]);
+            CryptographicOperations.ZeroMemory(plain[1]);
+            foreach (var worker in workers.Values) worker.Dispose();
             CryptographicOperations.ZeroMemory(fileKey);
         }
     }

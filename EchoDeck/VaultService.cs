@@ -445,26 +445,25 @@ public sealed class VaultService
             var dest = NewVaultFilePath();
             // Details + thumbnail are read from the plaintext original NOW (it may be deleted below) and stored encrypted.
             var tags = LibraryScanner.ReadTags(sourcePath);
-            VaultFormat.EncryptFile(sourcePath, dest, key, Path.GetFileName(sourcePath), Path.GetDirectoryName(sourcePath), tags);
+            var before = new FileInfo(sourcePath);
+            long lengthBefore = before.Length;
+            DateTime writtenBefore = before.LastWriteTimeUtc;
+            byte[] sourceHash = VaultFormat.EncryptFile(sourcePath, dest, key, Path.GetFileName(sourcePath), Path.GetDirectoryName(sourcePath), tags);
             SaveThumb(sourcePath, dest, key);
 
             if (!deleteOriginal) return;
 
-            // The original is only destroyed after the encrypted copy has been read back IN FULL and is byte for byte the same file
-            // (SHA-256 of the decrypted copy against SHA-256 of the original). Comparing sizes alone would not notice damaged data.
+            // The original is only destroyed after the encrypted copy has been read back IN FULL (every chunk authenticated) and holds exactly
+            // what was read from the original (SHA-256, worked out while encrypting, so the original is not read a second time), and the
+            // original is still the file that was encrypted. Comparing sizes alone would not notice damaged data.
             try
             {
-                using var verify = new EncryptedVaultStream(dest, key);
-                if (verify.Length != new FileInfo(sourcePath).Length)
-                    throw new InvalidDataException("Verification failed.");
+                var after = new FileInfo(sourcePath);
+                if (after.Length != lengthBefore || after.LastWriteTimeUtc != writtenBefore)
+                    throw new InvalidDataException("The file changed while it was being encrypted, so it was kept.");
 
-                byte[] copyHash = SHA256.HashData(verify);
-                byte[] originalHash;
-                using (var original = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
-                           FileShare.ReadWrite | FileShare.Delete, 1 << 20, FileOptions.SequentialScan))
-                    originalHash = SHA256.HashData(original);
-
-                if (!CryptographicOperations.FixedTimeEquals(copyHash, originalHash))
+                byte[] copyHash = VaultFormat.DecryptFile(dest, key, null);
+                if (!CryptographicOperations.FixedTimeEquals(copyHash, sourceHash))
                     throw new InvalidDataException("Verification failed: the encrypted copy does not match the original, which was kept.");
             }
             catch
@@ -494,11 +493,10 @@ public sealed class VaultService
             // half-written file that looks like the real one. The encrypted copy stays until the caller deletes it after success.
             long expected;
             var temp = target + ".part";
-            using (var source = new EncryptedVaultStream(item.FullPath, key))
+            expected = VaultFormat.ReadMeta(item.FullPath, key).Length;
             using (var output = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
             {
-                expected = source.Length;
-                await source.CopyToAsync(output);
+                VaultFormat.DecryptFile(item.FullPath, key, output);   // fast, parallel, every chunk authenticated
                 output.Flush(true);
             }
 

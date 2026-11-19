@@ -77,6 +77,19 @@
                         <CheckBox x:Name="VideoThumbsSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}"
                                   Click="VideoThumbs_Click"/>
                     </Grid>
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,24,0">
+                            <TextBlock Style="{StaticResource RowLabel}" Text="Show a box while typing the passcode"/>
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                       Text="A box with one dot per digit appears in the middle of Tempo, with the window dimmed behind it. Turn it off if you do not want anyone looking at your screen to see that you are typing a passcode."/>
+                        </StackPanel>
+                        <CheckBox x:Name="PasscodeBoxSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}"
+                                  Click="PasscodeBox_Click"/>
+                    </Grid>
                     </StackPanel>
 
                     <ListBox x:Name="LibList" Grid.Row="2" Style="{StaticResource DarkList}"

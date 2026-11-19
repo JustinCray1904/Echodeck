@@ -171,7 +171,7 @@ public partial class MainWindow
         {
             try
             {
-                MessageBox.Show(this, string.Join("\n\n", warnings.Take(5)) + (warnings.Count > 5 ? $"\n\n…and {warnings.Count - 5} more." : ""),
+                TempoDialog.Show(this, string.Join("\n\n", warnings.Take(5)) + (warnings.Count > 5 ? $"\n\n…and {warnings.Count - 5} more." : ""),
                     "Lyrics may be incomplete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch { /* window closing */ }
@@ -366,7 +366,7 @@ public partial class MainWindow
         string host;
         try { host = new Uri(_cfg.CloudEndpoint).Host; } catch { host = _cfg.CloudEndpoint; }
 
-        var answer = MessageBox.Show(this,
+        var answer = TempoDialog.Show(this,
             $"Cloud lyrics upload the audio of {(songCount == 1 ? "this song" : "these songs")} to {host}.\n\nContinue?",
             "Generate lyrics", MessageBoxButton.YesNo, MessageBoxImage.Question);
         _cloudConsent = answer == MessageBoxResult.Yes;

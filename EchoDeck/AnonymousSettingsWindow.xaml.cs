@@ -32,6 +32,7 @@ public partial class AnonymousSettingsWindow : Window
 
         DeleteOriginalsSwitch.IsChecked = _cfg.AnonymousDeleteOriginals;
         VideoThumbsSwitch.IsChecked = _cfg.AnonymousVideoThumbnails;
+        PasscodeBoxSwitch.IsChecked = _cfg.AnonymousPasscodeBox;
         ExitMinimizeSwitch.IsChecked = _cfg.AnonymousExitOnMinimize;
 
         _confirmTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -151,6 +152,12 @@ public partial class AnonymousSettingsWindow : Window
     private void DeleteOriginals_Click(object sender, RoutedEventArgs e)
     {
         _cfg.AnonymousDeleteOriginals = DeleteOriginalsSwitch.IsChecked == true;
+        _cfg.Save(notify: false);
+    }
+
+    private void PasscodeBox_Click(object sender, RoutedEventArgs e)
+    {
+        _cfg.AnonymousPasscodeBox = PasscodeBoxSwitch.IsChecked == true;
         _cfg.Save(notify: false);
     }
 

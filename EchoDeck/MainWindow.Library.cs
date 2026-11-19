@@ -1359,13 +1359,13 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Couldn't set the cover: " + ex.Message, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            TempoDialog.Show(this, "Couldn't set the cover: " + ex.Message, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
     private void DeletePlaylist(Playlist pl)
     {
-        var answer = MessageBox.Show(this, "Delete the playlist “" + pl.Name + "”? The files themselves are not touched.",
+        var answer = TempoDialog.Show(this, "Delete the playlist “" + pl.Name + "”? The files themselves are not touched.",
             "Delete playlist", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
 

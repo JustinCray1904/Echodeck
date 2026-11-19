@@ -160,7 +160,7 @@ internal sealed class DuplicatesWindow : Window
         }
         if (doomed.Count == 0) return;
 
-        if (MessageBox.Show(this, $"Move {doomed.Count} file{(doomed.Count == 1 ? "" : "s")} to the Recycle Bin?\n\nYou can restore them from there.",
+        if (TempoDialog.Show(this, $"Move {doomed.Count} file{(doomed.Count == 1 ? "" : "s")} to the Recycle Bin?\n\nYou can restore them from there.",
                 "Duplicate songs", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         int moved = 0;

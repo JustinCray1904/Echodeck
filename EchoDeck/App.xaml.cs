@@ -58,7 +58,7 @@ public partial class App : Application
 
         try
         {
-            MessageBox.Show(
+            TempoDialog.Show(
                 "Tempo hit an error (" + where + "):\n\n" + detail + "\n\nThe full details were saved to:\n" + log,
                 "Tempo", MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -201,7 +201,7 @@ public partial class App : Application
 
         if (!TryInitializeLibVlc(out var error))
         {
-            MessageBox.Show(error, "Tempo", MessageBoxButton.OK, MessageBoxImage.Error);
+            TempoDialog.Show(error, "Tempo", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
             return;
         }

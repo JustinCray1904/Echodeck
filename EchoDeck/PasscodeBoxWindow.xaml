@@ -1,0 +1,18 @@
+<Window x:Class="EchoDeck.PasscodeBoxWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" ShowActivated="False" Focusable="False" IsHitTestVisible="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource UiFont}"
+        Width="400" Height="200">
+
+    <Border Background="{DynamicResource BgBrush}" BorderBrush="{DynamicResource SlateBrush}" BorderThickness="1" CornerRadius="16">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Anonymous Mode" Style="{StaticResource PageTitle}" FontSize="19" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="Hint" Style="{StaticResource HintText}" HorizontalAlignment="Center" Margin="0,8,0,20"
+                       Text="Keep typing your passcode"/>
+            <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</Window>

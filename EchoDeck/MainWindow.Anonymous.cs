@@ -472,7 +472,7 @@ public partial class MainWindow
         MessageBoxResult answer;
         try
         {
-            answer = MessageBox.Show(this,
+            answer = TempoDialog.Show(this,
                 (items.Count == 1 ? "Permanently delete “" + DisplayTitle(items[0]) + "”" : $"Permanently delete {items.Count} items") +
                 " from Anonymous Mode?\n\nThe encrypted file is overwritten and removed. This can't be undone.",
                 "Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -594,7 +594,7 @@ public partial class MainWindow
         {
             try { splash?.Close(); } catch { }
             if (!_anon) _vaultService.Lock();
-            MessageBox.Show(this, "Couldn't open Anonymous Mode: " + ex.Message, AppName,
+            TempoDialog.Show(this, "Couldn't open Anonymous Mode: " + ex.Message, AppName,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
@@ -613,7 +613,7 @@ public partial class MainWindow
         }
         catch (FileNotFoundException)
         {
-            var answer = MessageBox.Show(this,
+            var answer = TempoDialog.Show(this,
                 "Tempo can't find the key for the encrypted files already in the vault, so they can't be opened.\n\n" +
                 "Start a new, empty vault? The old files are moved to an \"unreadable\" folder inside the vault folder " +
                 "and can't be recovered without their original key.",
@@ -628,14 +628,14 @@ public partial class MainWindow
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Couldn't start a new vault: " + ex.Message, AppName,
+                TempoDialog.Show(this, "Couldn't start a new vault: " + ex.Message, AppName,
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Couldn't open the vault: " + ex.Message, AppName,
+            TempoDialog.Show(this, "Couldn't open the vault: " + ex.Message, AppName,
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }

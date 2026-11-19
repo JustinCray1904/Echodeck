@@ -16,7 +16,7 @@ internal static class VaultRestore
             : Environment.GetFolderPath(item.IsAudio ? Environment.SpecialFolder.MyMusic : Environment.SpecialFolder.MyVideos);
         if (dlg.ShowDialog(owner) != true) return "";
 
-        var answer = MessageBox.Show(owner,
+        var answer = TempoDialog.Show(owner,
             "Remove “" + item.Name + "” from Anonymous Mode after restoring it?\n\n" +
             "Yes  –  move it back (the encrypted copy is deleted)\nNo  –  copy it out and keep it here",
             "Restore", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
@@ -36,7 +36,7 @@ internal static class VaultRestore
         if (items.Count == 0) return "";
         if (items.Count == 1) return await RunAsync(owner, service, items[0], delete);
 
-        var where = MessageBox.Show(owner,
+        var where = TempoDialog.Show(owner,
             $"Restore {items.Count} items?\n\nYes  –  put each one back in the folder it came from\n" +
             "No  –  choose one folder for all of them\nCancel  –  stop",
             "Restore", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
@@ -50,7 +50,7 @@ internal static class VaultRestore
             common = dlg.FolderName;
         }
 
-        var remove = MessageBox.Show(owner,
+        var remove = TempoDialog.Show(owner,
             "Remove them from Anonymous Mode after restoring?\n\n" +
             "Yes  –  move them back (the encrypted copies are deleted)\nNo  –  copy them out and keep them here",
             "Restore", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);

@@ -99,7 +99,7 @@ public partial class LyricsEditorWindow : Window
     private void StripTimes_Click(object sender, RoutedEventArgs e)
     {
         if (!LyricsParser.HasTimestamps(Editor.Text)) return;
-        if (MessageBox.Show(this, "Remove every timestamp and keep only the words?", "Edit lyrics",
+        if (TempoDialog.Show(this, "Remove every timestamp and keep only the words?", "Edit lyrics",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         Editor.Text = LyricsParser.StripTimes(Editor.Text);
     }

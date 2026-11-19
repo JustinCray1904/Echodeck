@@ -1,0 +1,35 @@
+<Window x:Class="EchoDeck.TempoDialogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource EchoWindow}"
+        Title="Tempo"
+        Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <Grid Margin="26,4,26,22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="IconDisc" Grid.Column="0" Width="40" Height="40" CornerRadius="20" VerticalAlignment="Top"
+                    Margin="0,2,16,0" Background="{DynamicResource AccentBrush}">
+                <TextBlock x:Name="IconGlyph" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" Foreground="{DynamicResource OnAccentBrush}"/>
+            </Border>
+
+            <ScrollViewer Grid.Column="1" MaxHeight="320" VerticalScrollBarVisibility="Auto" VerticalAlignment="Center">
+                <TextBlock x:Name="Body" TextWrapping="Wrap" FontSize="14" LineHeight="21"
+                           Foreground="{DynamicResource TextBrush}"/>
+            </ScrollViewer>
+        </Grid>
+
+        <StackPanel x:Name="ButtonRow" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,26,0,0"/>
+    </Grid>
+</Window>

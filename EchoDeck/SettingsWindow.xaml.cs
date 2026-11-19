@@ -75,7 +75,7 @@ public partial class SettingsWindow : Window
     {
         if (_cfg.MusicFolders.Count == 0)
         {
-            MessageBox.Show(this, "Add a music folder first (Settings > Library).", "Duplicate songs", MessageBoxButton.OK, MessageBoxImage.Information);
+            TempoDialog.Show(this, "Add a music folder first (Settings > Library).", "Duplicate songs", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         new DuplicatesWindow(_cfg.MusicFolders.ToList()) { Owner = this }.ShowDialog();
@@ -212,7 +212,7 @@ public partial class SettingsWindow : Window
     private readonly System.Windows.Threading.DispatcherTimer _vizSave = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
     private bool ConfirmCloudChoice() =>
-        MessageBox.Show(this,
+        TempoDialog.Show(this,
             "With the cloud engine, the audio of every song you generate lyrics for is uploaded to the online service you set below.\n\nNothing is sent until you press Generate. Use it?",
             "Cloud lyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
@@ -243,7 +243,7 @@ public partial class SettingsWindow : Window
             catch (Exception ex)
             {
                 AppLog.Write("Cloud key", ex, "could not encrypt the key");
-                MessageBox.Show(this, "Couldn't store the key securely: " + ex.Message, "Cloud lyrics", MessageBoxButton.OK, MessageBoxImage.Warning);
+                TempoDialog.Show(this, "Couldn't store the key securely: " + ex.Message, "Cloud lyrics", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
         else if (typed.Length == 0)
@@ -306,7 +306,7 @@ public partial class SettingsWindow : Window
         {
             // show what the registry really says now; playback and everything else are unaffected
             box.IsChecked = FileAssociations.IsRegistered();
-            MessageBox.Show(this,
+            TempoDialog.Show(this,
                 "Windows (or security software on this PC) blocked part of the change, so Tempo couldn't fully " + (on ? "register" : "unregister") +
                 " the file types.\n\nNothing else is affected. You can still choose Tempo under Settings > Apps > Default apps.\n\nDetails were written to " + AppLog.FilePath + ".",
                 "Tempo", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -314,7 +314,7 @@ public partial class SettingsWindow : Window
         }
 
         if (on)
-            MessageBox.Show(this,
+            TempoDialog.Show(this,
                 "Tempo is registered for common video and audio formats.\n\nIf Windows still opens another player, choose Tempo for that file type under Settings > Apps > Default apps.",
                 "Tempo", MessageBoxButton.OK, MessageBoxImage.Information);
     }

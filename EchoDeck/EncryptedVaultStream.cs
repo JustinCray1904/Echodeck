@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 namespace EchoDeck;
 
 /// <summary>
-/// Read-only, seekable stream that decrypts a vault file on the fly (one 256 KiB chunk cached). Plain video
+/// Read-only, seekable stream that decrypts a vault file on the fly (the last 8 chunks of 256 KiB cached). Plain video
 /// bytes exist only in memory. Read/Seek never throw: on any error (tampering, I/O, disposed) Read reports
 /// end-of-stream and <see cref="Error"/> is set, because an exception escaping into a native LibVLC callback
 /// would crash the process.
@@ -16,10 +16,16 @@ public sealed class EncryptedVaultStream : Stream
     private readonly long _dataOffset;
     private readonly long _length;
     private readonly byte[] _cipherBuf = new byte[VaultFormat.ChunkSize + VaultFormat.TagSize];
-    private readonly byte[] _plainBuf = new byte[VaultFormat.ChunkSize];
+
+    // The last few chunks stay decrypted in memory: a player reads around the same place again and again (headers, index, small
+    // seeks back), and a miss costs a disk read plus a decryption of 256 KiB.
+    private const int CacheSlots = 8;
+    private readonly byte[]?[] _plain = new byte[CacheSlots][];
+    private readonly long[] _chunkAt = new long[CacheSlots];   // the chunk each slot holds (-1: empty)
+    private readonly int[] _lenAt = new int[CacheSlots];
+    private readonly long[] _usedAt = new long[CacheSlots];
+    private long _tick;
     private long _position;
-    private long _cachedChunk = -1;
-    private int _cachedLen;
     private bool _disposed;
 
     /// <summary>Original file name, recovered from the encrypted header.</summary>
@@ -31,7 +37,9 @@ public sealed class EncryptedVaultStream : Stream
     public EncryptedVaultStream(string path, byte[] masterKey)
     {
         // FileShare.Read: nobody can write/delete the file while it's open, so deletes must release it first.
-        _file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.RandomAccess);
+        // No "random access" hint: that switches off Windows' read-ahead, which playing a video from start to end depends on.
+        _file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.None);
+        Array.Fill(_chunkAt, -1L);
         try
         {
             _aes = VaultFormat.ReadHeader(_file, masterKey, out var meta, out _dataOffset);
@@ -68,11 +76,11 @@ public sealed class EncryptedVaultStream : Stream
                 while (count > 0 && _position < _length)
                 {
                     long chunk = _position / VaultFormat.ChunkSize;
-                    EnsureChunk(chunk);
+                    int slot = EnsureChunk(chunk);
 
                     int inChunk = (int)(_position - chunk * VaultFormat.ChunkSize);
-                    int n = Math.Min(count, _cachedLen - inChunk);
-                    Buffer.BlockCopy(_plainBuf, inChunk, buffer, offset, n);
+                    int n = Math.Min(count, _lenAt[slot] - inChunk);
+                    Buffer.BlockCopy(_plain[slot]!, inChunk, buffer, offset, n);
 
                     _position += n;
                     offset += n;
@@ -89,10 +97,18 @@ public sealed class EncryptedVaultStream : Stream
         }
     }
 
-    private void EnsureChunk(long chunk)
+    /// <summary>Makes sure <paramref name="chunk"/> is decrypted in memory and returns the cache slot that holds it.</summary>
+    private int EnsureChunk(long chunk)
     {
-        if (chunk == _cachedChunk) return;
-        _cachedChunk = -1;
+        int victim = 0;
+        for (int i = 0; i < CacheSlots; i++)
+        {
+            if (_chunkAt[i] == chunk) { _usedAt[i] = ++_tick; return i; }
+            if (_chunkAt[victim] != -1 && (_chunkAt[i] == -1 || _usedAt[i] < _usedAt[victim])) victim = i;
+        }
+
+        _chunkAt[victim] = -1;   // not valid while it is being replaced: a failed read must never leave old data under the wrong chunk
+        _plain[victim] ??= new byte[VaultFormat.ChunkSize];
 
         long plainStart = chunk * VaultFormat.ChunkSize;
         int plainLen = (int)Math.Min(VaultFormat.ChunkSize, _length - plainStart);
@@ -107,10 +123,12 @@ public sealed class EncryptedVaultStream : Stream
             nonce,
             _cipherBuf.AsSpan(0, plainLen),
             _cipherBuf.AsSpan(plainLen, VaultFormat.TagSize),
-            _plainBuf.AsSpan(0, plainLen));
+            _plain[victim].AsSpan(0, plainLen));
 
-        _cachedChunk = chunk;
-        _cachedLen = plainLen;
+        _chunkAt[victim] = chunk;
+        _lenAt[victim] = plainLen;
+        _usedAt[victim] = ++_tick;
+        return victim;
     }
 
     public override long Seek(long offset, SeekOrigin origin)
@@ -142,8 +160,11 @@ public sealed class EncryptedVaultStream : Stream
                 if (!_disposed)
                 {
                     _disposed = true;
-                    _cachedChunk = -1;
-                    CryptographicOperations.ZeroMemory(_plainBuf);
+                    for (int i = 0; i < CacheSlots; i++)
+                    {
+                        _chunkAt[i] = -1;
+                        if (_plain[i] is { } buffer) CryptographicOperations.ZeroMemory(buffer);
+                    }
                     _aes.Dispose();
                     _file.Dispose(); // releases the file handle
                 }
