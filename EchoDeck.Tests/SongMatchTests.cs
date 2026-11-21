@@ -126,4 +126,26 @@ public class SongTextTests
         Assert.Equal(new[] { "beyonce", "halo" }, SongText.Tokens("The Beyoncé - Halo").ToArray());
         Assert.Equal(new[] { "taylors", "version" }, SongText.Tokens("Taylor's Version").ToArray());
     }
+
+    [Fact]
+    public void AFileThatNamesItsArtistIsNeverSearchedForByTitleAlone()
+    {
+        // "Girlfriend" alone matches every song of that name of about the same length: a compilation's cover for a Juice WRLD song
+        var tags = new TagInfo("", "", "", "", 204);
+        var (artist, title) = SongText.Local(@"C:\Music\Juice WRLD - Girlfriend.mp3", tags);
+        var variants = SongResolver.Variants(@"C:\Music\Juice WRLD - Girlfriend.mp3", tags, artist, title);
+
+        Assert.Equal("Juice WRLD", artist);
+        Assert.NotEmpty(variants);
+        Assert.All(variants, v => Assert.Equal("Juice WRLD", v.Artist));
+    }
+
+    [Fact]
+    public void AFileWithOnlyATagArtistStillTriesTheTitleAlone()
+    {
+        var tags = new TagInfo("Flex", "Some Uploader", "", "", 160);
+        var variants = SongResolver.Variants(@"C:\Music\Flex.mp3", tags, "Some Uploader", "Flex");
+
+        Assert.Contains(variants, v => v.Artist.Length == 0);
+    }
 }

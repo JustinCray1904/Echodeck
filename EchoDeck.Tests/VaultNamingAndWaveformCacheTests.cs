@@ -78,4 +78,15 @@ public sealed class VaultNamingAndWaveformCacheTests : IDisposable
         Assert.Null(WaveformCache.TryLoad(Path.Combine(_dir, "nothing.wf")));
         Assert.Null(WaveformCache.TryLoad(null));
     }
+
+    [Theory]
+    [InlineData(false, 0, "")]
+    [InlineData(true, 0, "normvol")]
+    [InlineData(false, 1, "stereo_widen")]
+    [InlineData(false, 2, "spatializer")]
+    [InlineData(false, 3, "stereo_widen:spatializer")]
+    [InlineData(true, 3, "normvol:stereo_widen:spatializer")]
+    [InlineData(false, 9, "")]
+    public void Sound_settings_make_the_audio_filter_chain(bool normalize, int space, string expected) =>
+        Assert.Equal(expected, SoundFilters.Chain(normalize, space));
 }
