@@ -105,7 +105,11 @@ public static class ThemeManager
         Color accent = AccentColorOf(accentIndex);
         return new Dictionary<string, Color>
         {
-            ["BgBrush"] = bg, ["RailBrush"] = rail, ["PanelBrush"] = panel, ["CardBrush"] = card, ["DangerBrush"] = danger,
+            ["BgBrush"] = bg,
+            ["RailBrush"] = rail,
+            ["PanelBrush"] = panel,
+            ["CardBrush"] = card,
+            ["DangerBrush"] = danger,
             ["TrackBrush"] = track,
             ["AccentBrush"] = accent,
             ["AccentHoverBrush"] = Blend(accent, Colors.White, 0.18),
