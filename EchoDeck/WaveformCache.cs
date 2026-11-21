@@ -5,130 +5,133 @@ using System.Text;
 namespace EchoDeck;
 
 /// <summary>
-/// Keeps the waveform (and the visualiser data) of every song that was analysed, so the next time it opens at once instead of
-/// being worked out again. One small compressed file per song in %LOCALAPPDATA%\Tempo\Waveforms, named after a fingerprint of the
-/// song's path, size and last-changed time: a song that is edited, replaced or moved simply gets a new entry. The folder is kept
-/// under about 300-400 MB; the songs not played for the longest time are removed first. Only used for songs on the disk: a song in the
-/// Anonymous Mode vault is read from its own decrypting stream and nothing about it is ever stored here.
+/// Keeps each song's waveform (and the spectrum the visualiser draws from) in %LOCALAPPDATA%\Tempo\Waveforms, so a song is read
+/// and analysed only once: the next time it plays, the bars and the visualiser come straight from this small file.
+///
+/// A file is found by the song's path, size and last-modified time, so a song that is edited, replaced or re-tagged on disk is
+/// analysed afresh. Nothing is cached in Anonymous Mode (it reads through its own decrypting stream and never comes here).
+/// Files are written to a temporary name and renamed, and anything unreadable is simply ignored and rebuilt, so the cache can
+/// never break playback. Format: "TWF1" | peak count | peaks (float32) | spectrum frames | spectrum length | spectrum bytes,
+/// all deflate-compressed.
 /// </summary>
 internal static class WaveformCache
 {
-    private const int Magic = 0x31465754;   // "TWF1"
-    private const long MaxBytes = 400L * 1024 * 1024;
-    private const long PruneToBytes = 300L * 1024 * 1024;
+    private const uint Magic = 0x31465754;   // "TWF1" (little endian)
+    private const int MaxFiles = 3000;       // the oldest are dropped beyond this (about 100-300 KB each at most)
+    private const int MaxSpectrumBytes = 400_000_000;
 
-    /// <summary>The folder (settable for tests).</summary>
-    internal static string Dir { get; set; } = Path.Combine(AppPaths.DataDir, "Waveforms");
+    private static bool _pruned;
 
-    private static int _writes;
+    private static string Dir => Path.Combine(AppPaths.DataDir, "Waveforms");
 
-    /// <summary>The fingerprint a song is stored under (null when the file can't be read).</summary>
-    internal static string? KeyFor(string path)
+    /// <summary>The cache file of a song as it is on disk right now, or null if it can't be told (missing file, odd path).</summary>
+    public static string? FileFor(string path)
     {
         try
         {
             var info = new FileInfo(path);
             if (!info.Exists) return null;
-            string text = path.ToLowerInvariant() + "|" + info.Length + "|" + info.LastWriteTimeUtc.Ticks;
-            return Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(text)));
+            string id = Path.GetFullPath(path).ToLowerInvariant() + "|" + info.Length + "|" + info.LastWriteTimeUtc.Ticks;
+            var hash = SHA1.HashData(Encoding.UTF8.GetBytes(id));
+            return Path.Combine(Dir, Convert.ToHexString(hash, 0, 10).ToLowerInvariant() + ".wf");
         }
         catch { return null; }
     }
 
-    /// <summary>The stored analysis of this song, or null (never stored, changed since, or damaged).</summary>
-    internal static AudioAnalysis? TryRead(string path)
+    /// <summary>The saved analysis, or null when there is none (or it can't be read, in which case it is removed).</summary>
+    public static AudioAnalysis? TryLoad(string? file)
     {
-        string? key = KeyFor(path);
-        if (key == null) return null;
-        string file = Path.Combine(Dir, key + ".twf");
-
+        if (file == null) return null;
         try
         {
             if (!File.Exists(file)) return null;
 
-            AudioAnalysis? result;
-            using (var raw = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
-            using (var brotli = new BrotliStream(raw, CompressionMode.Decompress))
-            using (var reader = new BinaryReader(brotli))
+            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
+            using var deflate = new DeflateStream(fs, CompressionMode.Decompress);
+            using var reader = new BinaryReader(deflate);
+
+            if (reader.ReadUInt32() != Magic) return Discard(file);
+
+            int peakCount = reader.ReadInt32();
+            if (peakCount != WaveformLoader.Buckets) return Discard(file);   // made with other settings: analyse again
+            var peakBytes = reader.ReadBytes(peakCount * sizeof(float));
+            if (peakBytes.Length != peakCount * sizeof(float)) return Discard(file);
+            var peaks = new float[peakCount];
+            Buffer.BlockCopy(peakBytes, 0, peaks, 0, peakBytes.Length);
+
+            SpectrumData? spectrum = null;
+            int frames = reader.ReadInt32();
+            if (frames > 0)
             {
-                if (reader.ReadInt32() != Magic) return null;
-
-                int peakCount = reader.ReadInt32();
-                if (peakCount <= 0 || peakCount > 100_000) return null;
-                var peaks = new float[peakCount];
-                for (int i = 0; i < peakCount; i++) peaks[i] = reader.ReadSingle();
-
-                SpectrumData? spectrum = null;
-                if (reader.ReadBoolean())
-                {
-                    int frames = reader.ReadInt32();
-                    int length = reader.ReadInt32();
-                    if (frames < 0 || length != frames * SpectrumData.Bands || length > 200_000_000) return null;
-                    var values = reader.ReadBytes(length);
-                    if (values.Length != length) return null;
-                    spectrum = new SpectrumData(values, frames);
-                }
-                result = new AudioAnalysis(peaks, spectrum);
+                int length = reader.ReadInt32();
+                if (length <= 0 || length > MaxSpectrumBytes || length % SpectrumData.Bands != 0) return Discard(file);
+                var values = reader.ReadBytes(length);
+                if (values.Length != length) return Discard(file);
+                spectrum = new SpectrumData(values, frames);
             }
 
-            try { File.SetLastWriteTimeUtc(file, DateTime.UtcNow); } catch { /* the order of use is only a hint for clean-up */ }
-            return result;
+            try { File.SetLastAccessTimeUtc(file, DateTime.UtcNow); } catch { /* not important */ }
+            return new AudioAnalysis(peaks, spectrum);
         }
         catch
         {
-            try { File.Delete(file); } catch { /* damaged entry: gone, it will be made again */ }
-            return null;
+            return Discard(file);   // damaged or cut short
         }
     }
 
-    /// <summary>Stores the analysis (best effort: a failure only means it is worked out again next time).</summary>
-    internal static void Write(string path, AudioAnalysis analysis)
+    /// <summary>Saves an analysis under the file name worked out before the song was read (best effort).</summary>
+    public static void Save(string? file, AudioAnalysis analysis)
     {
-        string? key = KeyFor(path);
-        if (key == null || analysis.Peaks.Length == 0) return;
-
+        if (file == null || analysis.Peaks.Length != WaveformLoader.Buckets) return;
         try
         {
             Directory.CreateDirectory(Dir);
-            string file = Path.Combine(Dir, key + ".twf");
             string temp = file + ".tmp";
-
-            using (var raw = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
-            using (var brotli = new BrotliStream(raw, CompressionLevel.Fastest))
-            using (var writer = new BinaryWriter(brotli))
+            using (var fs = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var deflate = new DeflateStream(fs, CompressionLevel.Fastest))
+            using (var writer = new BinaryWriter(deflate))
             {
                 writer.Write(Magic);
                 writer.Write(analysis.Peaks.Length);
-                foreach (var peak in analysis.Peaks) writer.Write(peak);
+                var peakBytes = new byte[analysis.Peaks.Length * sizeof(float)];
+                Buffer.BlockCopy(analysis.Peaks, 0, peakBytes, 0, peakBytes.Length);
+                writer.Write(peakBytes);
 
-                writer.Write(analysis.Spectrum != null);
-                if (analysis.Spectrum != null)
+                if (analysis.Spectrum is { } spectrum)
                 {
-                    writer.Write(analysis.Spectrum.Frames);
-                    writer.Write(analysis.Spectrum.Values.Length);
-                    writer.Write(analysis.Spectrum.Values);
+                    writer.Write(spectrum.Frames);
+                    writer.Write(spectrum.Values.Length);
+                    writer.Write(spectrum.Values);
+                }
+                else
+                {
+                    writer.Write(0);
                 }
             }
             File.Move(temp, file, overwrite: true);
-
-            if (Interlocked.Increment(ref _writes) % 25 == 0) Prune();
+            Prune();
         }
-        catch { /* best effort */ }
+        catch { /* no cache this time: the song is analysed again next time */ }
     }
 
-    /// <summary>Keeps the folder small: the entries used least recently go first.</summary>
-    internal static void Prune(long maxBytes = MaxBytes, long pruneTo = PruneToBytes)
+    private static AudioAnalysis? Discard(string file)
     {
+        try { File.Delete(file); } catch { /* in use: next time */ }
+        return null;
+    }
+
+    /// <summary>Once per run: when there are too many files, the ones not used for the longest time go.</summary>
+    private static void Prune()
+    {
+        if (_pruned) return;
+        _pruned = true;
         try
         {
-            var files = new DirectoryInfo(Dir).GetFiles("*.twf");
-            long total = files.Sum(f => f.Length);
-            if (total <= maxBytes) return;
-
-            foreach (var file in files.OrderBy(f => f.LastWriteTimeUtc))
+            var files = new DirectoryInfo(Dir).GetFiles("*.wf");
+            if (files.Length <= MaxFiles) return;
+            foreach (var old in files.OrderBy(f => f.LastAccessTimeUtc).Take(files.Length - MaxFiles * 4 / 5))
             {
-                if (total <= pruneTo) break;
-                try { total -= file.Length; file.Delete(); } catch { /* in use */ }
+                try { old.Delete(); } catch { /* skip */ }
             }
         }
         catch { /* best effort */ }

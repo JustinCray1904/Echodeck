@@ -200,6 +200,10 @@ public partial class MainWindow : Window
         _xfIndependentAudio = _cfg.CrossfadeEnabled;
         if (_xfIndependentAudio) args.Add("--aout=directsound,any");
 
+        // Sound space (3D) and volume levelling are LibVLC audio filters, which can only be chosen when LibVLC starts.
+        _audioFilterChain = WantedAudioFilterChain();
+        if (_audioFilterChain.Length > 0) args.Add("--audio-filter=" + _audioFilterChain);
+
         var argArray = args.ToArray();
         _libVlc = await Task.Run(() => new LibVLC(argArray));
         _player = BuildPlayer();
@@ -271,6 +275,7 @@ public partial class MainWindow : Window
         App.ExternalOpenRequested -= OnExternalOpen;
         NativeMethods.KeepAwake(false);
         _waveCts?.Cancel();
+        _volumeGuardCts?.Cancel();
         _equalizer?.Dispose();
 
         _keys.Dispose();
@@ -306,22 +311,14 @@ public partial class MainWindow : Window
     private string FolderSignature() =>
         string.Join("|", _cfg.MusicFolders) + "#" + string.Join("|", _cfg.VideoFolders) + "#" + LibraryScanner.Version;
 
-    private (ThemeMode Theme, int Accent) _themeSig;   // the theme and accent the colours were last made for
-
     private void OnSettingsChanged()
     {
         if (!_anon) ThemeManager.Apply(_cfg.Theme, _cfg.AccentIndex);
-
-        // A song without a cover wears the accent colour (background, ripples, glow). When the accent or theme changes while it is playing,
-        // that must follow at once, not when the next song starts. (A song WITH a cover keeps the cover's colours.)
-        var themeSig = (_cfg.Theme, _cfg.AccentIndex);
-        if (themeSig != _themeSig)
-        {
-            _themeSig = themeSig;
-            if (!_anon && MusicGlyph.Visibility == Visibility.Visible) ResetCoverColours();
-        }
-
+        // A song without a cover wears the accent colour (glow, ripples and the moving background): follow it at once when the accent
+        // changes, instead of waiting for the next song or for this one to start again.
+        if (!_anon && !_coverShown) ApplyDefaultCoverLook();
         SyncAmbience();
+        ApplySoundSettings();
         ApplyVideoAdjust();
         UpdateLoopUi();
         WaveBar.InvalidateVisual();
@@ -483,7 +480,8 @@ public partial class MainWindow : Window
                 _xfAttemptKey = null;
                 CancelCrossfade();                  // anything else that starts ends a crossfade that was still running
                 _player.Play(media);
-                try { _player.Volume = _volumeNow; } catch { /* set again the moment it plays */ }
+                StartVolumeGuard();                 // the new song must not start at LibVLC's own 100 %
+                ApplyStereoMode(_player);           // and keeps the chosen channel mode (mono, left only ...)
             }
         }
         catch (Exception ex)
@@ -518,6 +516,133 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AppLog.Write("Restart", ex);
+        }
+    }
+
+    // ------------------------------------------------------------------ start-up volume
+
+    private CancellationTokenSource? _volumeGuardCts;
+    private bool _coverShown;   // the cover's own colours are on screen (otherwise the accent's)
+    private int _volumeTarget = 100;   // the slider's value, readable from any thread (the guard below runs off the UI thread)
+
+    /// <summary>
+    /// LibVLC 3 only accepts a volume once the song's audio output exists, and it creates a new output for every song, which starts
+    /// at LibVLC's own 100 %. Setting the volume when the "playing" event reaches the UI thread was therefore too late: for as long as
+    /// the UI thread was busy (cover, waveform, lyrics, thumbnails) the song played at full volume. This watches the new player
+    /// from a background thread (which does not depend on the UI thread at all) and puts the slider's volume in place the moment
+    /// the output accepts it, and keeps it there during the first seconds of the song.
+    /// </summary>
+    private void StartVolumeGuard()
+    {
+        var player = _player;
+        if (player is null || _xfActive || _fadeTimer != null) return;   // a crossfade / sleep fade sets the volume itself
+
+        _volumeGuardCts?.Cancel();
+        var cts = _volumeGuardCts = new CancellationTokenSource();
+        Volatile.Write(ref _volumeTarget, (int)VolumeSlider.Value);
+        var token = cts.Token;
+
+        _ = Task.Run(() =>
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (!token.IsCancellationRequested && clock.ElapsedMilliseconds < 3500)
+            {
+                try
+                {
+                    if (!ReferenceEquals(player, _player)) return;   // another player took over (crossfade) or the window is closing
+                    int want = Volatile.Read(ref _volumeTarget);
+                    if (player.Volume != want) player.Volume = want;   // refused (and read back as -1) until the audio output exists
+                }
+                catch { return; }   // the player is going away
+                Thread.Sleep(8);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ sound mode (Settings > Audio)
+
+    // LibVLC's "stereo-mode" values: unset (normal), mono, reverse stereo, left only, right only, Dolby surround.
+    private static readonly int[] StereoModeCodes = { 0, 7, 2, 3, 4, 5 };
+    private static readonly string[] StereoModeNames = { "Normal", "Mono", "Reverse stereo", "Left side only", "Right side only", "Dolby surround" };
+    private static System.Reflection.MethodInfo? _setChannelMethod;
+    private CancellationTokenSource? _stereoGuardCts;
+    private int _stereoCodeSeen;
+    private string _audioFilterChain = "";        // the --audio-filter chain this LibVLC instance was started with
+    private string _audioRestartNotedFor = "";
+
+    /// <summary>The audio filters the settings ask for ("normvol:stereo_widen:spatializer"), in LibVLC's chain syntax.</summary>
+    private string WantedAudioFilterChain() => SoundFilters.Chain(_cfg.NormalizeVolume, _cfg.SoundSpace);
+
+    /// <summary>
+    /// MediaPlayer.SetChannel (libvlc_audio_set_channel), looked up by name like the equaliser reset, so a different LibVLCSharp build
+    /// can't break the build. Returns false until the song's audio output exists, or when the output refuses the mode.
+    /// </summary>
+    private static bool TrySetStereoMode(MediaPlayer player, int code)
+    {
+        try
+        {
+            _setChannelMethod ??= typeof(MediaPlayer).GetMethods().FirstOrDefault(m => m.Name == "SetChannel" && m.GetParameters().Length == 1);
+            if (_setChannelMethod == null) return false;
+            object argument = Enum.ToObject(_setChannelMethod.GetParameters()[0].ParameterType, code);
+            return _setChannelMethod.Invoke(player, new[] { argument }) is true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Puts the chosen channel mode on a playing song. Every song gets a new audio output that starts in normal mode, so (like the
+    /// start-up volume) this watches from a background thread and applies the mode the moment the output accepts it.
+    /// <paramref name="report"/>: the user just changed the mode, so say so if the audio device does not take it.
+    /// </summary>
+    private void ApplyStereoMode(MediaPlayer? player, bool report = false)
+    {
+        if (player is null) return;
+        int code = StereoModeCodes[Math.Clamp(_cfg.StereoMode, 0, StereoModeCodes.Length - 1)];
+        if (code == 0 && !report) return;   // a new song already starts in normal mode
+
+        _stereoGuardCts?.Cancel();
+        var cts = _stereoGuardCts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        _ = Task.Run(() =>
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            bool applied = false;
+            while (!token.IsCancellationRequested && clock.ElapsedMilliseconds < 3500)
+            {
+                try
+                {
+                    if (!ReferenceEquals(player, _player)) return;
+                    if (TrySetStereoMode(player, code)) { applied = true; break; }
+                    Thread.Sleep(25);
+                }
+                catch { return; }
+            }
+
+            if (!applied && report && !token.IsCancellationRequested)
+            {
+                bool playing;
+                try { playing = player.IsPlaying; } catch { return; }
+                if (playing) Dispatcher.InvokeAsync(() => Notify("Your audio device doesn't support that sound mode."));
+            }
+        });
+    }
+
+    /// <summary>The sound settings changed: the channel mode applies at once, the filters need a restart (said once per change).</summary>
+    private void ApplySoundSettings()
+    {
+        int code = StereoModeCodes[Math.Clamp(_cfg.StereoMode, 0, StereoModeCodes.Length - 1)];
+        if (code != _stereoCodeSeen)
+        {
+            _stereoCodeSeen = code;
+            ApplyStereoMode(_player, report: true);
+        }
+
+        string wanted = WantedAudioFilterChain();
+        if (wanted != _audioFilterChain && wanted != _audioRestartNotedFor)
+        {
+            _audioRestartNotedFor = wanted;
+            Notify("Restart Tempo to apply the sound space / volume levelling.");
         }
     }
 
@@ -726,17 +851,9 @@ public partial class MainWindow : Window
         MusicSubtitle.Text = subtitle;
 
         // default look (accent colour) until the cover's own colour is known
-        CoverCircle.Fill = (System.Windows.Media.Brush)FindResource("CoverFallback");
-        MusicGlyph.Visibility = Visibility.Visible;
-        PulseRing.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
-        GlowStop.Color = (System.Windows.Media.Color)FindResource("AccentColor");
+        ApplyDefaultCoverLook();
         SetPulse(false); // the ripples only run while something is actually playing
-        Visualizer.Tint = null;
         Visualizer.Reset();   // new song / stopped: no waveform, no motion
-        var around = CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor"));   // until the cover's colours are known
-        Aurora.SetPalette(around, null);
-        WindowAurora.SetPalette(around, null);
-        SetAmbientPalette(around);
         OnMusicViewChanged(on);
         if (!on) ClearLyrics();
 
@@ -774,8 +891,27 @@ public partial class MainWindow : Window
         catch { /* keep the flat placeholder bars */ }
     }
 
+    /// <summary>
+    /// A song with no cover (yet): the plain disc, the accent colour for the glow, ripples and visualiser, and the moving background
+    /// in the accent's colours. Used when a song starts and when its cover is thrown away, so nothing of the old cover's colours stays.
+    /// </summary>
+    private void ApplyDefaultCoverLook()
+    {
+        _coverShown = false;
+        CoverCircle.Fill = (System.Windows.Media.Brush)FindResource("CoverFallback");
+        MusicGlyph.Visibility = Visibility.Visible;
+        PulseRing.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
+        GlowStop.Color = (System.Windows.Media.Color)FindResource("AccentColor");
+        Visualizer.Tint = null;
+        var around = CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor"));   // until the cover's colours are known
+        Aurora.SetPalette(around, null);
+        WindowAurora.SetPalette(around, null);
+        SetAmbientPalette(around);
+    }
+
     /// <summary>Album art / video frame as the big cover, using the same thumbnail Windows Explorer shows.</summary>
-    private async void LoadCover(string path, bool announceFailure = false)
+    /// <param name="userAsked">The user asked for a (new) cover: say so when none was found or the internet is out.</param>
+    private async void LoadCover(string path, bool userAsked = false)
     {
         if (!MediaTypes.IsAudio(path)) return;
         System.Windows.Media.Imaging.BitmapSource? bmp = await Task.Run(() =>
@@ -786,27 +922,23 @@ public partial class MainWindow : Window
         });
 
         // no cover in the file: if the setting is on, look for one online (never in Anonymous Mode)
-        if (bmp == null && !_anon && _cfg.FetchCoversOnline)
+        if (bmp == null && !_anon && _cfg.FetchCoversOnline) bmp = await OnlineCovers.GetAsync(path);
+        bool stillCurrent = string.Equals(_queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex].FullPath : "", path,
+            StringComparison.OrdinalIgnoreCase);
+        if (bmp == null && userAsked && !_anon && stillCurrent)
         {
-            bmp = await OnlineCovers.GetAsync(path);
-            if (bmp == null && announceFailure && IsCurrentSong(path))
-            {
-                // the user asked for this look-up: say what happened instead of staying silent
-                if (OnlineCovers.LastLookupUnreachable)
-                    TempoDialog.Show(this,
-                        "Tempo could not reach the online cover services, so it could not look for a cover.\n\nCheck your internet connection and try again.",
-                        "No internet connection", MessageBoxButton.OK, MessageBoxImage.Warning);
-                else
-                    ShowOsd("No other cover found");
-            }
+            // nothing came back: was that because there is no such cover, or because there is no internet?
+            if (!await OnlineCovers.IsOnlineAsync()) ShowNoInternetPrompt();
+            else ShowOsd("No cover found for this song");
+            return;
         }
         if (bmp == null || _anon) return;
-        if (!string.Equals(_queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex].FullPath : "", path,
-                StringComparison.OrdinalIgnoreCase)) return;
+        if (!stillCurrent) return;
         CoverCircle.Fill = new System.Windows.Media.ImageBrush(bmp) { Stretch = System.Windows.Media.Stretch.UniformToFill };
         MusicGlyph.Visibility = Visibility.Collapsed;
 
         // the whole music view takes the cover's colours: a blurred copy of it, with its colours drifting over it
+        _coverShown = true;
         var palette = CoverPalette.From(bmp);
         Aurora.SetPalette(palette, bmp);
         WindowAurora.SetPalette(palette, bmp);
@@ -845,50 +977,52 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private void RetryCover(string path)
+    private async void RetryCover(string path)
     {
         if (!_cfg.FetchCoversOnline)
         {
             Notify("Turn on \"Find missing covers online\" in Settings to look for a cover.");
             return;
         }
-        OnlineCovers.Retry(path);
+
         ShowOsd("Looking for a cover…");
-        LoadCover(path, announceFailure: true);
+        if (!await OnlineCovers.IsOnlineAsync())
+        {
+            ShowNoInternetPrompt();
+            return;
+        }
+        OnlineCovers.Retry(path);
+        LoadCover(path, userAsked: true);
     }
 
-    private bool IsCurrentSong(string path) =>
-        string.Equals(_queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex].FullPath : "", path, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>The background, ripples and glow go back to the accent colour (no cover colours).</summary>
-    private void ResetCoverColours()
-    {
-        // the same defaults ShowMusic gives a new song
-        PulseRing.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
-        GlowStop.Color = (System.Windows.Media.Color)FindResource("AccentColor");
-        Visualizer.Tint = null;
-        var around = CoverPalette.Around((System.Windows.Media.Color)FindResource("AccentColor"));
-        Aurora.SetPalette(around, null);
-        WindowAurora.SetPalette(around, null);
-        SetAmbientPalette(around);
-    }
-
-    private void ResetCover(string path)
+    private async void ResetCover(string path)
     {
         if (!_cfg.FetchCoversOnline)
         {
             Notify("Turn on \"Find missing covers online\" in Settings to look for another cover.");
             return;
         }
+
+        // Offline: say so and leave everything as it is (the current cover is not thrown away for a search that cannot happen).
+        ShowOsd("Looking for another cover…");
+        if (!await OnlineCovers.IsOnlineAsync())
+        {
+            ShowNoInternetPrompt();
+            return;
+        }
         OnlineCovers.Reject(path);
 
-        // back to the plain disc while the next best cover is looked for - and to the plain colours too: the background, the ripples
-        // and the glow must stop wearing the colours of the cover that was just thrown away
-        CoverCircle.Fill = (System.Windows.Media.Brush)FindResource("CoverFallback");
-        MusicGlyph.Visibility = Visibility.Visible;
-        ResetCoverColours();
-        ShowOsd("Looking for another cover…");
-        LoadCover(path, announceFailure: true);
+        // back to the plain disc, and to the default colours, while the next best cover is looked for
+        ApplyDefaultCoverLook();
+        LoadCover(path, userAsked: true);
+    }
+
+    /// <summary>Tempo's own message box for "the internet is out" (the cover look-up needs it).</summary>
+    private void ShowNoInternetPrompt()
+    {
+        TempoDialog.Show(this,
+            "There is no internet connection, so Tempo can't look for a cover right now.\n\nCheck your connection and try again.",
+            AppName, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void SetPulse(bool on)
@@ -1170,6 +1304,10 @@ public partial class MainWindow : Window
                 if (Math.Abs(SpeedValues[i] - _cfg.DefaultSpeed) < 0.001) speedIdx = i;
             QSpeedCombo.SelectedIndex = speedIdx;
 
+            if (QStereoCombo.Items.Count == 0)
+                foreach (var m in StereoModeNames) QStereoCombo.Items.Add(m);
+            QStereoCombo.SelectedIndex = Math.Clamp(_cfg.StereoMode, 0, StereoModeNames.Length - 1);
+
             FillTrackCombo(QAudioCombo, _quickAudioIds, audio: true);
             FillTrackCombo(QSubCombo, _quickSubIds, audio: false);
             QAudioHint.Text = QAudioCombo.Items.Count == 0 ? "Nothing is playing yet." : "";
@@ -1241,6 +1379,12 @@ public partial class MainWindow : Window
 
         switch (combo.Name)
         {
+            case nameof(QStereoCombo):
+                _cfg.StereoMode = i;
+                if (!_anon) _cfg.Save(notify: false);
+                ApplySoundSettings();   // puts the channel mode on the playing song at once (and says so if the device refuses it)
+                ShowOsd("Channels: " + StereoModeNames[i]);
+                return;
             case nameof(QAudioCombo):
                 if (i < _quickAudioIds.Count) _player.SetAudioTrack(_quickAudioIds[i]);
                 return;
@@ -1485,12 +1629,9 @@ public partial class MainWindow : Window
         PopupVolumeIcon.SetState(level, muted, animate);
     }
 
-    // The volume as the slider has it, readable from any thread: a song gets it the moment LibVLC says it is playing (BuildPlayer).
-    private volatile int _volumeNow = 100;
-
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        _volumeNow = (int)e.NewValue;
+        Volatile.Write(ref _volumeTarget, (int)e.NewValue);
         if (_player != null) _player.Volume = (int)e.NewValue;
         VolumeText.Text = (int)e.NewValue + "%";
         UpdateVolumeGlyphs(IsLoaded);

@@ -5,7 +5,8 @@ namespace EchoDeck;
 /// <summary>
 /// Builds the waveform for the music-mode seek bar. Instead of decoding the whole song it jumps to ~600 evenly spaced
 /// positions and measures a short slice at each, so even long mixes finish in a few seconds. If a format can't be
-/// read (Media Foundation has no decoder for it) the caller keeps the flat placeholder bars.
+/// read (Media Foundation has no decoder for it) the caller keeps the flat placeholder bars. A finished waveform is saved by
+/// <see cref="WaveformCache"/>, so each song is analysed only once.
 /// </summary>
 internal sealed record AudioAnalysis(float[] Peaks, SpectrumData? Spectrum);
 
@@ -22,17 +23,14 @@ internal static class WaveformLoader
         {
             try
             {
-                // worked out before: it opens at once
-                var stored = WaveformCache.TryRead(path);
-                if (stored != null)
-                {
-                    partial?.Invoke(stored.Peaks);
-                    return stored;
-                }
+                // read once, then remembered: a song that was analysed before comes straight from its small cache file
+                string? cacheFile = WaveformCache.FileFor(path);
+                var cached = WaveformCache.TryLoad(cacheFile);
+                if (cached != null) return cached;
 
                 using var reader = new MediaFoundationReader(path);
                 var analysis = Analyze(reader, ct, partial);
-                if (analysis != null) WaveformCache.Write(path, analysis);   // ...and next time too
+                if (analysis != null) WaveformCache.Save(cacheFile, analysis);
                 return analysis;
             }
             catch (OperationCanceledException) { throw; }

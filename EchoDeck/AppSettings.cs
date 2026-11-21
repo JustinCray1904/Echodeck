@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace EchoDeck;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ThemeMode { Dark, Light, System, Midnight, Amoled /* retired */, LiquidGlass /* retired */ }   // the retired ones only keep an old settings.json loading: they become Dark
+public enum ThemeMode { Dark, Light, System, Midnight, Amoled /* retired */, LiquidGlass /* retired */ }   // the retired ones are only kept so an old settings.json still loads: they become Dark
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LoopMode { Off, One, All }
@@ -37,13 +37,11 @@ public sealed class AppSettings
     public bool RememberRecent { get; set; } = true;
     public bool AnonymousExitOnMinimize { get; set; } = true;
     public bool AnonymousDeleteOriginals { get; set; }
-    public bool AnonymousWipeOriginals { get; set; } = true;   // overwrite an original with random data before deleting it (slow on a hard disk)
     public bool AnonymousPasscodeBox { get; set; } = true;   // a box with one dot per digit appears in the middle of Tempo while the passcode is typed
     public bool AnonymousVideoThumbnails { get; set; }   // off: vault videos get no preview picture (Windows' thumbnail cache would keep a copy)
 
     // ---- playback
     public bool AutoAdvance { get; set; } = true;
-    public bool MiniHideVideoWhileDragging { get; set; }   // off: the small video keeps playing while its card is dragged; on: it is hidden until the card settles
     public bool SmartQueue { get; set; } = true;          // a single opened file also queues the rest of its series (Episode 1 to 7) from its folder
     public LoopMode Loop { get; set; } = LoopMode.Off;
     public double DefaultSpeed { get; set; } = 1.0;
@@ -99,6 +97,10 @@ public sealed class AppSettings
     public string DiscordStateText { get; set; } = "by {artist}";
     public bool CrossfadeEnabled { get; set; }            // overlap and fade songs into each other (audio only)
     public int CrossfadeSeconds { get; set; } = 6;        // length of the crossfade, 1-12 seconds
+    public bool MiniVideoWhileDragging { get; set; } = true;   // the mini player's picture keeps playing while the card is dragged (off: blank until it is docked)
+    public int StereoMode { get; set; }                   // 0 normal, 1 mono, 2 reverse stereo, 3 left only, 4 right only, 5 Dolby surround
+    public int SoundSpace { get; set; }                   // 0 off, 1 wide stereo, 2 room (3D), 3 wide + room (needs a restart)
+    public bool NormalizeVolume { get; set; }             // even out loud and quiet songs (needs a restart)
     public bool GaplessEnabled { get; set; }              // start the next song just before the end so there is no silence between songs
     public int MotionMode { get; set; } = 1;              // moving background: 0 automatic (still when Windows animations are off), 1 always moving, 2 always still
     public bool LyricsBounce { get; set; }       // Apple Music style: the sung line springs up, the lines around it settle with a stretchy lag
@@ -139,7 +141,7 @@ public sealed class AppSettings
         {
             if (File.Exists(FilePath))
                 Current = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
-            if (Current.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled) Current.Theme = ThemeMode.Dark;   // these themes were removed
+            if (Current.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled) Current.Theme = ThemeMode.Dark;   // the Liquid Glass and AMOLED themes were removed
         }
         catch
         {

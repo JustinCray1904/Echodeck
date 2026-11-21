@@ -1284,6 +1284,8 @@ CornerRadius="18" Padding="4" Background="Transparent">
                                     <StackPanel x:Name="QPageAudio" Visibility="Collapsed">
                                         <TextBlock Text="Audio track" Style="{StaticResource HintText}" Margin="0,0,0,4"/>
                                         <ComboBox x:Name="QAudioCombo" Style="{StaticResource EchoCombo}" MinWidth="0" Height="32" Margin="0,0,0,10" SelectionChanged="QuickCombo_Changed"/>
+                                        <TextBlock Text="Channels" Style="{StaticResource HintText}" Margin="0,0,0,4"/>
+                                        <ComboBox x:Name="QStereoCombo" Style="{StaticResource EchoCombo}" MinWidth="0" Height="32" Margin="0,0,0,10" SelectionChanged="QuickCombo_Changed"/>
                                         <Button x:Name="QEqButton" Content="Open equaliser…" Style="{StaticResource FlatButton}" Padding="12,6" HorizontalAlignment="Left" Click="QuickEq_Click"/>
                                         <TextBlock x:Name="QAudioHint" Style="{StaticResource HintText}" Margin="0,10,0,0"/>
                                     </StackPanel>

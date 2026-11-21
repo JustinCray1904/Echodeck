@@ -242,6 +242,16 @@
                             </StackPanel>
                             <CheckBox x:Name="SmoothResizeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
+                        <TextBlock Text="Mini player" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Keep the video playing while I move it"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The small video keeps playing while you drag the mini player to the other side. Turn it off and the picture stays blank until the player is docked, which also avoids any trailing edge while it moves."/>
+                            </StackPanel>
+                            <CheckBox x:Name="MiniDragVideoSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
 </StackPanel>
                 </ScrollViewer>
                 <ScrollViewer x:Name="PagePrivacy" VerticalScrollBarVisibility="Auto" Padding="30,24,30,24" Visibility="Collapsed">
@@ -413,14 +423,6 @@
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
-                                <TextBlock Style="{StaticResource RowLabel}" Text="Hide the small video while dragging it"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The small video keeps playing while you drag its window. If on your PC it still trails behind and leaves a dark block, turn this on: the video is then hidden while you drag and comes back when you let go."/>
-                            </StackPanel>
-                            <CheckBox x:Name="MiniHideSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Repeat"/>
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="What happens when the queue ends."/>
                             </StackPanel>
@@ -536,6 +538,32 @@
                             <TextBlock Style="{StaticResource RowLabel}" Text="Volume"/>
                             <Slider x:Name="VolumeSlider" Grid.Column="1" Style="{StaticResource FigmaSlider}" Minimum="0" Maximum="200" IsMoveToPointEnabled="True" ValueChanged="Slider_Changed"/>
                             <TextBlock x:Name="VolumeSliderValue" Grid.Column="2" Style="{StaticResource HintText}" TextAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
+                        <TextBlock Text="Sound mode" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Channels"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Changes how the left and right sound is sent to your speakers or headphones, right away. Mono plays the same sound on both sides, Reverse swaps the sides, Left / Right play one side only, Dolby surround gives stereo a surround feel. Not every audio device accepts every mode."/>
+                            </StackPanel>
+                            <ComboBox x:Name="StereoModeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Normal"/><ComboBoxItem Content="Mono"/><ComboBoxItem Content="Reverse stereo"/><ComboBoxItem Content="Left side only"/><ComboBoxItem Content="Right side only"/><ComboBoxItem Content="Dolby surround"/></ComboBox>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Sound space (3D)"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Restart Tempo after changing this. Wide stereo spreads the sound further apart; Room places it in a room with depth (best on headphones); Wide + room does both."/>
+                            </StackPanel>
+                            <ComboBox x:Name="SoundSpaceCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Off"/><ComboBoxItem Content="Wide stereo"/><ComboBoxItem Content="Room (3D)"/><ComboBoxItem Content="Wide + room"/></ComboBox>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Even out volume"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Restart Tempo after changing this. Keeps loud and quiet songs at a similar level, so you don't have to reach for the volume between songs."/>
+                            </StackPanel>
+                            <CheckBox x:Name="NormalizeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>
                         <Border Height="1" Background="{DynamicResource SlateBrush}" Margin="0,16,0,6" Opacity="0.5"/>
                         <TextBlock Text="Between songs" Style="{StaticResource SectionTitle}"/>

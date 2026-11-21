@@ -83,14 +83,13 @@ public partial class SettingsWindow : Window
 
     private void LoadValues()
     {
-        ThemeCombo.SelectedIndex = _cfg.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled ? 0 : (int)_cfg.Theme;   // 0 Dark, 1 Light, 2 System, 3 MidnightED
+        ThemeCombo.SelectedIndex = _cfg.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled ? 0 : (int)_cfg.Theme;   // 0 Dark, 1 Light, 2 System, 3 Midnight
         AccentCombo.SelectedIndex = Math.Clamp(_cfg.AccentIndex, 0, ThemeManager.Accents.Length - 1);
 
         SidebarSwitch.IsChecked = _cfg.ShowSidebarAtStart;
         RememberRecentSwitch.IsChecked = _cfg.RememberRecent;
         AutoAdvanceSwitch.IsChecked = _cfg.AutoAdvance;
         SmartQueueSwitch.IsChecked = _cfg.SmartQueue;
-        MiniHideSwitch.IsChecked = _cfg.MiniHideVideoWhileDragging;
         FullscreenSwitch.IsChecked = _cfg.StartFullscreen;
         AwakeSwitch.IsChecked = _cfg.KeepAwake;
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
@@ -121,6 +120,10 @@ public partial class SettingsWindow : Window
         CleanTitlesSwitch.IsChecked = _cfg.CleanTitles;
         CrossfadeSwitch.IsChecked = _cfg.CrossfadeEnabled;
         GaplessSwitch.IsChecked = _cfg.GaplessEnabled;
+        MiniDragVideoSwitch.IsChecked = _cfg.MiniVideoWhileDragging;
+        NormalizeSwitch.IsChecked = _cfg.NormalizeVolume;
+        StereoModeCombo.SelectedIndex = Math.Clamp(_cfg.StereoMode, 0, 5);
+        SoundSpaceCombo.SelectedIndex = Math.Clamp(_cfg.SoundSpace, 0, 3);
         DiscordSwitch.IsChecked = _cfg.DiscordPresence;
         DiscordIdBox.Text = _cfg.DiscordClientId;
         DiscordDetailsBox.Text = _cfg.DiscordDetailsText;
@@ -374,7 +377,6 @@ public partial class SettingsWindow : Window
             case nameof(RememberRecentSwitch): _cfg.RememberRecent = on; break;
             case nameof(AutoAdvanceSwitch): _cfg.AutoAdvance = on; break;
             case nameof(SmartQueueSwitch): _cfg.SmartQueue = on; break;
-            case nameof(MiniHideSwitch): _cfg.MiniHideVideoWhileDragging = on; break;
             case nameof(FullscreenSwitch): _cfg.StartFullscreen = on; break;
             case nameof(AwakeSwitch): _cfg.KeepAwake = on; break;
             case nameof(HwSwitch): _cfg.HardwareDecoding = on; HwModeCombo.IsEnabled = on; break;
@@ -392,6 +394,8 @@ public partial class SettingsWindow : Window
             case nameof(CleanTitlesSwitch): _cfg.CleanTitles = on; break;
             case nameof(CrossfadeSwitch): _cfg.CrossfadeEnabled = on; CrossfadeCombo.IsEnabled = on; break;
             case nameof(GaplessSwitch): _cfg.GaplessEnabled = on; break;
+            case nameof(MiniDragVideoSwitch): _cfg.MiniVideoWhileDragging = on; break;
+            case nameof(NormalizeSwitch): _cfg.NormalizeVolume = on; break;
             case nameof(DiscordSwitch): _cfg.DiscordPresence = on; break;
             case nameof(CoversSwitch): _cfg.FetchCoversOnline = on; break;
             case nameof(YouTubeCoversSwitch): _cfg.CoverFromYouTube = on; break;
@@ -421,6 +425,8 @@ public partial class SettingsWindow : Window
             case nameof(VisualizerCombo): _cfg.VisualizerStyle = i; break;
             case nameof(MotionCombo): _cfg.MotionMode = i; break;
             case nameof(CrossfadeCombo): _cfg.CrossfadeSeconds = (i + 1) * 2; break;
+            case nameof(StereoModeCombo): _cfg.StereoMode = i; break;
+            case nameof(SoundSpaceCombo): _cfg.SoundSpace = i; break;
             case nameof(HwModeCombo): _cfg.HardwareMode = HwModes[i]; break;
             case nameof(WhisperLangCombo): _cfg.WhisperLanguage = WhisperLangs[i]; break;
             case nameof(LyricsEngineCombo):

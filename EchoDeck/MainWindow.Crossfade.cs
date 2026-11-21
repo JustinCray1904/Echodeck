@@ -51,11 +51,6 @@ public partial class MainWindow
         player.Playing += (s, e) =>
         {
             if (!IsCurrent()) return;
-
-            // The volume goes on at once, on this thread. It used to be set in Player_Playing, which waits for the window (busy loading
-            // the cover, waveform and lyrics): a new song played at full volume for those seconds. (During an overlap the fade sets it.)
-            try { if (!_xfActive) player.Volume = _volumeNow; } catch { /* the window sets it a moment later */ }
-
             NoteStartLatency(Environment.TickCount64);
             Player_Playing(s, e);
         };
@@ -161,6 +156,7 @@ public partial class MainWindow
         _player = incoming;
         VideoView.MediaPlayer = incoming;   // the old player must not stay attached to the video view: it is disposed later
         incoming.Play(media);
+        ApplyStereoMode(incoming);   // the chosen channel mode (mono, left only ...) for the new song too
         if (_xfMuted) { try { incoming.Mute = true; } catch { } }
 
         _xfFadeTimer?.Stop();                // the overlap clock starts in NoteIncomingPlaying, when the new song plays
