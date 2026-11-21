@@ -389,7 +389,7 @@ internal static class SongResolver
     /// The ways the file might name the song, most likely first: the tidied tags / name; the file name alone; the tag title split at its
     /// dash (when the artist tag is an uploader's name); the title alone. At most four, each asked about once.
     /// </summary>
-    private static List<(string Artist, string Title)> Variants(string path, TagInfo tags, string artist, string title)
+    internal static List<(string Artist, string Title)> Variants(string path, TagInfo tags, string artist, string title)
     {
         var list = new List<(string Artist, string Title)>();
 
@@ -410,7 +410,10 @@ internal static class SongResolver
         var fromTag = SongText.SplitArtistTitle(SongText.Polish(DisplayNames.Tidy(tags.Title ?? "")));
         if (fromTag.Artist.Length > 0) Add(SongText.CleanArtist(TextMatch.StripFeature(fromTag.Artist)), TextMatch.StripFeature(fromTag.Title));
 
-        if (artist.Length > 0) Add("", title);
+        // The title alone (for a file whose artist is an uploader's name) accepts ANY song with that title and about that length, so it
+        // is only tried when the file itself does not say who made the song. A file called "Juice WRLD - Girlfriend" has an artist: asking
+        // for just "Girlfriend" used to bring back a compilation's "Girlfriend" by somebody else, with its cover.
+        if (artist.Length > 0 && fromName.Artist.Length == 0) Add("", title);
         return list;
     }
 

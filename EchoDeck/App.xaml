@@ -1142,7 +1142,12 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
         <Setter Property="OpacityMask">
             <Setter.Value>
-                <ImageBrush ImageSource="Assets/logo-mark.png" Stretch="Uniform"/>
+                <!-- vector (Icons.xaml: TempoMark), so it stays sharp at any size -->
+                <DrawingBrush Stretch="Uniform" Viewbox="0,0,512,512" ViewboxUnits="Absolute">
+                    <DrawingBrush.Drawing>
+                        <GeometryDrawing Brush="Black" Geometry="{StaticResource TempoMark}"/>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
             </Setter.Value>
         </Setter>
     </Style>

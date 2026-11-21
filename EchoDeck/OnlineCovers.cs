@@ -110,6 +110,7 @@ internal static class OnlineCovers
                 Reachable("https://itunes.apple.com/", cts.Token),
                 Reachable("https://api.deezer.com/", cts.Token),
                 Reachable("https://musicbrainz.org/", cts.Token),
+                Reachable("https://www.youtube.com/", cts.Token),   // a source of covers too: if only this one is reachable, the search can still work
             };
             while (probes.Count > 0)
             {
