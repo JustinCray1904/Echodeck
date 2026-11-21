@@ -51,6 +51,11 @@ public partial class MainWindow
         player.Playing += (s, e) =>
         {
             if (!IsCurrent()) return;
+
+            // The volume goes on at once, on this thread. It used to be set in Player_Playing, which waits for the window (busy loading
+            // the cover, waveform and lyrics): a new song played at full volume for those seconds. (During an overlap the fade sets it.)
+            try { if (!_xfActive) player.Volume = _volumeNow; } catch { /* the window sets it a moment later */ }
+
             NoteStartLatency(Environment.TickCount64);
             Player_Playing(s, e);
         };

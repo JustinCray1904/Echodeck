@@ -516,12 +516,11 @@ public partial class MainWindow
         bool pausedByUs = false;
         try
         {
-            // 0) Make sure the vault key can be loaded BEFORE anything changes on screen (quick).
+            // 0) Make sure the vault can be opened BEFORE anything changes on screen. Reading every file's header (the list) can take a
+            //    while with many files on a hard disk: it starts now but is only waited for under cover of the "going dark" animation,
+            //    so the screen reacts to the last digit of the passcode at once instead of after the whole list is read.
             if (!TryUnlockVault()) return;
-
-            // Reading the vault (every file's header has to be opened and decrypted) is the slow part, and used to run BEFORE the splash,
-            // so the passcode seemed to do nothing for a while. It now runs in the background while the splash is already playing.
-            var listTask = Task.Run(async () =>
+            var loading = Task.Run(async () =>
             {
                 await _vaultService.MigrateLegacyAsync();
                 return await _vaultService.ListAsync();
@@ -542,7 +541,7 @@ public partial class MainWindow
             splash = new AnonymousSplashWindow(WindowHelper.GetScreenBoundsDip(this), entering: true);
             splash.Show();
             await splash.PlayDarkenAsync();
-            var items = await listTask;   // normally long finished by now
+            var items = await loading;   // normally ready by now: it was read while the screen darkened
 
             // 3) Under cover of the black screen: STOP the normal media (it must not keep sounding or be resumable
             //    from the Anonymous controls), set the normal state aside, switch every page over to the vault.
@@ -604,8 +603,8 @@ public partial class MainWindow
             if (!_anon)
             {
                 _vaultService.Lock();
-                // the normal song was only paused for the splash: it carries on if Anonymous Mode could not start
-                try { if (pausedByUs && _player != null) _player.SetPause(false); } catch { }
+                _snapshot = null;
+                if (pausedByUs) { try { _player?.SetPause(false); } catch { /* the user can press play */ } }
             }
             TempoDialog.Show(this, "Couldn't open Anonymous Mode: " + ex.Message, AppName,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -902,8 +901,6 @@ public partial class MainWindow
                 media.Dispose();
                 return "LibVLC couldn't start playback.";
             }
-
-            StartVolumeGuard();   // the new song must not start at LibVLC's own 100 %
 
             // Swap in the new vault media, then release the previous one.
             var (oldStream, oldInput, oldMedia) = (_vaultStream, _vaultInput, _vaultMedia);

@@ -70,6 +70,19 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Margin="0,0,24,0">
+                            <TextBlock Style="{StaticResource RowLabel}" Text="Wipe the originals before deleting them"/>
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                       Text="On: the original is overwritten once before it is deleted, so it cannot be recovered. That is a second full write of the file and makes importing much slower on a hard disk. Off: the original is just deleted, which is fast, but its data stays on the disk until Windows reuses the space and could be recovered with special tools."/>
+                        </StackPanel>
+                        <CheckBox x:Name="WipeSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}"
+                                  Click="Wipe_Click"/>
+                    </Grid>
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,24,0">
                             <TextBlock Style="{StaticResource RowLabel}" Text="Preview pictures for videos"/>
                             <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
                                        Text="Off by default. Song covers are read by Tempo itself. A video frame can only come from Windows, which keeps its own copy in the Windows thumbnail cache, even after the original is deleted. Turn this on only if you accept that."/>

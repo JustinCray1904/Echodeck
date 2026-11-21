@@ -413,6 +413,14 @@
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
+                                <TextBlock Style="{StaticResource RowLabel}" Text="Hide the small video while dragging it"/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="The small video keeps playing while you drag its window. If on your PC it still trails behind and leaves a dark block, turn this on: the video is then hidden while you drag and comes back when you let go."/>
+                            </StackPanel>
+                            <CheckBox x:Name="MiniHideSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Repeat"/>
                                 <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="What happens when the queue ends."/>
                             </StackPanel>

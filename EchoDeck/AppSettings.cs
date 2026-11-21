@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace EchoDeck;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ThemeMode { Dark, Light, System, Midnight, Amoled /* retired */, LiquidGlass /* retired */ }   // the retired ones are only kept so an old settings.json still loads: they become Dark
+public enum ThemeMode { Dark, Light, System, Midnight, Amoled /* retired */, LiquidGlass /* retired */ }   // the retired ones only keep an old settings.json loading: they become Dark
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LoopMode { Off, One, All }
@@ -37,11 +37,13 @@ public sealed class AppSettings
     public bool RememberRecent { get; set; } = true;
     public bool AnonymousExitOnMinimize { get; set; } = true;
     public bool AnonymousDeleteOriginals { get; set; }
+    public bool AnonymousWipeOriginals { get; set; } = true;   // overwrite an original with random data before deleting it (slow on a hard disk)
     public bool AnonymousPasscodeBox { get; set; } = true;   // a box with one dot per digit appears in the middle of Tempo while the passcode is typed
     public bool AnonymousVideoThumbnails { get; set; }   // off: vault videos get no preview picture (Windows' thumbnail cache would keep a copy)
 
     // ---- playback
     public bool AutoAdvance { get; set; } = true;
+    public bool MiniHideVideoWhileDragging { get; set; }   // off: the small video keeps playing while its card is dragged; on: it is hidden until the card settles
     public bool SmartQueue { get; set; } = true;          // a single opened file also queues the rest of its series (Episode 1 to 7) from its folder
     public LoopMode Loop { get; set; } = LoopMode.Off;
     public double DefaultSpeed { get; set; } = 1.0;
@@ -137,7 +139,7 @@ public sealed class AppSettings
         {
             if (File.Exists(FilePath))
                 Current = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
-            if (Current.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled) Current.Theme = ThemeMode.Dark;   // the Liquid Glass and AMOLED themes were removed
+            if (Current.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled) Current.Theme = ThemeMode.Dark;   // these themes were removed
         }
         catch
         {

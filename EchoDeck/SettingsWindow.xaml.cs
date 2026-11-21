@@ -83,13 +83,14 @@ public partial class SettingsWindow : Window
 
     private void LoadValues()
     {
-        ThemeCombo.SelectedIndex = _cfg.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled ? 0 : (int)_cfg.Theme;   // 0 Dark, 1 Light, 2 System, 3 Midnight
+        ThemeCombo.SelectedIndex = _cfg.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled ? 0 : (int)_cfg.Theme;   // 0 Dark, 1 Light, 2 System, 3 MidnightED
         AccentCombo.SelectedIndex = Math.Clamp(_cfg.AccentIndex, 0, ThemeManager.Accents.Length - 1);
 
         SidebarSwitch.IsChecked = _cfg.ShowSidebarAtStart;
         RememberRecentSwitch.IsChecked = _cfg.RememberRecent;
         AutoAdvanceSwitch.IsChecked = _cfg.AutoAdvance;
         SmartQueueSwitch.IsChecked = _cfg.SmartQueue;
+        MiniHideSwitch.IsChecked = _cfg.MiniHideVideoWhileDragging;
         FullscreenSwitch.IsChecked = _cfg.StartFullscreen;
         AwakeSwitch.IsChecked = _cfg.KeepAwake;
         HwSwitch.IsChecked = _cfg.HardwareDecoding;
@@ -373,6 +374,7 @@ public partial class SettingsWindow : Window
             case nameof(RememberRecentSwitch): _cfg.RememberRecent = on; break;
             case nameof(AutoAdvanceSwitch): _cfg.AutoAdvance = on; break;
             case nameof(SmartQueueSwitch): _cfg.SmartQueue = on; break;
+            case nameof(MiniHideSwitch): _cfg.MiniHideVideoWhileDragging = on; break;
             case nameof(FullscreenSwitch): _cfg.StartFullscreen = on; break;
             case nameof(AwakeSwitch): _cfg.KeepAwake = on; break;
             case nameof(HwSwitch): _cfg.HardwareDecoding = on; HwModeCombo.IsEnabled = on; break;

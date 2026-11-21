@@ -35,7 +35,7 @@ internal static class OnlineCovers
     private static HttpClient CreateClient()
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Tempo", "1.0"));
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Tempo", "3.0"));
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(desktop media player)"));
         return http;
     }
@@ -96,44 +96,6 @@ internal static class OnlineCovers
         catch { /* nothing to forget */ }
     }
 
-    /// <summary>
-    /// Whether the internet can be reached at all: true as soon as one of the catalogues answers (any answer counts, even an error
-    /// page). Used to tell "there is no such cover" from "there is no connection", so Tempo can say so instead of staying silent.
-    /// </summary>
-    public static async Task<bool> IsOnlineAsync()
-    {
-        try
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            var probes = new List<Task<bool>>
-            {
-                Reachable("https://itunes.apple.com/", cts.Token),
-                Reachable("https://api.deezer.com/", cts.Token),
-                Reachable("https://musicbrainz.org/", cts.Token),
-                Reachable("https://www.youtube.com/", cts.Token),   // a source of covers too: if only this one is reachable, the search can still work
-            };
-            while (probes.Count > 0)
-            {
-                var finished = await Task.WhenAny(probes).ConfigureAwait(false);
-                probes.Remove(finished);
-                if (await finished.ConfigureAwait(false)) { cts.Cancel(); return true; }
-            }
-            return false;
-        }
-        catch { return false; }
-    }
-
-    private static async Task<bool> Reachable(string url, CancellationToken ct)
-    {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Head, url);
-            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            return true;   // an answer of any kind: the connection works
-        }
-        catch { return false; }   // no network, no DNS, timed out or cancelled
-    }
-
     /// <summary>True once the user rejected this file's cover: the picture inside the file is then not used.</summary>
     public static bool SkipsEmbedded(string path)
     {
@@ -162,8 +124,15 @@ internal static class OnlineCovers
     private sealed record Found(IReadOnlyList<string> Urls, byte[]? Bytes);
 
     /// <summary>The cover as a frozen picture, or null (none found, offline, or nothing to search with).</summary>
+    /// <summary>
+    /// True when the last look-up got no answer from any service (offline, blocked, or the services are down) - which is different from
+    /// "there is no cover". Lets a manual "look for a cover" tell the user the truth. Read it right after <see cref="GetAsync"/>.
+    /// </summary>
+    public static volatile bool LastLookupUnreachable;
+
     public static async Task<BitmapSource?> GetAsync(string path)
     {
+        LastLookupUnreachable = false;
         try
         {
             string key = KeyFor(path);
@@ -180,6 +149,7 @@ internal static class OnlineCovers
         catch (Exception ex)
         {
             AppLog.Write("Online cover", ex);   // offline or the service is busy: just no cover this time (nothing is remembered)
+            LastLookupUnreachable = true;
             return null;
         }
     }
@@ -217,6 +187,7 @@ internal static class OnlineCovers
             {
                 // only a real "there is none" is remembered; offline or a busy service just means no cover this time
                 if (answered) File.WriteAllText(Path.Combine(Dir, key + ".none"), NoneMarker);
+                LastLookupUnreachable = !answered;
                 return null;
             }
 
@@ -234,7 +205,11 @@ internal static class OnlineCovers
                     catch (HttpRequestException) { /* this picture is gone: try the next one */ }
                 }
             }
-            if (bytes == null) return null;
+            if (bytes == null)
+            {
+                LastLookupUnreachable = true;   // a cover was found but its picture could not be fetched
+                return null;
+            }
 
             File.WriteAllBytes(Path.Combine(Dir, key + ".jpg"), bytes);
             File.WriteAllText(Path.Combine(Dir, key + ".url"), used);

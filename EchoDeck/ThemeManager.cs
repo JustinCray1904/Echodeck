@@ -80,10 +80,10 @@ public static class ThemeManager
         }
 
         Color accentHover = dark ? Blend(accent, Colors.White, 0.18) : Blend(accent, Colors.Black, 0.12);
-        Color accentMid = Blend(track, accent, dark ? 0.60 : 0.55);   // seek / volume fill
-        Color accentDim = Blend(bg, accent, dark ? 0.22 : 0.20);      // selection, pressed
-        Color accentSoft = Color.FromArgb(dark ? (byte)0x2E : (byte)0x26, accent.R, accent.G, accent.B); // action bundles
-        Color onAccent = Luminance(accent) > 0.50 ? Parse("#0B1320") : Colors.White;
+        Color accentMid   = Blend(track, accent, dark ? 0.60 : 0.55);   // seek / volume fill
+        Color accentDim   = Blend(bg, accent, dark ? 0.22 : 0.20);      // selection, pressed
+        Color accentSoft  = Color.FromArgb(dark ? (byte)0x2E : (byte)0x26, accent.R, accent.G, accent.B); // action bundles
+        Color onAccent    = Luminance(accent) > 0.50 ? Parse("#0B1320") : Colors.White;
 
         Set(res, "Bg", bg); Set(res, "Rail", rail); Set(res, "Panel", panel); Set(res, "Track", track);
         Set(res, "Raised", raised); Set(res, "Slate", slate); Set(res, "Text", text); Set(res, "Fg1", fg1);
@@ -91,33 +91,6 @@ public static class ThemeManager
         Set(res, "Accent", accent); Set(res, "AccentHover", accentHover); Set(res, "AccentMid", accentMid);
         Set(res, "AccentDim", accentDim); Set(res, "AccentSoft", accentSoft); Set(res, "OnAccent", onAccent);
         Set(res, "Scrim", Color.FromArgb(0xCC, bg.R, bg.G, bg.B));
-    }
-
-    /// <summary>
-    /// The dark theme's colours for the brushes that a light-theme window needs in dark form while a song's colours fill it
-    /// (dark glass behind white text): the base surfaces, the danger colour, and (for the bars that keep the app's accent) the seek
-    /// track and the accent set as the dark theme would have them. Keys are brush names such as "PanelBrush".
-    /// </summary>
-    public static Dictionary<string, Color> DarkGlassColours(int accentIndex)
-    {
-        Color bg = Parse("#1B1B1B"), rail = Parse("#191919"), panel = Parse("#0E0E0E"), track = Parse("#090909");
-        Color card = Parse("#151515"), danger = Parse("#FF5C6C");
-        Color accent = AccentColorOf(accentIndex);
-        return new Dictionary<string, Color>
-        {
-            ["BgBrush"] = bg,
-            ["RailBrush"] = rail,
-            ["PanelBrush"] = panel,
-            ["CardBrush"] = card,
-            ["DangerBrush"] = danger,
-            ["TrackBrush"] = track,
-            ["AccentBrush"] = accent,
-            ["AccentHoverBrush"] = Blend(accent, Colors.White, 0.18),
-            ["AccentMidBrush"] = Blend(track, accent, 0.60),
-            ["AccentDimBrush"] = Blend(bg, accent, 0.22),
-            ["AccentSoftBrush"] = Color.FromArgb(0x2E, accent.R, accent.G, accent.B),
-            ["OnAccentBrush"] = Luminance(accent) > 0.50 ? Parse("#0B1320") : Colors.White,
-        };
     }
 
     private static void Set(ResourceDictionary res, string name, Color c)

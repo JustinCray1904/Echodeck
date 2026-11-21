@@ -38,8 +38,8 @@ public sealed class VaultService
     private List<Playlist>? _playlists;
 
     private const string DbName = "vault.db";
-    private const string ThumbExtension = ".deet";
-    private const string LegacyThumbExtension = ".svt";   // earlier builds
+    private const string ThumbExtension = ".deexp";          // the preview picture of a file made now
+    private const string LegacyThumbExtension = ".svt";      // ...and of a file made by an earlier build
     private static readonly byte[] DbMagic = { (byte)'S', (byte)'V', (byte)'D', 1 };
     private static readonly byte[] DbInfo = Encoding.UTF8.GetBytes("svv-db-v1");
     private static readonly byte[] ThumbInfo = Encoding.UTF8.GetBytes("svv-thumb-v1");
@@ -205,8 +205,8 @@ public sealed class VaultService
         HKDF.DeriveKey(HashAlgorithmName.SHA256, master, 32,
             Encoding.UTF8.GetBytes(Path.GetFileNameWithoutExtension(vaultFile)), ThumbInfo);
 
-    private static string ThumbPathFor(string vaultFile) => Path.ChangeExtension(vaultFile, ThumbExtension);
-    private static string LegacyThumbPathFor(string vaultFile) => Path.ChangeExtension(vaultFile, LegacyThumbExtension);
+    private static string ThumbPathFor(string vaultFile) =>
+        Path.ChangeExtension(vaultFile, vaultFile.EndsWith(VaultFormat.LegacyExtension, StringComparison.OrdinalIgnoreCase) ? LegacyThumbExtension : ThumbExtension);
 
     /// <summary>
     /// At import the original is still readable, so a small picture (a song's embedded cover) is encrypted into a sidecar file.
@@ -281,11 +281,7 @@ public sealed class VaultService
         try
         {
             var path = ThumbPathFor(vaultFile);
-            if (!File.Exists(path))
-            {
-                path = LegacyThumbPathFor(vaultFile);   // pictures saved by earlier builds
-                if (!File.Exists(path)) return null;
-            }
+            if (!File.Exists(path)) return null;
 
             var raw = File.ReadAllBytes(path);
             const int header = VaultFormat.NonceSize + VaultFormat.TagSize;
@@ -374,12 +370,11 @@ public sealed class VaultService
         _stalePartsCleaned = true;
         try
         {
-            foreach (var pattern in new[] { "*" + VaultFormat.Extension + ".part", "*" + VaultFormat.LegacyExtension + ".part" })
+            foreach (var part in Directory.EnumerateFiles(VaultPath, "*.part")
+                         .Where(f => f.EndsWith(VaultFormat.Extension + ".part", StringComparison.OrdinalIgnoreCase)
+                                     || f.EndsWith(VaultFormat.LegacyExtension + ".part", StringComparison.OrdinalIgnoreCase)))
             {
-                foreach (var part in Directory.EnumerateFiles(VaultPath, pattern))
-                {
-                    try { File.Delete(part); } catch { /* in use or locked: next run */ }
-                }
+                try { File.Delete(part); } catch { /* in use or locked: next run */ }
             }
         }
         catch { /* best effort */ }
@@ -422,22 +417,18 @@ public sealed class VaultService
         try
         {
             int unreadable = 0;
-            var found = new System.Collections.Concurrent.ConcurrentBag<VaultItem>();
-            var files = Directory.EnumerateFiles(VaultPath).Where(VaultFormat.IsVaultFile).ToList();
-
-            // Every file's header has to be opened, read and decrypted. One after the other, a hard drive spends most of that time moving
-            // its head from file to file, which is what made entering Anonymous Mode slow; several at once lets the drive and the CPU overlap.
-            Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 4 }, path =>
+            var items = new List<VaultItem>();
+            foreach (var path in Directory.EnumerateFiles(VaultPath))
             {
+                if (!VaultFormat.IsVaultFile(path)) continue;
                 try
                 {
                     var meta = VaultFormat.ReadMeta(path, key);
-                    found.Add(new VaultItem(meta.Name, path, FormatSize(meta.Length), meta.Origin,
+                    items.Add(new VaultItem(meta.Name, path, FormatSize(meta.Length), meta.Origin,
                         meta.Title ?? "", meta.Artist ?? "", meta.Album ?? "", meta.Genre ?? "", meta.DurationMs));
                 }
-                catch { Interlocked.Increment(ref unreadable); /* damaged or foreign file: left untouched, reported to the user */ }
-            });
-            var items = found.ToList();
+                catch { unreadable++; /* damaged or foreign file: left untouched, reported to the user */ }
+            }
             LastUnreadableCount = unreadable;
             items.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return items;
@@ -487,7 +478,7 @@ public sealed class VaultService
                 throw;
             }
 
-            SecureDeleteCore(sourcePath);
+            SecureDeleteCore(sourcePath, overwrite: AppSettings.Current.AnonymousWipeOriginals);
         }
         finally { Zero(key); }
     });
@@ -612,11 +603,12 @@ public sealed class VaultService
 
         // Back on the caller's (UI) thread: tidy up everything that pointed at the file.
         try { var t = ThumbPathFor(path); if (File.Exists(t)) File.Delete(t); } catch { /* sidecar is encrypted anyway */ }
-        try { var t = LegacyThumbPathFor(path); if (File.Exists(t)) File.Delete(t); } catch { /* sidecar is encrypted anyway */ }
         RemoveFromPlaylists(path);
     }
 
-    private static void SecureDeleteCore(string path)
+    /// <param name="overwrite">Overwrite the file's data once before deleting it (what "wipe" means). Off: a plain delete, which is much faster
+    /// on a hard disk but leaves the data on the disk until Windows reuses the space.</param>
+    private static void SecureDeleteCore(string path, bool overwrite = true)
     {
         Exception? last = null;
 
@@ -627,12 +619,11 @@ public sealed class VaultService
                 if (!File.Exists(path)) return;
                 File.SetAttributes(path, FileAttributes.Normal);
 
-                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None, 1 << 20))
+                if (overwrite)
                 {
-                    // One block of random bytes, written over the file again and again: making fresh random data for every megabyte
-                    // cost as much time as the encryption itself, and what the file held is gone just the same.
-                    var buffer = new byte[4 << 20];
-                    RandomNumberGenerator.Fill(buffer);
+                    using var fs = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None, 1 << 20);
+                    var buffer = new byte[1 << 20];
+                    RandomNumberGenerator.Fill(buffer);   // one random block, written over the whole file (fresh random numbers per MiB only cost CPU)
                     long remaining = fs.Length;
                     while (remaining > 0)
                     {

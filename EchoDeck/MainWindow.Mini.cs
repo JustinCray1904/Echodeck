@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
 
 namespace EchoDeck;
 
@@ -25,7 +24,7 @@ public partial class MainWindow
         MiniPlayer.MouseLeftButtonDown += Mini_MouseDown;
         MiniPlayer.MouseMove += Mini_MouseMove;
         MiniPlayer.MouseLeftButtonUp += Mini_MouseUp;
-        MiniPlayer.LostMouseCapture += (_, _) => { _miniDragging = false; ReleaseMiniVideo(350); };
+        MiniPlayer.LostMouseCapture += (_, _) => _miniDragging = false;
 
         // no context menu on the small player
         MiniPlayer.MouseRightButtonDown += (_, e) => e.Handled = true;
@@ -97,8 +96,29 @@ public partial class MainWindow
 
         double target = MiniDockX(_cfg.MiniDock);
         double current = MiniPlayer.Margin.Left;
-        if (!animate || Math.Abs(current - target) < 1) { SetMiniX(target); return; }
-        UiAnim.Tween(MiniPlayer, current, target, 280, SetMiniX, () => SetMiniX(target));
+        if (!animate || Math.Abs(current - target) < 1) { SetMiniX(target); ReleaseMiniVideo(); return; }
+        UiAnim.Tween(MiniPlayer, current, target, 280, SetMiniX, () => { SetMiniX(target); ReleaseMiniVideo(); });
+    }
+
+    private bool _miniVideoHeld;
+
+    private void HoldMiniVideo()
+    {
+        if (_currentIsAudio || _libraryVisible == false) return;
+        _miniVideoHeld = true;
+        _nativeHeld = true;
+        SyncNativeSurface();                              // the video window
+        VideoSurface.Visibility = Visibility.Collapsed;   // and the overlay window on top of it (a separate window: hidden explicitly)
+    }
+
+    private void ReleaseMiniVideo()
+    {
+        if (!_miniVideoHeld) return;
+        _miniVideoHeld = false;
+        _nativeHeld = false;
+        SyncNativeSurface();
+        if (MiniPlayer.Visibility == Visibility.Visible) VideoSurface.Visibility = Visibility.Visible;
+        PositionMiniVideo();
     }
 
     private void SetMiniX(double x)
@@ -123,51 +143,12 @@ public partial class MainWindow
             PlayerView.Width = MiniVideoSpacer.ActualWidth;
             PlayerView.Height = MiniVideoSpacer.ActualHeight;
             PlayerView.Margin = new Thickness(origin.X - slot.X, origin.Y - slot.Y, 0, 0);
+
+            // The new position must be applied NOW, in the same step as the card's: otherwise the native video window waits for the
+            // next layout pass and trails behind the card while it is dragged (a black block "bled" out of the card's side).
+            PlayerView.UpdateLayout();
         }
         catch { /* layout not ready; the next update fixes it */ }
-    }
-
-    // ------------------------------------------------------------------ hiding the picture while the card moves
-
-    private bool _miniVideoHeld;
-    private DispatcherTimer? _miniReleaseTimer;
-
-    /// <summary>
-    /// The small video is a native window plus an overlay window on top of it. While the card moves they are repositioned a frame or
-    /// more apart from the card WPF draws, so a black rectangle trailed behind it. For the moments the card is dragged or gliding to
-    /// its side, both are hidden (the card itself is black, so it just looks like a paused black picture) and come back at the end.
-    /// </summary>
-    private void HoldMiniVideo()
-    {
-        _miniReleaseTimer?.Stop();
-        if (_miniVideoHeld) return;
-        _miniVideoHeld = true;
-        VideoSurface.Visibility = Visibility.Collapsed;
-        SyncNativeSurface();
-    }
-
-    /// <summary>Shows the small video again, after <paramref name="afterMs"/> (the glide to the dock) or at once.</summary>
-    private void ReleaseMiniVideo(int afterMs = 0)
-    {
-        _miniReleaseTimer?.Stop();
-        if (!_miniVideoHeld) return;
-
-        if (afterMs > 0)
-        {
-            _miniReleaseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(afterMs) };
-            _miniReleaseTimer.Tick += (_, _) => ReleaseMiniVideo(0);
-            _miniReleaseTimer.Start();
-            return;
-        }
-
-        _miniVideoHeld = false;
-        bool mini = _libraryVisible && _hasMedia && !_currentIsAudio;
-        if (mini && MiniPlayer.IsVisible)
-        {
-            PositionMiniVideo();
-            VideoSurface.Visibility = Visibility.Visible;
-        }
-        SyncNativeSurface();
     }
 
     // ------------------------------------------------------------------ dragging
@@ -200,9 +181,12 @@ public partial class MainWindow
         if (!_miniDragging || MiniHost == null) return;
 
         var (left, right) = MiniRange();
-        double moved = e.GetPosition(MiniHost).X - _miniDragStart.X;
-        if (Math.Abs(moved) > 2) HoldMiniVideo();
-        double x = _miniDragStartX + moved;
+        double x = _miniDragStartX + (e.GetPosition(MiniHost).X - _miniDragStart.X);
+
+        // The video keeps playing while the card is dragged (its window is moved in the same step as the card, see PositionMiniVideo).
+        // If it still trails behind on a PC, "Hide the small video while dragging it" in Settings holds it back until the card settles.
+        if (_cfg.MiniHideVideoWhileDragging && !_miniVideoHeld && Math.Abs(x - _miniDragStartX) > 3) HoldMiniVideo();
+
         SetMiniX(Math.Clamp(x, left, right));   // sideways only
     }
 
@@ -218,7 +202,6 @@ public partial class MainWindow
         _cfg.MiniDock = dock;
         _cfg.Save(notify: false);
         PositionMini(animate: true);
-        ReleaseMiniVideo(330);   // the glide takes 280 ms; the picture returns once the card is at rest
     }
 
     // ------------------------------------------------------------------ popups above the control bar
