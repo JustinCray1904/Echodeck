@@ -6,102 +6,80 @@ using Xunit;
 
 namespace EchoDeck.Tests;
 
+/// <summary>The saved-waveform cache (WaveformCache): a song is analysed once and then loaded from its small cache file.</summary>
 public sealed class WaveformCacheTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tempo-wf-tests-" + Guid.NewGuid().ToString("N"));
-    private readonly string _previous = WaveformCache.Dir;
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tempo-cache-tests-" + Guid.NewGuid().ToString("N"));
 
-    public WaveformCacheTests()
-    {
-        Directory.CreateDirectory(_dir);
-        WaveformCache.Dir = Path.Combine(_dir, "cache");
-    }
+    public WaveformCacheTests() => Directory.CreateDirectory(_dir);
 
     public void Dispose()
     {
-        WaveformCache.Dir = _previous;
         try { Directory.Delete(_dir, recursive: true); } catch { /* temp folder */ }
     }
 
-    private string Song(string name = "song.mp3", int size = 1000)
+    [Fact]
+    public void Waveform_round_trips_through_the_cache_file()
     {
-        string path = Path.Combine(_dir, name);
-        File.WriteAllBytes(path, new byte[size]);
-        return path;
-    }
+        var peaks = Enumerable.Range(0, WaveformLoader.Buckets).Select(i => i / (float)WaveformLoader.Buckets).ToArray();
+        var values = Enumerable.Range(0, SpectrumData.Bands * 40).Select(i => (byte)(i % 251)).ToArray();
+        var original = new AudioAnalysis(peaks, new SpectrumData(values, 40));
+        string file = Path.Combine(_dir, "a.wf");
 
-    private static AudioAnalysis Analysis(bool withSpectrum)
-    {
-        var peaks = Enumerable.Range(0, 300).Select(i => (i % 17) / 17f).ToArray();
-        var values = Enumerable.Range(0, SpectrumData.Bands * 90).Select(i => (byte)(i % 251)).ToArray();
-        return new AudioAnalysis(peaks, withSpectrum ? new SpectrumData(values, 90) : null);
-    }
+        WaveformCache.Save(file, original);
+        var loaded = WaveformCache.TryLoad(file);
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void WhatWasStoredComesBackExactly(bool withSpectrum)
-    {
-        string song = Song();
-        var original = Analysis(withSpectrum);
-
-        WaveformCache.Write(song, original);
-        var back = WaveformCache.TryRead(song);
-
-        Assert.NotNull(back);
-        Assert.Equal(original.Peaks, back!.Peaks);
-        if (withSpectrum)
-        {
-            Assert.Equal(original.Spectrum!.Frames, back.Spectrum!.Frames);
-            Assert.Equal(original.Spectrum.Values, back.Spectrum.Values);
-        }
-        else Assert.Null(back.Spectrum);
+        Assert.NotNull(loaded);
+        Assert.Equal(peaks, loaded!.Peaks);
+        Assert.NotNull(loaded.Spectrum);
+        Assert.Equal(40, loaded.Spectrum!.Frames);
+        Assert.Equal(values, loaded.Spectrum.Values);
     }
 
     [Fact]
-    public void NothingIsFoundForASongThatWasNeverStored()
+    public void Waveform_without_spectrum_round_trips()
     {
-        Assert.Null(WaveformCache.TryRead(Song()));
+        var peaks = new float[WaveformLoader.Buckets];
+        string file = Path.Combine(_dir, "b.wf");
+
+        WaveformCache.Save(file, new AudioAnalysis(peaks, null));
+        var loaded = WaveformCache.TryLoad(file);
+
+        Assert.NotNull(loaded);
+        Assert.Null(loaded!.Spectrum);
     }
 
     [Fact]
-    public void AChangedSongIsNotGivenTheOldWaveform()
+    public void Damaged_cache_file_is_ignored_and_removed()
     {
-        string song = Song();
-        WaveformCache.Write(song, Analysis(true));
-
-        File.WriteAllBytes(song, new byte[2000]);   // edited / replaced: a different size
-
-        Assert.Null(WaveformCache.TryRead(song));
-    }
-
-    [Fact]
-    public void ADamagedEntryIsIgnoredAndRemoved()
-    {
-        string song = Song();
-        WaveformCache.Write(song, Analysis(true));
-        string file = Directory.GetFiles(WaveformCache.Dir, "*.twf").Single();
+        string file = Path.Combine(_dir, "c.wf");
         File.WriteAllBytes(file, new byte[] { 1, 2, 3, 4, 5 });
 
-        Assert.Null(WaveformCache.TryRead(song));
+        Assert.Null(WaveformCache.TryLoad(file));
         Assert.False(File.Exists(file));
     }
 
     [Fact]
-    public void TheFolderIsKeptSmallAndTheLeastRecentlyUsedGoFirst()
+    public void Missing_cache_file_is_just_a_miss()
     {
-        string oldSong = Song("old.mp3", 10);
-        string newSong = Song("new.mp3", 11);
-        WaveformCache.Write(oldSong, Analysis(true));
-        WaveformCache.Write(newSong, Analysis(true));
+        Assert.Null(WaveformCache.TryLoad(Path.Combine(_dir, "nothing.wf")));
+        Assert.Null(WaveformCache.TryLoad(null));
+    }
 
-        var files = Directory.GetFiles(WaveformCache.Dir, "*.twf").Select(f => new FileInfo(f)).ToList();
-        var oldFile = files.First(f => f.Name.StartsWith(WaveformCache.KeyFor(oldSong)!));
-        oldFile.LastWriteTimeUtc = DateTime.UtcNow.AddDays(-30);
+    [Fact]
+    public void Cache_file_name_follows_the_song_as_it_is_on_disk()
+    {
+        string song = Path.Combine(_dir, "song.mp3");
+        File.WriteAllBytes(song, new byte[] { 1, 2, 3 });
 
-        WaveformCache.Prune(maxBytes: 1, pruneTo: oldFile.Length + 10);   // room for one of the two
+        string? first = WaveformCache.FileFor(song);
+        Assert.NotNull(first);
+        Assert.EndsWith(".wf", first);
+        Assert.Equal(first, WaveformCache.FileFor(song));   // same song, same file
 
-        Assert.Null(WaveformCache.TryRead(oldSong));
-        Assert.NotNull(WaveformCache.TryRead(newSong));
+        File.WriteAllBytes(song, new byte[] { 1, 2, 3, 4 });   // changed on disk: analysed afresh
+        Assert.NotEqual(first, WaveformCache.FileFor(song));
+
+        Assert.Null(WaveformCache.FileFor(Path.Combine(_dir, "missing.mp3")));
     }
 }
