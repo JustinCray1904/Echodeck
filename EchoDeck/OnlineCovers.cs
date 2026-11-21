@@ -96,6 +96,43 @@ internal static class OnlineCovers
         catch { /* nothing to forget */ }
     }
 
+    /// <summary>
+    /// Whether the internet can be reached at all: true as soon as one of the catalogues answers (any answer counts, even an error
+    /// page). Used to tell "there is no such cover" from "there is no connection", so Tempo can say so instead of staying silent.
+    /// </summary>
+    public static async Task<bool> IsOnlineAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            var probes = new List<Task<bool>>
+            {
+                Reachable("https://itunes.apple.com/", cts.Token),
+                Reachable("https://api.deezer.com/", cts.Token),
+                Reachable("https://musicbrainz.org/", cts.Token),
+            };
+            while (probes.Count > 0)
+            {
+                var finished = await Task.WhenAny(probes).ConfigureAwait(false);
+                probes.Remove(finished);
+                if (await finished.ConfigureAwait(false)) { cts.Cancel(); return true; }
+            }
+            return false;
+        }
+        catch { return false; }
+    }
+
+    private static async Task<bool> Reachable(string url, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, url);
+            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            return true;   // an answer of any kind: the connection works
+        }
+        catch { return false; }   // no network, no DNS, timed out or cancelled
+    }
+
     /// <summary>True once the user rejected this file's cover: the picture inside the file is then not used.</summary>
     public static bool SkipsEmbedded(string path)
     {

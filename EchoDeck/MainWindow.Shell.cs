@@ -352,6 +352,7 @@ public partial class MainWindow
     /// few moments instead of flashing white, squeezing or showing a black strip.
     /// </summary>
     private bool _ambience;
+    private int _ambientThemeKey;   // the theme + accent the glass was last built for
 
     private static readonly Brush MusicVeil = FrozenBrush(Color.FromArgb(0x1C, 0x00, 0x00, 0x00));
 
@@ -366,13 +367,13 @@ public partial class MainWindow
     /// While a song's music view is showing, its colours fill the whole window (dark themes): the side bar, the queue and the
     /// bottom bar become dark glass in the cover's hue over them instead of flat panels that looked like part of another app,
     /// and their text, hover, selection, highlight and icon colours are taken from the cover too (MainWindow.Ambience.cs), so
-    /// they stay readable on any cover. Light themes keep the colours behind the music view only (white text on a light window
-    /// would not be readable).
+    /// they stay readable on any cover. The light theme gets the same dark glass (its surfaces are swapped for dark ones inside
+    /// these elements only, see PutAmbientResources), so the colours fill the window there too.
     /// </summary>
     private void SyncAmbience()
     {
         bool music = _currentIsAudio && !_libraryVisible && MusicPanel.Visibility == Visibility.Visible;
-        bool on = music && ThemeManager.IsDark;
+        bool on = music;
 
         WindowAurora.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         Aurora.Visibility = music && !on ? Visibility.Visible : Visibility.Collapsed;
@@ -385,8 +386,19 @@ public partial class MainWindow
         VideoHost.Background = on ? Brushes.Transparent : Brushes.Black;
         UpdateTaskbarClip();
 
-        if (on == _ambience) return;
+        // the theme or accent changed while the colours are showing: the glass has to be put together again for it
+        int themeKey = (ThemeManager.IsDark ? 1 : 0) + AppSettings.Current.AccentIndex * 2;
+        if (on == _ambience)
+        {
+            if (on && themeKey != _ambientThemeKey)
+            {
+                _ambientThemeKey = themeKey;
+                try { UpdateAmbientColours(animate: false); } catch (Exception ex) { AppLog.Write("Ambient colours", ex); }
+            }
+            return;
+        }
         _ambience = on;
+        _ambientThemeKey = themeKey;
 
         SetAmbientSkin(Rail, on);
         SetAmbientSkin(SidebarPanel, on);
@@ -427,7 +439,7 @@ public partial class MainWindow
     /// </summary>
     private void SyncNativeSurface()
     {
-        VideoView.Visibility = _currentIsAudio || _nativeHeld ? Visibility.Hidden : Visibility.Visible;
+        VideoView.Visibility = _currentIsAudio || _nativeHeld || _miniVideoHeld ? Visibility.Hidden : Visibility.Visible;
 
         // a song is shown by the main window itself (MusicLayer): the overlay window above it must let the mouse through
         // (a fully transparent layered window passes clicks on) and must not draw its corner mask

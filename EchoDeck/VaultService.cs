@@ -38,7 +38,8 @@ public sealed class VaultService
     private List<Playlist>? _playlists;
 
     private const string DbName = "vault.db";
-    private const string ThumbExtension = ".svt";
+    private const string ThumbExtension = ".deet";
+    private const string LegacyThumbExtension = ".svt";   // earlier builds
     private static readonly byte[] DbMagic = { (byte)'S', (byte)'V', (byte)'D', 1 };
     private static readonly byte[] DbInfo = Encoding.UTF8.GetBytes("svv-db-v1");
     private static readonly byte[] ThumbInfo = Encoding.UTF8.GetBytes("svv-thumb-v1");
@@ -205,6 +206,7 @@ public sealed class VaultService
             Encoding.UTF8.GetBytes(Path.GetFileNameWithoutExtension(vaultFile)), ThumbInfo);
 
     private static string ThumbPathFor(string vaultFile) => Path.ChangeExtension(vaultFile, ThumbExtension);
+    private static string LegacyThumbPathFor(string vaultFile) => Path.ChangeExtension(vaultFile, LegacyThumbExtension);
 
     /// <summary>
     /// At import the original is still readable, so a small picture (a song's embedded cover) is encrypted into a sidecar file.
@@ -279,7 +281,11 @@ public sealed class VaultService
         try
         {
             var path = ThumbPathFor(vaultFile);
-            if (!File.Exists(path)) return null;
+            if (!File.Exists(path))
+            {
+                path = LegacyThumbPathFor(vaultFile);   // pictures saved by earlier builds
+                if (!File.Exists(path)) return null;
+            }
 
             var raw = File.ReadAllBytes(path);
             const int header = VaultFormat.NonceSize + VaultFormat.TagSize;
@@ -321,8 +327,9 @@ public sealed class VaultService
         var dest = Path.Combine(VaultPath, "unreadable");
         Directory.CreateDirectory(dest);
         foreach (var f in Directory.EnumerateFiles(VaultPath)
-                     .Where(f => f.EndsWith(VaultFormat.Extension, StringComparison.OrdinalIgnoreCase)
+                     .Where(f => VaultFormat.IsVaultFile(f)
                                  || f.EndsWith(ThumbExtension, StringComparison.OrdinalIgnoreCase)
+                                 || f.EndsWith(LegacyThumbExtension, StringComparison.OrdinalIgnoreCase)
                                  || string.Equals(Path.GetFileName(f), DbName, StringComparison.OrdinalIgnoreCase)).ToList())
             File.Move(f, Path.Combine(dest, Path.GetFileName(f)), overwrite: true);
         lock (_dbLock) _playlists = null;
@@ -367,9 +374,12 @@ public sealed class VaultService
         _stalePartsCleaned = true;
         try
         {
-            foreach (var part in Directory.EnumerateFiles(VaultPath, "*" + VaultFormat.Extension + ".part"))
+            foreach (var pattern in new[] { "*" + VaultFormat.Extension + ".part", "*" + VaultFormat.LegacyExtension + ".part" })
             {
-                try { File.Delete(part); } catch { /* in use or locked: next run */ }
+                foreach (var part in Directory.EnumerateFiles(VaultPath, pattern))
+                {
+                    try { File.Delete(part); } catch { /* in use or locked: next run */ }
+                }
             }
         }
         catch { /* best effort */ }
@@ -389,7 +399,7 @@ public sealed class VaultService
     }
 
     private bool HasEncryptedFiles() =>
-        Directory.EnumerateFiles(VaultPath).Any(f => f.EndsWith(VaultFormat.Extension, StringComparison.OrdinalIgnoreCase));
+        Directory.EnumerateFiles(VaultPath).Any(VaultFormat.IsVaultFile);
 
     private string NewVaultFilePath() =>
         Path.Combine(VaultPath, Guid.NewGuid().ToString("N") + VaultFormat.Extension);
@@ -412,18 +422,22 @@ public sealed class VaultService
         try
         {
             int unreadable = 0;
-            var items = new List<VaultItem>();
-            foreach (var path in Directory.EnumerateFiles(VaultPath))
+            var found = new System.Collections.Concurrent.ConcurrentBag<VaultItem>();
+            var files = Directory.EnumerateFiles(VaultPath).Where(VaultFormat.IsVaultFile).ToList();
+
+            // Every file's header has to be opened, read and decrypted. One after the other, a hard drive spends most of that time moving
+            // its head from file to file, which is what made entering Anonymous Mode slow; several at once lets the drive and the CPU overlap.
+            Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 4 }, path =>
             {
-                if (!path.EndsWith(VaultFormat.Extension, StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
                     var meta = VaultFormat.ReadMeta(path, key);
-                    items.Add(new VaultItem(meta.Name, path, FormatSize(meta.Length), meta.Origin,
+                    found.Add(new VaultItem(meta.Name, path, FormatSize(meta.Length), meta.Origin,
                         meta.Title ?? "", meta.Artist ?? "", meta.Album ?? "", meta.Genre ?? "", meta.DurationMs));
                 }
-                catch { unreadable++; /* damaged or foreign file: left untouched, reported to the user */ }
-            }
+                catch { Interlocked.Increment(ref unreadable); /* damaged or foreign file: left untouched, reported to the user */ }
+            });
+            var items = found.ToList();
             LastUnreadableCount = unreadable;
             items.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return items;
@@ -533,7 +547,7 @@ public sealed class VaultService
     {
         try
         {
-            return new DirectoryInfo(VaultPath).EnumerateFiles("*" + VaultFormat.Extension).Sum(f => f.Length);
+            return new DirectoryInfo(VaultPath).EnumerateFiles().Where(f => VaultFormat.IsVaultFile(f.Name)).Sum(f => f.Length);
         }
         catch { return 0; }
     }
@@ -598,6 +612,7 @@ public sealed class VaultService
 
         // Back on the caller's (UI) thread: tidy up everything that pointed at the file.
         try { var t = ThumbPathFor(path); if (File.Exists(t)) File.Delete(t); } catch { /* sidecar is encrypted anyway */ }
+        try { var t = LegacyThumbPathFor(path); if (File.Exists(t)) File.Delete(t); } catch { /* sidecar is encrypted anyway */ }
         RemoveFromPlaylists(path);
     }
 
@@ -614,11 +629,13 @@ public sealed class VaultService
 
                 using (var fs = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None, 1 << 20))
                 {
-                    var buffer = new byte[1 << 20];
+                    // One block of random bytes, written over the file again and again: making fresh random data for every megabyte
+                    // cost as much time as the encryption itself, and what the file held is gone just the same.
+                    var buffer = new byte[4 << 20];
+                    RandomNumberGenerator.Fill(buffer);
                     long remaining = fs.Length;
                     while (remaining > 0)
                     {
-                        RandomNumberGenerator.Fill(buffer);
                         int n = (int)Math.Min(buffer.Length, remaining);
                         fs.Write(buffer, 0, n);
                         remaining -= n;

@@ -513,12 +513,19 @@ public partial class MainWindow
         _transition = true;
 
         AnonymousSplashWindow? splash = null;
+        bool pausedByUs = false;
         try
         {
-            // 0) Make sure the vault can be opened and read BEFORE anything changes on screen.
+            // 0) Make sure the vault key can be loaded BEFORE anything changes on screen (quick).
             if (!TryUnlockVault()) return;
-            await _vaultService.MigrateLegacyAsync();
-            var items = await _vaultService.ListAsync();
+
+            // Reading the vault (every file's header has to be opened and decrypted) is the slow part, and used to run BEFORE the splash,
+            // so the passcode seemed to do nothing for a while. It now runs in the background while the splash is already playing.
+            var listTask = Task.Run(async () =>
+            {
+                await _vaultService.MigrateLegacyAsync();
+                return await _vaultService.ListAsync();
+            });
 
             // 1) Freeze the normal media and remember exactly where it was.
             StopResumeTracking();   // the video's spot is saved for "continue where you left off"
@@ -528,13 +535,14 @@ public partial class MainWindow
                 using var media = _player.Media;
                 mrl = media?.Mrl;
             }
-            if (_player.IsPlaying) _player.SetPause(true);
+            if (_player.IsPlaying) { _player.SetPause(true); pausedByUs = true; }
             _snapshot = mrl != null ? new PlaybackSnapshot(mrl, _player.Time, _currentIsAudio, _normalTitle) : null;
 
             // 2) Going dark.
             splash = new AnonymousSplashWindow(WindowHelper.GetScreenBoundsDip(this), entering: true);
             splash.Show();
             await splash.PlayDarkenAsync();
+            var items = await listTask;   // normally long finished by now
 
             // 3) Under cover of the black screen: STOP the normal media (it must not keep sounding or be resumable
             //    from the Anonymous controls), set the normal state aside, switch every page over to the vault.
@@ -593,7 +601,12 @@ public partial class MainWindow
         catch (Exception ex)
         {
             try { splash?.Close(); } catch { }
-            if (!_anon) _vaultService.Lock();
+            if (!_anon)
+            {
+                _vaultService.Lock();
+                // the normal song was only paused for the splash: it carries on if Anonymous Mode could not start
+                try { if (pausedByUs && _player != null) _player.SetPause(false); } catch { }
+            }
             TempoDialog.Show(this, "Couldn't open Anonymous Mode: " + ex.Message, AppName,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -889,6 +902,8 @@ public partial class MainWindow
                 media.Dispose();
                 return "LibVLC couldn't start playback.";
             }
+
+            StartVolumeGuard();   // the new song must not start at LibVLC's own 100 %
 
             // Swap in the new vault media, then release the previous one.
             var (oldStream, oldInput, oldMedia) = (_vaultStream, _vaultInput, _vaultMedia);

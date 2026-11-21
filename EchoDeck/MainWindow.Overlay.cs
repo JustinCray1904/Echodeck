@@ -79,7 +79,7 @@ public partial class MainWindow
             // the overlay window sits on the small video and carries only the previous / next buttons
             MiniOverlay.Visibility = Visibility.Visible;
             if (!MiniOverlay.IsMouseOver) { UiAnim.Cancel(MiniControls); MiniControls.Opacity = 0; }
-            VideoSurface.Visibility = Visibility.Visible;
+            VideoSurface.Visibility = _miniVideoHeld ? Visibility.Collapsed : Visibility.Visible;
             PositionMiniVideo();
             return;
         }

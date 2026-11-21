@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace EchoDeck;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ThemeMode { Dark, Light, System, Midnight, Amoled, LiquidGlass /* retired: only kept so an old settings.json still loads; it becomes Dark */ }
+public enum ThemeMode { Dark, Light, System, Midnight, Amoled /* retired */, LiquidGlass /* retired */ }   // the retired ones are only kept so an old settings.json still loads: they become Dark
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LoopMode { Off, One, All }
@@ -137,7 +137,7 @@ public sealed class AppSettings
         {
             if (File.Exists(FilePath))
                 Current = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
-            if (Current.Theme == ThemeMode.LiquidGlass) Current.Theme = ThemeMode.Dark;   // the Liquid Glass theme was removed
+            if (Current.Theme is ThemeMode.LiquidGlass or ThemeMode.Amoled) Current.Theme = ThemeMode.Dark;   // the Liquid Glass and AMOLED themes were removed
         }
         catch
         {

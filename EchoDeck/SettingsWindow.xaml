@@ -63,9 +63,9 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Theme"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Dark, light, follow Windows, or one of the darker looks: Midnight, AMOLED Black."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" Text="Dark, light, follow Windows, or the darker Midnight look."/>
                             </StackPanel>
-                            <ComboBox x:Name="ThemeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Dark"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="System"/><ComboBoxItem Content="Midnight"/><ComboBoxItem Content="AMOLED Black"/></ComboBox>
+                            <ComboBox x:Name="ThemeCombo" Grid.Column="1" Style="{StaticResource EchoCombo}" SelectionChanged="Combo_Changed"><ComboBoxItem Content="Dark"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="System"/><ComboBoxItem Content="Midnight"/></ComboBox>
                         </Grid>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

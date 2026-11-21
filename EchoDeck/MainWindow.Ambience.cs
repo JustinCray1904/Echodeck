@@ -117,12 +117,35 @@ public partial class MainWindow
 
     private static bool IsAccentKey(string key) => key.StartsWith("Accent", StringComparison.Ordinal) || key == "OnAccentBrush";
 
+    /// <summary>The base surfaces that a light theme must give back to dark glass, or white text would sit on a light panel.</summary>
+    private static readonly string[] BaseKeys = { "BgBrush", "RailBrush", "PanelBrush", "CardBrush", "DangerBrush" };
+
     private void PutAmbientResources(ResourceDictionary resources, bool neutral = false)
     {
         foreach (var key in AmbientKeys)
         {
             if (neutral && (IsAccentKey(key) || key == "TrackBrush")) continue;   // keeps the theme's accent colour and its dark seek-bar track
             if (_ambientColours.TryGetValue(key, out var colour)) resources[key] = Frozen(colour);
+        }
+
+        // The window is dark glass in the cover's hue in every theme. In a light theme the surfaces, popups and (for the bars that keep
+        // the app's accent) the accent and seek track are therefore given their dark-theme colours inside these elements only.
+        if (!ThemeManager.IsDark)
+        {
+            foreach (var (key, colour) in ThemeManager.DarkGlassColours(AppSettings.Current.AccentIndex))
+            {
+                if (!neutral && (IsAccentKey(key) || key == "TrackBrush")) continue;   // the cover's own colours were put above
+                resources[key] = Frozen(colour);
+            }
+        }
+        else
+        {
+            foreach (var key in BaseKeys) resources.Remove(key);
+            if (neutral)
+            {
+                resources.Remove("TrackBrush");
+                foreach (var key in AmbientKeys) if (IsAccentKey(key)) resources.Remove(key);
+            }
         }
     }
 
@@ -173,6 +196,7 @@ public partial class MainWindow
             _skinned.Remove(el);
             _skinnedNeutral.Remove(el);
             foreach (var key in AmbientKeys) el.Resources.Remove(key);
+            foreach (var key in BaseKeys) el.Resources.Remove(key);
             el.ClearValue(TextElement.ForegroundProperty);
         }
 

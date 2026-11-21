@@ -13,7 +13,7 @@ public sealed record VaultMeta(string Name, long Length, string? Origin = null,
     string? Title = null, string? Artist = null, string? Album = null, string? Genre = null, long DurationMs = 0);
 
 /// <summary>
-/// On-disk format ("SVV1"). Each file gets its own random salt and AES-256-GCM key (HKDF from the master key),
+/// On-disk format ("SVV1"; files are named *.deex, earlier builds used *.svv). Each file gets its own random salt and AES-256-GCM key (HKDF from the master key),
 /// and the content is split into 256 KiB chunks so playback can seek without decrypting the whole file.
 ///
 ///   magic "SVV\x01" (4) | salt (16) | metaLen u32 LE (4) | meta ciphertext | meta tag (16)
@@ -26,7 +26,17 @@ public sealed record VaultMeta(string Name, long Length, string? Origin = null,
 /// </summary>
 public static class VaultFormat
 {
-    public const string Extension = ".svv";
+    /// <summary>The extension of files the vault writes now. (The format inside is unchanged: only the name differs.)</summary>
+    public const string Extension = ".deex";
+
+    /// <summary>The extension earlier builds used. Such files are still listed, opened and restored exactly like new ones, and are never renamed
+    /// (the encrypted playlists remember files by their names).</summary>
+    public const string LegacyExtension = ".svv";
+
+    /// <summary>True for an encrypted vault file of this build or of an earlier one (not for the ".part" file of an unfinished write).</summary>
+    public static bool IsVaultFile(string path) =>
+        path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase) || path.EndsWith(LegacyExtension, StringComparison.OrdinalIgnoreCase);
+
     public const int SaltSize = 16;
     public const int NonceSize = 12;
     public const int TagSize = 16;
@@ -55,8 +65,13 @@ public static class VaultFormat
     private static byte[] DeriveFileKey(byte[] masterKey, byte[] salt) =>
         HKDF.DeriveKey(HashAlgorithmName.SHA256, masterKey, 32, salt, KeyInfo);
 
-    // ---- speed: the file is processed in batches of 16 chunks (4 MiB). The format on disk is exactly the same as before.
-    private const int BatchChunks = 16;
+    // ---- speed: the file is processed in batches of up to 64 chunks (16 MiB): big sequential reads and writes are what a hard drive
+    // needs (small batches made the head jump between the file being read and the one being written). A small file only gets
+    // a batch as big as itself. The format on disk is not affected by the batch size.
+    private const int MaxBatchChunks = 64;
+
+    private static int BatchFor(long plainLength) =>
+        (int)Math.Clamp((plainLength + ChunkSize - 1) / ChunkSize, 1, MaxBatchChunks);
     private static int Workers => Math.Clamp(Environment.ProcessorCount, 1, 8);
 
     /// <summary>
@@ -121,9 +136,10 @@ public static class VaultFormat
     private static byte[] EncryptBody(Stream src, Stream dst, byte[] fileKey, long length)
     {
         const int stride = ChunkSize + TagSize;
-        int batchBytes = BatchChunks * ChunkSize;
+        int batchChunks = BatchFor(length);
+        int batchBytes = batchChunks * ChunkSize;
         var plain = new[] { new byte[batchBytes], new byte[batchBytes] };
-        var packed = new[] { new byte[BatchChunks * stride], new byte[BatchChunks * stride] };
+        var packed = new[] { new byte[batchChunks * stride], new byte[batchChunks * stride] };
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         using var workers = new ThreadLocal<AesGcm>(() => new AesGcm(fileKey, TagSize), trackAllValues: true);
         var options = new ParallelOptions { MaxDegreeOfParallelism = Workers };
@@ -211,8 +227,9 @@ public static class VaultFormat
         file.Seek(dataOffset, SeekOrigin.Begin);
 
         const int stride = ChunkSize + TagSize;
-        var cipher = new[] { new byte[BatchChunks * stride], new byte[BatchChunks * stride] };
-        var plain = new[] { new byte[BatchChunks * ChunkSize], new byte[BatchChunks * ChunkSize] };
+        int batchChunks = BatchFor(meta.Length);
+        var cipher = new[] { new byte[batchChunks * stride], new byte[batchChunks * stride] };
+        var plain = new[] { new byte[batchChunks * ChunkSize], new byte[batchChunks * ChunkSize] };
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         using var workers = new ThreadLocal<AesGcm>(() => new AesGcm(fileKey, TagSize), trackAllValues: true);
         var options = new ParallelOptions { MaxDegreeOfParallelism = Workers, CancellationToken = ct };
@@ -227,7 +244,7 @@ public static class VaultFormat
             while (chunkIndex < chunksTotal)
             {
                 ct.ThrowIfCancellationRequested();
-                int chunks = (int)Math.Min(BatchChunks, chunksTotal - chunkIndex);
+                int chunks = (int)Math.Min(batchChunks, chunksTotal - chunkIndex);
                 int plainLength = (int)Math.Min((long)chunks * ChunkSize, plainRemaining);
                 int cipherLength = plainLength + chunks * TagSize;
                 var c = cipher[slot];
