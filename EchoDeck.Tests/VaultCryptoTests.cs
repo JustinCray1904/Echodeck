@@ -18,6 +18,7 @@ namespace EchoDeck.Tests;
 public sealed class VaultCryptoTests : IDisposable
 {
     private const int Chunk = VaultFormat.ChunkSize;   // 256 KiB
+    private const int Batch = VaultFormat.BatchChunks; // chunks per batch: the sizes below sit on its edges
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "tempo-vault-tests-" + Guid.NewGuid().ToString("N"));
     private readonly byte[] _key = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
 
@@ -30,7 +31,7 @@ public sealed class VaultCryptoTests : IDisposable
 
     public static IEnumerable<object[]> Sizes() => new[]
     {
-        0, 1, 100, Chunk - 1, Chunk, Chunk + 1, 3 * Chunk, 16 * Chunk - 1, 16 * Chunk, 16 * Chunk + 1, 33 * Chunk + 12345,
+        0, 1, 100, Chunk - 1, Chunk, Chunk + 1, 3 * Chunk, Batch * Chunk - 1, Batch * Chunk, Batch * Chunk + 1, 2 * Batch * Chunk + 12345,
     }.Select(size => new object[] { size });
 
     private static byte[] Data(int size)
@@ -85,7 +86,7 @@ public sealed class VaultCryptoTests : IDisposable
     [Fact]
     public void RandomSeeksAndReadsReturnTheRightBytes()
     {
-        var data = Data(40 * Chunk + 999);
+        var data = Data(70 * Chunk + 999);
         string vault = Encrypt(data, out _);
         using var stream = new EncryptedVaultStream(vault, _key);
         var random = new Random(5);
@@ -239,6 +240,17 @@ public sealed class VaultCryptoTests : IDisposable
 
         Assert.ThrowsAny<Exception>(() => VaultFormat.DecryptFile(vault, wrong, null));
         Assert.ThrowsAny<Exception>(() => new EncryptedVaultStream(vault, wrong));
+    }
+
+    [Fact]
+    public void NewFilesUseTheNewExtensionAndTheOldOneIsStillRecognised()
+    {
+        Assert.Equal(".deex", VaultFormat.Extension);
+        Assert.True(VaultFormat.IsVaultFile("C:\\vault\\abc.deex"));
+        Assert.True(VaultFormat.IsVaultFile("C:\\vault\\abc.DEEX"));
+        Assert.True(VaultFormat.IsVaultFile("C:\\vault\\abc.svv"));   // made by an earlier build
+        Assert.False(VaultFormat.IsVaultFile("C:\\vault\\abc.mp4"));
+        Assert.False(VaultFormat.IsVaultFile("C:\\vault\\abc.deex.part"));
     }
 
     [Fact]
