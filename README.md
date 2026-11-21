@@ -1,4 +1,4 @@
-# Tempo
+# Tempo x
 
 A modern Windows media player for video and music, built on LibVLC (WPF, .NET 8), with a private encrypted space called **Anonymous Mode**. The interface follows the community *VLC Redesign*, with a light-blue accent.
 
