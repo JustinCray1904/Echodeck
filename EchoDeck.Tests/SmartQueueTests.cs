@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +14,7 @@ public class SmartQueueTests
     private static string[] Series(string opened, params string[] folder) => SmartQueue.SeriesOf(folder, opened).ToArray();
 
     [Fact]
-    public void OpeningOneEpisodeQueuesTheSeasonInOrder()
+    public void OpeningOneEpisodeQueuesTheWholeSeriesInOrder()
     {
         var result = Series("Show.S01E03.1080p.WEB-DL.x265.mkv",
             "Show.S01E01.1080p.WEB-DL.x265.mkv", "Show.S01E02.1080p.WEB-DL.x265.mkv", "Show.S01E10.1080p.WEB-DL.x265.mkv",
@@ -22,8 +23,32 @@ public class SmartQueueTests
         Assert.Equal(new[]
         {
             "Show.S01E01.1080p.WEB-DL.x265.mkv", "Show.S01E02.1080p.WEB-DL.x265.mkv",
-            "Show.S01E03.1080p.WEB-DL.x265.mkv", "Show.S01E10.1080p.WEB-DL.x265.mkv"
-        }, result);   // E10 after E3 (numbers, not text), and no other season
+            "Show.S01E03.1080p.WEB-DL.x265.mkv", "Show.S01E10.1080p.WEB-DL.x265.mkv",
+            "Show.S02E01.1080p.WEB-DL.x265.mkv"
+        }, result);   // E10 after E3 (numbers, not text), season 2 after season 1, and the unrelated movie left out
+    }
+
+    [Fact]
+    public void SeasonsInSeparateFoldersAreOneSeries()
+    {
+        string S1(string f) => Path.Combine("TV", "Show", "Season 1", f);
+        string S2(string f) => Path.Combine("TV", "Show", "Season 2", f);
+
+        var result = Series(S1("Episode 2.mp4"),
+            S2("Episode 2.mp4"), S1("Episode 1.mp4"), S2("Episode 1.mp4"), S1("Episode 2.mp4"));
+
+        Assert.Equal(new[] { S1("Episode 1.mp4"), S1("Episode 2.mp4"), S2("Episode 1.mp4"), S2("Episode 2.mp4") }, result);
+    }
+
+    [Fact]
+    public void ASeasonInTheFolderNameDoesNotMergeEpisodesOfTheSameNumber()
+    {
+        string S1(string f) => Path.Combine("Show S01", f);
+        string S2(string f) => Path.Combine("Show S02", f);
+
+        var result = Series(S2("Ep 1.mkv"), S1("Ep 1.mkv"), S2("Ep 1.mkv"));
+
+        Assert.Equal(new[] { S1("Ep 1.mkv"), S2("Ep 1.mkv") }, result);   // two different episodes, in season order
     }
 
     [Fact]
@@ -60,9 +85,10 @@ public class SmartQueueTests
     }
 
     [Fact]
-    public void OtherSeasonsInOneXFormatAreLeftOut()
+    public void SeasonsInTheOneXFormatRunOnInOrder()
     {
-        Assert.Equal(new[] { "Show 1x01.avi", "Show 1x02.avi" }, Series("Show 1x02.avi", "Show 1x01.avi", "Show 1x02.avi", "Show 2x01.avi"));
+        Assert.Equal(new[] { "Show 1x01.avi", "Show 1x02.avi", "Show 2x01.avi" },
+            Series("Show 1x02.avi", "Show 2x01.avi", "Show 1x01.avi", "Show 1x02.avi"));
     }
 
     [Fact]
