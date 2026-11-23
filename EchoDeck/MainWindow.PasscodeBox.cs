@@ -4,7 +4,8 @@ using System.Windows.Threading;
 namespace EchoDeck;
 
 // The box in the middle of Tempo while the Anonymous Mode passcode is typed. The digits themselves are still caught by the keyboard
-// hook (Ctrl + digits), so the box never needs focus: it only shows how many digits have been typed, with the window dimmed behind it.
+// hook (Ctrl + digits to start, then with or without Ctrl), so the box never needs focus. It shows how many digits have been typed, with
+// the window dimmed behind it; Backspace erases the last digit, Delete clears them all and Esc closes it.
 public partial class MainWindow
 {
     private PasscodeBoxWindow? _codeBox;
@@ -36,7 +37,7 @@ public partial class MainWindow
                 _codeBox.ShowWrong();
                 SchedulePasscodeBoxHide(700);
             }
-            else SchedulePasscodeBoxHide(3200);   // typing stopped: the half-typed passcode is forgotten
+            else SchedulePasscodeBoxHide(8200);   // typing stopped: the half-typed passcode is forgotten
         }
         catch (Exception ex)
         {

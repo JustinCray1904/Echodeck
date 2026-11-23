@@ -980,6 +980,24 @@ public partial class MainWindow
         if (!entry.IsFile) return;
 
         var files = _visibleEntries.Where(x => x.IsFile).ToList();
+
+        // Smart queue: an episode whose series goes beyond this page (its next seasons are in other folders, or only some episodes are
+        // shown here) queues the whole series in order, not just what is visible.
+        if (_cfg.SmartQueue && !_anon && File.Exists(entry.FullPath))
+        {
+            var series = SmartQueue.SeriesOf(entry.FullPath);
+            var visible = new HashSet<string>(files.Select(f => f.FullPath), StringComparer.OrdinalIgnoreCase);
+            if (series.Count > 1 && series.Any(p => !visible.Contains(p)))
+            {
+                _queue.Clear();
+                foreach (var p in series) _queue.Add(new QueueItem(p));
+                PlayNormal(entry.FullPath);
+                RootGrid.Focus();
+                ShowOsd("Queued " + series.Count + " in order");
+                return;
+            }
+        }
+
         PlayEntries(files, files.FindIndex(f => string.Equals(f.FullPath, entry.FullPath, StringComparison.OrdinalIgnoreCase)));
     }
 

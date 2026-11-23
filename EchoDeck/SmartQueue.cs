@@ -3,12 +3,14 @@ using System.Text.RegularExpressions;
 namespace EchoDeck;
 
 /// <summary>
-/// "Smart queue": when one file is opened on its own (from Explorer, "Open with", a single drop), the other files of the same series in
-/// its folder are found by name and queued in order, so opening Episode 3 queues Episode 1 to 7 and plays Episode 3.
-/// Two files belong together when their names are the same apart from their numbers ("Show S01E03 1080p.mkv", "Show S01E04 1080p.mkv").
-/// Quality tags, release groups and bracketed parts are ignored; for S01E03 / 1x03 names only the same season counts; the numbers that
-/// differ must be small (a counter, not a year or a camera's IMG_1234). Songs work the same way ("Track 01", "Track 02"), and only files of
-/// the same kind (video with video, audio with audio) are considered. Pure functions: the disk is only read by the one-argument SeriesOf.
+/// "Smart queue": when one file is opened on its own (from Explorer, "Open with", a single drop, or a double-click in the library), the
+/// other files of the same series are found by name and queued in order, so opening Episode 3 queues Episode 1 to 7 and plays Episode 3.
+/// A series runs across its seasons: S01E10 is followed by S02E01, whether the seasons are in one folder or in folders next to each
+/// other ("Season 1", "Season 2" / "Show S01", "Show S02"). Two files belong together when their names are the same apart from their
+/// numbers ("Show S01E03 1080p.mkv", "Show S02E04 1080p.mkv"). Quality tags, release groups and bracketed parts are ignored; the numbers
+/// that differ must be small (a counter, not a year or a camera's IMG_1234). Songs work the same way ("Track 01", "Track 02"), and only
+/// files of the same kind (video with video, audio with audio) are considered. Pure functions: the disk is only read by the
+/// one-argument SeriesOf.
 /// </summary>
 internal static class SmartQueue
 {
@@ -22,14 +24,38 @@ internal static class SmartQueue
         @"(?<![a-z0-9])s(\d{1,2})[ ._-]?e\d{1,3}(?!\d)|(?<!\d)(\d{1,2})x\d{2,3}(?!\d)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "Season 2", "Series 2", "S02" or "The Show S02" as a folder name
+    private static readonly Regex SeasonFolder = new(
+        @"(?:^|[ ._\-\[\(])(?:season|series|saison|temporada|staffel|s)[ ._-]*(\d{1,2})(?!\d)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Regex Digits = new(@"\d+", RegexOptions.Compiled);
     private static readonly Regex Spaces = new(@"\s{2,}", RegexOptions.Compiled);
 
     private sealed record Signature(string Template, long[] Numbers, int? Season);
 
-    private static Signature? SignatureOf(string fileName)
+    /// <summary>"Season 2" gives (2, ""), "The Show S03" gives (3, "the show"); null when the folder is not a season folder.</summary>
+    private static (int Season, string Base)? SeasonOfFolder(string? folderName)
     {
-        string stem = Path.GetFileNameWithoutExtension(fileName) ?? "";
+        if (string.IsNullOrWhiteSpace(folderName)) return null;
+        var m = SeasonFolder.Match(folderName);
+        if (!m.Success || !int.TryParse(m.Groups[1].Value, out int season)) return null;
+
+        string rest = folderName.Remove(m.Index, m.Length).ToLowerInvariant();
+        rest = Quality.Replace(Brackets.Replace(rest, " "), " ");
+        rest = rest.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+        return (season, Spaces.Replace(rest, " ").Trim());
+    }
+
+    private static int? SeasonOfFolderOf(string path)
+    {
+        try { return SeasonOfFolder(Path.GetFileName(Path.GetDirectoryName(path)))?.Season; }
+        catch { return null; }
+    }
+
+    private static Signature? SignatureOf(string path)
+    {
+        string stem = Path.GetFileNameWithoutExtension(path) ?? "";
         stem = Brackets.Replace(stem, " ");
         stem = Quality.Replace(stem, " ");
         stem = stem.Replace('.', ' ').Replace('_', ' ');
@@ -42,6 +68,7 @@ internal static class SmartQueue
             string digits = se.Groups[1].Success ? se.Groups[1].Value : se.Groups[2].Value;
             if (int.TryParse(digits, out int s)) season = s;
         }
+        season ??= SeasonOfFolderOf(path);   // "Season 2\Episode 1.mp4": the season is in the folder's name
 
         var numbers = new List<long>();
         string template = Digits.Replace(stem, m =>
@@ -58,7 +85,7 @@ internal static class SmartQueue
     internal static List<string> SeriesOf(IEnumerable<string> siblings, string path)
     {
         var alone = new List<string> { path };
-        var mine = SignatureOf(Path.GetFileName(path));
+        var mine = SignatureOf(path);
         if (mine == null) return alone;
 
         var matches = new List<(string Path, Signature Sig)>();
@@ -66,9 +93,8 @@ internal static class SmartQueue
         {
             if (string.Equals(s, path, StringComparison.OrdinalIgnoreCase)) { matches.Add((path, mine)); continue; }
 
-            var sig = SignatureOf(Path.GetFileName(s));
+            var sig = SignatureOf(s);
             if (sig == null || sig.Template != mine.Template || sig.Numbers.Length != mine.Numbers.Length) continue;
-            if (mine.Season != null && sig.Season != mine.Season) continue;
             matches.Add((s, sig));
         }
         if (!matches.Any(m => string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase))) matches.Add((path, mine));
@@ -77,7 +103,7 @@ internal static class SmartQueue
         var byNumber = new Dictionary<string, (string Path, Signature Sig)>();
         foreach (var m in matches)
         {
-            string key = NumberKey(m.Sig.Numbers);
+            string key = (m.Sig.Season?.ToString() ?? "") + "|" + NumberKey(m.Sig.Numbers);
             if (!byNumber.TryGetValue(key, out var kept) || string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase))
                 byNumber[key] = m;
         }
@@ -93,6 +119,8 @@ internal static class SmartQueue
 
         list.Sort((a, b) =>
         {
+            int bySeason = (a.Sig.Season ?? 0).CompareTo(b.Sig.Season ?? 0);   // the season of a folder name comes before the episode numbers
+            if (bySeason != 0) return bySeason;
             for (int i = 0; i < a.Sig.Numbers.Length; i++)
             {
                 int c = a.Sig.Numbers[i].CompareTo(b.Sig.Numbers[i]);
@@ -103,7 +131,7 @@ internal static class SmartQueue
         return list.Select(m => m.Path).ToList();
     }
 
-    /// <summary>Reads the file's folder and finds its series. Never throws.</summary>
+    /// <summary>Reads the file's folder (and the season folders next to it) and finds its series. Never throws.</summary>
     internal static List<string> SeriesOf(string path)
     {
         try
@@ -111,14 +139,39 @@ internal static class SmartQueue
             string? dir = Path.GetDirectoryName(path);
             if (string.IsNullOrEmpty(dir)) return new List<string> { path };
             bool audio = MediaTypes.IsAudio(path);
-            var siblings = Directory.EnumerateFiles(dir)
-                .Where(f => MediaTypes.IsSupportedFile(f) && MediaTypes.IsAudio(f) == audio)
-                .Take(3000).ToList();
+
+            var siblings = MediaIn(dir, audio);
+
+            // "Show\Season 1" is next to "Show\Season 2": the next season is part of the same series
+            var own = SeasonOfFolder(Path.GetFileName(dir));
+            string? parent = Path.GetDirectoryName(dir);
+            if (own != null && !string.IsNullOrEmpty(parent))
+            {
+                foreach (var other in Directory.EnumerateDirectories(parent))
+                {
+                    if (siblings.Count >= 3000) break;
+                    if (string.Equals(other, dir, StringComparison.OrdinalIgnoreCase)) continue;
+                    var theirs = SeasonOfFolder(Path.GetFileName(other));
+                    if (theirs == null || theirs.Value.Base != own.Value.Base) continue;
+                    siblings.AddRange(MediaIn(other, audio));
+                }
+            }
             return SeriesOf(siblings, path);
         }
         catch
         {
             return new List<string> { path };   // an unreadable folder: just the file
         }
+    }
+
+    private static List<string> MediaIn(string dir, bool audio)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(dir)
+                .Where(f => MediaTypes.IsSupportedFile(f) && MediaTypes.IsAudio(f) == audio)
+                .Take(3000).ToList();
+        }
+        catch { return new List<string>(); }   // an unreadable folder next to this one
     }
 }

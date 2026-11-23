@@ -32,7 +32,7 @@ public partial class PasscodeBoxWindow : Window
     /// <summary>The first <paramref name="filled"/> dots are filled.</summary>
     public void SetFilled(int filled)
     {
-        Hint.Text = "Keep typing your passcode";
+        Hint.Text = "Backspace erases  ·  Esc closes";
         Hint.Foreground = Res("MutedBrush");
         for (int i = 0; i < _dots.Count; i++)
             _dots[i].Fill = i < filled ? Res("AccentBrush") : Res("SlateBrush");

@@ -15,6 +15,9 @@ internal sealed class PinDetector
     private readonly StringBuilder _buffer = new();
     private DateTime _lastDigitUtc = DateTime.MinValue;
 
+    /// <summary>How long a half-typed passcode is remembered between two digits.</summary>
+    public double IdleSeconds { get; set; } = 3;
+
     public PinDetector(Func<string, bool> verify, Func<int> length)
     {
         _verify = verify;
@@ -34,7 +37,7 @@ internal sealed class PinDetector
 
     public bool Push(char digit)
     {
-        if ((DateTime.UtcNow - _lastDigitUtc).TotalSeconds > 3) _buffer.Clear();
+        if ((DateTime.UtcNow - _lastDigitUtc).TotalSeconds > IdleSeconds) _buffer.Clear();
         _lastDigitUtc = DateTime.UtcNow;
 
         _buffer.Append(digit);
@@ -48,6 +51,13 @@ internal sealed class PinDetector
 
         _buffer.Clear();
         return true;
+    }
+
+    /// <summary>Erases the last digit typed (a mistake in a passcode in progress).</summary>
+    public void Backspace()
+    {
+        if (_buffer.Length > 0) _buffer.Remove(_buffer.Length - 1, 1);
+        _lastDigitUtc = DateTime.UtcNow;
     }
 
     public void Reset() => _buffer.Clear();

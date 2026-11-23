@@ -11,7 +11,7 @@
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
             <TextBlock Text="Anonymous Mode" Style="{StaticResource PageTitle}" FontSize="19" HorizontalAlignment="Center"/>
             <TextBlock x:Name="Hint" Style="{StaticResource HintText}" HorizontalAlignment="Center" Margin="0,8,0,20"
-                       Text="Keep typing your passcode"/>
+                       Text="Backspace erases  ·  Esc closes"/>
             <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Center"/>
         </StackPanel>
     </Border>

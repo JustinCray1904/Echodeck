@@ -416,7 +416,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,24,0">
                                 <TextBlock Style="{StaticResource RowLabel}" Text="Smart queue"/>
-                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Open one episode from Explorer and Tempo queues the rest of the series from the same folder, in order (Episode 1 to 7), and plays the one you opened. Works by file name, and only for a single file you open or drop."/>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0" TextWrapping="Wrap" Text="Open one episode (from Explorer, or by double-clicking it in the library) and Tempo queues the rest of the series in order, season after season (Season 1 Episode 1 to Season 3 Episode 8), including seasons kept in folders next to each other such as Season 1 and Season 2. It plays the one you opened. Works by file name."/>
                             </StackPanel>
                             <CheckBox x:Name="SmartQueueSwitch" Grid.Column="1" Style="{StaticResource SwitchToggle}" Click="Switch_Click"/>
                         </Grid>

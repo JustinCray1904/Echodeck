@@ -143,7 +143,8 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         _keys.KeyPressed += OnKeyInput;
-        _keys.CtrlReleased += _pinDetector.Reset;
+        // letting go of Ctrl forgets a half-typed passcode, except while the passcode box is open: there the digits are typed into the box
+        _keys.CtrlReleased += () => { if (_codeBox == null) _pinDetector.Reset(); };
         if (!_keys.Start())
         {
             TempoDialog.Show(this, "Keyboard input could not be initialised; Ctrl+passcode and Esc won't work.",
@@ -1740,6 +1741,12 @@ public partial class MainWindow : Window
         // is in front; with the default WPF input it works whenever this app is active.)
         if (vk == NativeMethods.VK_ESCAPE)
         {
+            if (!_anon && _codeBox != null)
+            {
+                _pinDetector.Reset();   // Esc closes the passcode box
+                HidePasscodeBox();
+                return;
+            }
             if (_anon) ExitAnonymous();
             else if (appActive && _isFullscreen && !_modalOpen) ToggleFullscreen();
             return;
@@ -1754,11 +1761,22 @@ public partial class MainWindow : Window
             return;
         }
 
+        // The passcode box is open: it works like a small input. Backspace erases the last digit, Delete clears everything, and the
+        // digits are typed with or without Ctrl (Esc, above, closes it).
+        bool codeBoxOpen = !_anon && _codeBox != null && PinStore.IsSet;
+        if (codeBoxOpen && vk is 0x08 or 0x2E)
+        {
+            if (vk == 0x08) _pinDetector.Backspace(); else _pinDetector.Reset();
+            ShowPasscodeProgress();
+            return;
+        }
+
         // Ctrl + passcode digits
-        if (ctrl && PinDetector.TryGetDigit(vk, out char digit))
+        if ((ctrl || codeBoxOpen) && PinDetector.TryGetDigit(vk, out char digit))
         {
             if (!_anon && PinStore.IsSet)
             {
+                _pinDetector.IdleSeconds = _cfg.AnonymousPasscodeBox ? 8 : 3;   // with the box there is time to correct a mistake
                 if (_pinDetector.Push(digit))
                 {
                     HidePasscodeBox();   // the box goes before the "going dark" animation starts

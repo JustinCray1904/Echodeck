@@ -188,6 +188,7 @@ public partial class MainWindow
         if (e.ChangedButton != MouseButton.Left || IsOnButton(e.OriginalSource as DependencyObject) || MiniHost == null) return;
 
         _miniDragging = true;
+        _miniDragMoved = false;
         _miniDragStart = e.GetPosition(MiniHost);
         _miniDragStartX = MiniPlayer.Margin.Left;
         UiAnim.Cancel(MiniPlayer);
@@ -202,7 +203,8 @@ public partial class MainWindow
         var (left, right) = MiniRange();
         double moved = e.GetPosition(MiniHost).X - _miniDragStart.X;
         // "Keep the video playing while I move it" (Settings > Interface): off = the picture is blank until the card is docked
-        if (!_cfg.MiniVideoWhileDragging && Math.Abs(moved) > 2) HoldMiniVideo();
+        if (Math.Abs(moved) > 2) _miniDragMoved = true;
+        if (!_cfg.MiniVideoWhileDragging && _miniDragMoved) HoldMiniVideo();
 
         // The card and the native video window are moved once per drawn frame, not once per mouse event: several moves between two
         // frames made the video window run ahead of the card and show as a trailing edge.
@@ -215,6 +217,7 @@ public partial class MainWindow
     }
 
     private double _miniPendingX;
+    private bool _miniDragMoved;   // the pointer really moved (not just a click on the card)
     private bool _miniMovePending;
 
     private void ApplyPendingMiniMove(object? sender, EventArgs e)
@@ -241,6 +244,9 @@ public partial class MainWindow
         string dock = MiniPlayer.Margin.Left < (left + right) / 2 ? "left" : "right";
         _cfg.MiniDock = dock;
         _cfg.Save(notify: false);
+        // The picture plays while the card is dragged, but the glide into the dock moves the card faster than the video window can
+        // follow (that was the edge seen for a moment just before docking): it is hidden for the glide only, and comes back docked.
+        if (_miniDragMoved) HoldMiniVideo();
         PositionMini(animate: true);
         ReleaseMiniVideo(330);   // the glide takes 280 ms; the picture returns once the card is at rest
     }
