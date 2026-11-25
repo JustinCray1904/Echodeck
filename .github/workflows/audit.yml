@@ -1,0 +1,50 @@
+name: Dependency audit
+
+# Looks for NuGet packages (direct and transitive) with known security advisories. It runs on its own, so a new advisory shows up as
+# its own red item and never blocks Tests or Build Tempo (the same idea as format-check). It also runs every Monday, because advisories
+# are published without anybody pushing anything.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Restores must match packages.lock.json exactly (see test.yml).
+env:
+  RestoreLockedMode: "true"
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Look for vulnerable packages
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($project in 'EchoDeck/EchoDeck.csproj', 'EchoDeck.Tests/EchoDeck.Tests.csproj') {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { throw "Restore failed for $project" }
+
+            $report = dotnet list $project package --vulnerable --include-transitive 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "dotnet list package failed for $project" }
+            Write-Host $report
+
+            if ($report -match 'has the following vulnerable packages') {
+              Write-Host "::error::$project uses packages with known vulnerabilities (listed above)."
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+          Write-Host 'No vulnerable packages.'

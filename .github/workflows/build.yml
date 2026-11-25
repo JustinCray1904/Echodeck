@@ -55,6 +55,11 @@ jobs:
           "APP_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Version: $ver"
 
+      # 0) Unit tests (EchoDeck.Tests). They also run on their own, faster, in test.yml on every push; here they come BEFORE anything is
+      #    published, so a failing test means no installer, no artifact and no GitHub Release.
+      - name: Unit tests
+        run: dotnet test EchoDeck.Tests/EchoDeck.Tests.csproj -c Release
+
       # 1) Restore also downloads LibVLCSharp and the VideoLAN.LibVLC.Windows (libvlc.dll) NuGet packages
       - name: Restore
         run: dotnet restore "${{ env.PROJECT }}" -r win-x64
@@ -141,14 +146,25 @@ jobs:
           compression-level: 0     # already compressed
           if-no-files-found: error
 
+      # The release text is the CHANGELOG.md section of this version ("## [2.1.0]"); GitHub's list of commits is added below it.
+      - name: Prepare release notes (version tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $ver = $env:APP_VERSION
+          $text = Get-Content (Join-Path $env:GITHUB_WORKSPACE 'CHANGELOG.md') -Raw
+          $m = [regex]::Match($text, "(?ms)^## \[$([regex]::Escape($ver))\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)")
+          if ($m.Success -and $m.Groups[1].Value.Trim()) {
+            $m.Groups[1].Value.Trim() | Set-Content -Path release-notes.md -Encoding utf8
+          } else {
+            Write-Warning "CHANGELOG.md has no section for $ver; the release gets GitHub's generated notes only."
+            'See the changes below.' | Set-Content -Path release-notes.md -Encoding utf8
+          }
+
       - name: Attach to GitHub Release (version tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: installer-output/*
+          body_path: release-notes.md
           generate_release_notes: true
-
-      # Unit tests (EchoDeck.Tests). They also run on their own, faster, in test.yml on every push; here they gate the installer artifact too:
-      # a failing test fails this run.
-      - name: Unit tests
-        run: dotnet test EchoDeck.Tests/EchoDeck.Tests.csproj -c Release
