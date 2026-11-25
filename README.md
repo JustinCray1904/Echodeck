@@ -1,8 +1,14 @@
-# Tempo 
+<p align="center"><img src="EchoDeck/Assets/logo.svg" width="128" alt="Tempo"></p>
+
+# Tempo
 
 A modern Windows media player for video and music, built on LibVLC (WPF, .NET 8), with a private encrypted space called **Anonymous Mode**. The interface follows the community *VLC Redesign*, with a light-blue accent.
 
-## Get a build 
+## Branding
+
+`EchoDeck/Assets/`: `app.ico` (the program and installer icon, flat so it stays readable at 16 px), `logo.png` (the glossy logo on the splash, tour and About page), and the scalable vectors `logo.svg` (the icon) and `logo-mark.svg` (the mark alone). The faint watermark in empty places is the same mark as a WPF geometry (`TempoMark` in `Icons.xaml`), so it is sharp at any size.
+
+## Get a build x
 Push to GitHub: the **Build Tempo** workflow publishes a self-contained x64 app and compiles the Inno Setup installer. Download `Tempo-Setup-<version>.exe` from the run's **Artifacts**. Tag a commit `v2.0.1` to also attach a portable zip to a GitHub Release.
 
 ## Features
@@ -55,7 +61,7 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Lyrics**: matched on the verified name, and of the matching uploads the one whose length is closest to the song wins.
 
 ## Smart queue, queue drag and drop, Anonymous folders, bouncy lyrics
-- **Smart queue** (Settings > Playback): open one episode from Explorer (or drop one file) and the rest of the series in its folder is queued in order, matched by file name (quality tags, release groups and other seasons are ignored). `SmartQueue.cs`.
+- **Smart queue** (Settings > Playback): open one episode (from Explorer, a drop, or a double-click in the library) and the whole series is queued in order, season after season, including seasons in folders next to each other (`Season 1`, `Season 2`). Matched by file name; quality tags and release groups are ignored. `SmartQueue.cs`.
 - **Queue panel**: drop files or folders from Explorer onto it, and drag its items to reorder them.
 - **Anonymous Mode**: the Videos page and the Music songs list are grouped by the folders the items came from; the selection bar has a **Restore** button; folders have "Restore this folder".
 - **Bouncy lyrics** (Settings > Lyrics): the sung line springs up, the lines around it settle with a stretchy delay.
@@ -65,7 +71,7 @@ The lock icon in the title bar shows that the mode is on and holds **Import file
 - **Playback rules** live in `PlaybackCoordinator.cs` (stop vs start, crossfade timing) and `OperationScope` (stale background results); `PlaybackCoordinatorTests` replays the races without a window.
 
 ## Handled problems
-Things Tempo recovers from by itself (an unusable Whisper model, a blocked registry write, a visualiser hiccup) are written to `%LOCALAPPDATA%\Tempo\tempo.log`. `crash.log` stays reserved for real crashes.
+Things Tempo recovers from by itself (an unusable Whisper model, a blocked registry write, a visualiser hiccup, a damaged vault playlist file) are written to `%LOCALAPPDATA%\Tempo\tempo.log`. Anything about the vault is logged by the kind of exception only, never its message, so no file name or path is ever written down. `crash.log` stays reserved for real crashes.
 
 ## Continue where you left off
 Videos remember how far you watched (`%LOCALAPPDATA%\Tempo\resume.json`, saved when you switch, stop or close, and every 15 s). Playing the same file again shows a small "Continue from 12:34?" card just above the control bar with **Continue** / **Start over**; it fades away on its own after 12 seconds. Videos watched to the end, clips under 90 s and music are not remembered, and nothing is ever stored in Anonymous Mode. Turn it off in Settings > Playback.
@@ -89,6 +95,17 @@ The project is pinned to `win-x64`. The workflow verifies `libvlc\win-x64\libvlc
 
 ## Global key hook (optional)
 Ctrl+passcode and Esc use WPF input by default. If they stop working after clicking the video, build with `-p:EnableGlobalKeyHook=true`. The hook callback only queues one dispatcher item and returns, so Windows never times it out. Signed builds avoid antivirus false positives.
+
+## Build and test from a fresh clone
+Needs Windows and the .NET 8 SDK (no other setup; there is no database or service to start).
+```
+dotnet restore EchoDeck/EchoDeck.csproj
+dotnet build   EchoDeck/EchoDeck.csproj -c Release
+dotnet test    EchoDeck.Tests/EchoDeck.Tests.csproj -c Release
+```
+No .NET installed? With Docker Desktop in Windows-containers mode, `docker compose run --rm tests` does the same in a clean container.
+GitHub runs the tests on every push (`test.yml`, `build.yml`), checks formatting (`format-check.yml`) and package advisories
+(`audit.yml`). See [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on Tempo and [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ## Build locally
 ```

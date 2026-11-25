@@ -1,0 +1,34 @@
+# Builds and tests Tempo inside a clean Windows container, so nothing but Docker has to be installed on the machine.
+#
+#   docker compose run --rm tests      the unit tests
+#   docker compose run --rm build      a Release build
+#
+# Tempo is a WPF desktop program: it only builds on Windows, so this needs Docker Desktop switched to WINDOWS containers
+# (not the Linux ones) on a Windows machine. There is nothing to "start": a media player window cannot run in a container, and there
+# is no database or service behind it. GitHub Actions does not use this file (test.yml and build.yml run on windows-latest).
+services:
+  tests:
+    image: mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
+    working_dir: C:\src
+    volumes:
+      - type: bind
+        source: .
+        target: C:\src
+    environment:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      RestoreLockedMode: "true"
+    command: dotnet test EchoDeck.Tests/EchoDeck.Tests.csproj -c Release
+
+  build:
+    image: mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
+    working_dir: C:\src
+    volumes:
+      - type: bind
+        source: .
+        target: C:\src
+    environment:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      RestoreLockedMode: "true"
+    command: dotnet build EchoDeck/EchoDeck.csproj -c Release
