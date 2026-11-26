@@ -58,6 +58,7 @@ of its topic (or a new one), not at the end of the biggest file.
 | `MainWindow.Playback.cs` | starting playback, the start-up volume guard, sound mode (channels, filters) |
 | `MainWindow.MusicView.cs` | the music view (cover, waveform), shuffle and repeat |
 | `MainWindow.Menus.cs`, `MainWindow.FastMenu.cs` | context menus and the quick-settings popup |
+| `MainWindow.AudioMod.cs` (+ `AudioModWindow`, `AudioMod`, `AudioModDsp`, `AudioModRenderer`) | Audio Mod: the window, the settings and presets, the sound processing, and playing the modded copy |
 | `MainWindow.Controls.cs` | toolbar buttons and keyboard handling (hotkeys, passcode keys, panic key) |
 | `MainWindow.Library.cs`, `MainWindow.LibraryTiles.cs`, `MainWindow.LibraryLayout.cs` | the pages, tiles, selection and tile menus |
 | `MainWindow.Queue.cs`, `MainWindow.Playlists.cs` | the queue panel (drag and drop, Next / Previous) and playlists |
@@ -67,7 +68,7 @@ of its topic (or a new one), not at the end of the biggest file.
 | `MainWindow.Mini.cs`, `.Overlay.cs`, `.Ambience.cs`, `.Crossfade.cs`, `.Resume.cs`, `.Sleep.cs`, ... | the mini player, on-screen indicator, cover colours, crossfade, resume, sleep timer |
 
 Logic that needs no window lives in plain classes with tests: `PlaybackCoordinator`, `QueueNavigator`, `SmartQueue`, `SongText` /
-`SongMatcher` / `SongResolver`, `StereoModes`, `SoundFilters`, `TimeText`, `WaveformCache`, `PinDetector`, `VaultFormat`.
+`SongMatcher` / `SongResolver`, `StereoModes`, `SoundFilters`, `TimeText`, `AudioModDsp`, `WaveformCache`, `PinDetector`, `VaultFormat`.
 
 ## Releases
 

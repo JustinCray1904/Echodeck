@@ -5,6 +5,11 @@ All notable changes to Tempo. The newest are first. Versions are the git tags (`
 ## [2.1.0] - 2026-11-24
 
 ### Added
+- **Audio Mod** (bottom-bar popup > Audio > "Audio mod…"): presets (Sped Up, Nightcore, Slowed & Reverb, Lo-fi, Slowed, Daycore, Muffled,
+  Vaporwave, Echo, Telephone) and sliders for play speed (pitch kept), pitch (semitones), distort, reverb, delay (time, intensity), low pass
+  and high pass. Apply makes a modded copy of the playing song (about a few seconds) and plays it from the same moment; Reset goes back to
+  the original. Music files up to 10 minutes, the playing song only, not in Anonymous Mode. The processing is Tempo's own
+  (`AudioModDsp`), because LibVLC cannot change pitch, reverb, delay or distortion while a song plays.
 - **Sound mode** (Settings > Audio, and the Channels list in the bottom-bar popup): Normal, Mono, Reverse stereo, Left side only,
   Right side only, Dolby surround. Applies at once and to every new song. Sound space (wide stereo, room / 3D) and Even out volume are
   LibVLC audio filters and need a restart.
