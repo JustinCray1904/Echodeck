@@ -240,7 +240,10 @@ public static class PlaylistStore
             File.WriteAllText(tmp, JsonSerializer.Serialize(All, Options));
             File.Move(tmp, FilePath, overwrite: true);
         }
-        catch { /* best effort */ }
+        catch (Exception ex)
+        {
+            AppLog.Event(AppLogLevel.Warning, "playlists.save-failed", ("exception", ex.GetType().Name), ("message", ex.Message));
+        }
     }
 
     public static Playlist Create(string name)
@@ -320,7 +323,10 @@ public static class RecentStore
             File.WriteAllText(tmp, JsonSerializer.Serialize(_items));
             File.Move(tmp, FilePath, overwrite: true);
         }
-        catch { /* best effort */ }
+        catch (Exception ex)
+        {
+            AppLog.Event(AppLogLevel.Warning, "recent.save-failed", ("exception", ex.GetType().Name), ("message", ex.Message));
+        }
     }
 }
 

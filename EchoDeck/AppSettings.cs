@@ -100,6 +100,7 @@ public sealed class AppSettings
     public bool MiniVideoWhileDragging { get; set; } = true;   // the mini player's picture keeps playing while the card is dragged (off: blank until it is docked)
     public int StereoMode { get; set; }                   // 0 normal, 1 mono, 2 reverse stereo, 3 left only, 4 right only, 5 Dolby surround
     public int SoundSpace { get; set; }                   // 0 off, 1 wide stereo, 2 room (3D), 3 wide + room (needs a restart)
+    public string AudioModJson { get; set; } = "";         // the last Audio Mod settings (speed, pitch, reverb ...), as JSON
     public bool NormalizeVolume { get; set; }             // even out loud and quiet songs (needs a restart)
     public bool GaplessEnabled { get; set; }              // start the next song just before the end so there is no silence between songs
     public int MotionMode { get; set; } = 1;              // moving background: 0 automatic (still when Windows animations are off), 1 always moving, 2 always still
@@ -160,7 +161,11 @@ public sealed class AppSettings
             File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOptions));
             File.Move(tmp, FilePath, overwrite: true);
         }
-        catch { /* settings are a convenience; never crash over them */ }
+        catch (Exception ex)
+        {
+            // settings are a convenience; never crash over them, but leave a trace
+            AppLog.Event(AppLogLevel.Warning, "settings.save-failed", ("exception", ex.GetType().Name), ("message", ex.Message));
+        }
 
         if (notify) Changed?.Invoke();
     }
