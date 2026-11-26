@@ -111,7 +111,11 @@ internal static class WaveformCache
             File.Move(temp, file, overwrite: true);
             Prune();
         }
-        catch { /* no cache this time: the song is analysed again next time */ }
+        catch (Exception ex)
+        {
+            // no cache this time: the song is analysed again next time
+            AppLog.Event(AppLogLevel.Info, "waveform-cache.save-failed", ("exception", ex.GetType().Name));
+        }
     }
 
     private static AudioAnalysis? Discard(string file)
