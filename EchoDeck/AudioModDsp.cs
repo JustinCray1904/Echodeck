@@ -286,17 +286,19 @@ internal static class AudioModDsp
 
     /// <summary>
     /// Freeverb: eight damped comb filters and four all-pass filters per channel (the right channel slightly longer, for width).
-    /// The reverb is added to the song; at <paramref name="amount"/> 1 it is about as loud as the song itself.
+    /// The reverb is added to the song; at <paramref name="amount"/> 1 it is about as loud as the song itself for sound that is the same
+    /// in both channels (centred voices, bass), and a little quieter for wide stereo.
     /// </summary>
     internal static void Reverb(float[] l, float[] r, int sampleRate, double amount)
     {
         int n = l.Length;
         var input = new float[n];
-        for (int i = 0; i < n; i++) input[i] = (l[i] + r[i]) * 0.015f;
+        // 0.0411: measured with the same noise in both channels, which makes the reverb as loud as that noise at amount 1
+        for (int i = 0; i < n; i++) input[i] = (l[i] + r[i]) * 0.5f * 0.0411f;
 
         var wetL = ReverbChannel(input, sampleRate, 0);
         var wetR = ReverbChannel(input, sampleRate, 23);
-        float gain = (float)(amount * 1.9);   // 1.9: what the 0.015 input scaling above takes off, measured on noise
+        float gain = (float)amount;
         for (int i = 0; i < n; i++)
         {
             l[i] += wetL[i] * gain;
