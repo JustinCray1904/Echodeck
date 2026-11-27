@@ -35,11 +35,11 @@ public class AudioModDspTests
         return peak;
     }
 
-    private static double Rms(float[] x, int start)
+    private static double Rms(float[] x, int start, int end)
     {
         double sum = 0;
-        for (int i = start; i < x.Length; i++) sum += (double)x[i] * x[i];
-        return Math.Sqrt(sum / (x.Length - start));
+        for (int i = start; i < end; i++) sum += (double)x[i] * x[i];
+        return Math.Sqrt(sum / (end - start));
     }
 
     private static (float[] L, float[] R) Run(float[] tone, AudioModSettings settings) =>
@@ -173,7 +173,8 @@ public class AudioModDspTests
         var (l, _) = AudioModDsp.Process((float[])noise.Clone(), (float[])noise.Clone(), Rate,
             new AudioModSettings { ReverbOn = true, Reverb = 100 });
 
-        double ratio = Rms(l, Rate / 2) / Rms(noise, Rate / 2);
+        // measured over the stretch where the song is (the reverb's silent tail after it is longer and would dilute the result)
+        double ratio = Rms(l, Rate / 2, noise.Length) / Rms(noise, Rate / 2, noise.Length);
         Assert.InRange(ratio, 1.25, 1.6);   // dry + wet of the same level: about 1.41 times
     }
 
