@@ -79,7 +79,7 @@ public class QueueNavigatorTests
     }
 }
 
-public class TimeTextTests
+public class TimeFormatTests
 {
     [Theory]
     [InlineData(0L, "00:00:00")]
@@ -87,7 +87,7 @@ public class TimeTextTests
     [InlineData(3_725_000L, "01:02:05")]
     [InlineData(59_999L, "00:00:59")]
     [InlineData(360_000_000L, "100:00:00")]
-    public void Clock_shows_hours_minutes_and_seconds(long ms, string expected) => Assert.Equal(expected, TimeText.Clock(ms));
+    public void Clock_shows_hours_minutes_and_seconds(long ms, string expected) => Assert.Equal(expected, TimeFormat.Clock(ms));
 }
 
 public class StereoModesTests

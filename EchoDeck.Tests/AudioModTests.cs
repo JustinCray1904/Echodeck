@@ -22,24 +22,24 @@ public class AudioModDspTests
     /// <summary>The frequency of a clean tone, from the upward zero crossings in the middle of the sound.</summary>
     private static double Frequency(float[] x)
     {
-        int from = x.Length / 5, to = x.Length * 4 / 5, crossings = 0;
-        for (int i = from + 1; i < to; i++)
+        int begin = x.Length / 5, finish = x.Length * 4 / 5, crossings = 0;
+        for (int i = begin + 1; i < finish; i++)
             if (x[i - 1] < 0 && x[i] >= 0) crossings++;
-        return crossings / ((to - from) / (double)Rate);
+        return crossings / ((finish - begin) / (double)Rate);
     }
 
-    private static float Peak(float[] x, int from = 0)
+    private static float Peak(float[] x, int start = 0)
     {
         float peak = 0;
-        for (int i = from; i < x.Length; i++) peak = Math.Max(peak, Math.Abs(x[i]));
+        for (int i = start; i < x.Length; i++) peak = Math.Max(peak, Math.Abs(x[i]));
         return peak;
     }
 
-    private static double Rms(float[] x, int from)
+    private static double Rms(float[] x, int start)
     {
         double sum = 0;
-        for (int i = from; i < x.Length; i++) sum += (double)x[i] * x[i];
-        return Math.Sqrt(sum / (x.Length - from));
+        for (int i = start; i < x.Length; i++) sum += (double)x[i] * x[i];
+        return Math.Sqrt(sum / (x.Length - start));
     }
 
     private static (float[] L, float[] R) Run(float[] tone, AudioModSettings settings) =>

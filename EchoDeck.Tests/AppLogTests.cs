@@ -30,12 +30,13 @@ public class AppLogFormatTests
         Assert.Equal("2026-11-24 10:15:02 WARN settings.save-failed exception=IOException retries=3", line);
     }
 
+    // (the level is passed as a number: a public test method can't take the internal AppLogLevel type as a parameter)
     [Theory]
-    [InlineData(AppLogLevel.Info, "INFO")]
-    [InlineData(AppLogLevel.Warning, "WARN")]
-    [InlineData(AppLogLevel.Error, "ERROR")]
-    public void The_level_is_written_as_a_word_to_search_for(AppLogLevel level, string word) =>
-        Assert.Contains(" " + word + " ", AppLog.FormatEvent(At, level, "x", Array.Empty<(string, object?)>()));
+    [InlineData(0, "INFO")]
+    [InlineData(1, "WARN")]
+    [InlineData(2, "ERROR")]
+    public void The_level_is_written_as_a_word_to_search_for(int level, string word) =>
+        Assert.Contains(" " + word + " ", AppLog.FormatEvent(At, (AppLogLevel)level, "x", Array.Empty<(string, object?)>()));
 
     [Fact]
     public void Values_with_spaces_quotes_or_line_breaks_are_quoted_and_stay_on_one_line()
