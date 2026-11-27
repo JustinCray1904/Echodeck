@@ -78,11 +78,12 @@ internal static class TempoDialog
 
 /// <summary>
 /// A dark, see-through window laid exactly over another window, to dim it while a dialog is in front. It never takes focus and lets
-/// clicks fall through to the window under it (which a modal dialog has switched off anyway).
+/// clicks fall through to the window under it (which a modal dialog has switched off anyway). With <paramref name="onClick"/> it catches
+/// clicks instead (the click on the dimmed area, outside the box in front of it) and calls that.
 /// </summary>
 internal sealed class DialogScrim : Window
 {
-    public DialogScrim(Window owner, byte alpha = 150)
+    public DialogScrim(Window owner, byte alpha = 150, Action? onClick = null)
     {
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -101,10 +102,20 @@ internal sealed class DialogScrim : Window
         Width = bounds.Width;
         Height = bounds.Height;
 
-        Content = new System.Windows.Controls.Border
+        var dim = new System.Windows.Controls.Border
         {
             Background = new SolidColorBrush(Color.FromArgb(alpha, 0, 0, 0)),
             CornerRadius = new CornerRadius(owner.WindowState == WindowState.Maximized ? 0 : 12),
         };
+        if (onClick != null)
+        {
+            IsHitTestVisible = true;
+            dim.MouseLeftButtonDown += (_, e) =>
+            {
+                e.Handled = true;
+                onClick();
+            };
+        }
+        Content = dim;
     }
 }
