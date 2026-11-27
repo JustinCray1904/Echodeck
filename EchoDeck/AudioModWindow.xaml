@@ -17,7 +17,7 @@
         <Grid Grid.Row="0">
             <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="Audio Mod" Style="{StaticResource PageTitle}"/>
-                <TextBlock x:Name="SongText" Style="{StaticResource HintText}" TextTrimming="CharacterEllipsis" MaxWidth="440" HorizontalAlignment="Left"/>
+                <TextBlock x:Name="SongTitle" Style="{StaticResource HintText}" TextTrimming="CharacterEllipsis" MaxWidth="440" HorizontalAlignment="Left"/>
             </StackPanel>
             <Button x:Name="ResetButton" Content="Reset" Style="{StaticResource FlatButton}" Padding="14,6" HorizontalAlignment="Right" VerticalAlignment="Center" Click="Reset_Click"/>
         </Grid>

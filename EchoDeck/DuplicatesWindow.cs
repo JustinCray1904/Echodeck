@@ -192,7 +192,7 @@ internal sealed class DuplicatesWindow : Window
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern int SHFileOperation(ref ShFileOp op);
 
-    private static bool ToRecycleBin(string path)
+    internal static bool ToRecycleBin(string path)
     {
         try
         {

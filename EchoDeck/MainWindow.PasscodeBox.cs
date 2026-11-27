@@ -5,7 +5,7 @@ namespace EchoDeck;
 
 // The box in the middle of Tempo while the Anonymous Mode passcode is typed. The digits themselves are still caught by the keyboard
 // hook (Ctrl + digits to start, then with or without Ctrl), so the box never needs focus. It shows how many digits have been typed, with
-// the window dimmed behind it; Backspace erases the last digit, Delete clears them all and Esc closes it.
+// the window dimmed behind it; Backspace erases the last digit, Delete clears them all, and Esc, the X or a click outside the box closes it.
 public partial class MainWindow
 {
     private PasscodeBoxWindow? _codeBox;
@@ -22,9 +22,10 @@ public partial class MainWindow
             if (_codeBox == null)
             {
                 if (!IsVisible || WindowState == WindowState.Minimized) return;
-                _codeScrim = new DialogScrim(this, 130);
+                _codeScrim = new DialogScrim(this, 130, onClick: ClosePasscodeBoxByUser);   // a click outside the box closes it
                 _codeScrim.Show();
                 _codeBox = new PasscodeBoxWindow(PinStore.Length) { Owner = this };
+                _codeBox.CloseRequested += ClosePasscodeBoxByUser;                           // the X
                 _codeBox.Show();
             }
 
@@ -44,6 +45,13 @@ public partial class MainWindow
             AppLog.Write("Passcode box", ex);
             HidePasscodeBox();
         }
+    }
+
+    /// <summary>The user closed the box (its X, or a click on the dimmed window): the half-typed passcode is forgotten too.</summary>
+    private void ClosePasscodeBoxByUser()
+    {
+        _pinDetector.Reset();
+        HidePasscodeBox();
     }
 
     private void SchedulePasscodeBoxHide(int milliseconds)

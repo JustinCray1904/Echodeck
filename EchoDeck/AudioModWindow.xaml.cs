@@ -32,7 +32,7 @@ public partial class AudioModWindow : Window
         _isModded = isModded;
         _remember = remember;
 
-        SongText.Text = songName;
+        SongTitle.Text = songName;
         BuildPresetCards();
         ShowSettings(start);
         StatusText.Text = _isModded() ? "This song is playing with Audio Mod." : "Pick a preset or move the sliders, then press Apply.";
@@ -45,8 +45,8 @@ public partial class AudioModWindow : Window
     {
         foreach (var preset in AudioModPresets.All)
         {
-            var from = (Color)ColorConverter.ConvertFromString(preset.ColorFrom);
-            var to = (Color)ColorConverter.ConvertFromString(preset.ColorTo);
+            var start = (Color)ColorConverter.ConvertFromString(preset.ColorFrom);
+            var end = (Color)ColorConverter.ConvertFromString(preset.ColorTo);
             var card = new Border
             {
                 Width = 112,
@@ -56,7 +56,7 @@ public partial class AudioModWindow : Window
                 Cursor = Cursors.Hand,
                 BorderThickness = new Thickness(2),
                 BorderBrush = Brushes.Transparent,
-                Background = new LinearGradientBrush(from, to, 45),
+                Background = new LinearGradientBrush(start, end, 45),
                 Child = new TextBlock
                 {
                     Text = preset.Name,

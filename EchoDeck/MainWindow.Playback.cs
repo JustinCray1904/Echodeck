@@ -400,7 +400,7 @@ public partial class MainWindow
         SyncPlayingState(playing);
     }
 
-    private static string Fmt(long ms) => TimeText.Clock(ms);
+    private static string Fmt(long ms) => TimeFormat.Clock(ms);
 
     private void SeekBy(int seconds)
     {

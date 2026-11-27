@@ -7,11 +7,17 @@ namespace EchoDeck;
 
 /// <summary>
 /// The box shown in the middle of Tempo while the Anonymous Mode passcode is being typed (Ctrl + the digits): one dot per digit of the
-/// passcode, filled as they are typed. It never takes focus and clicks go through it, so typing carries on in the main window.
+/// passcode, filled as they are typed. It never takes focus (typing carries on whatever window is in front); the X in its corner asks
+/// to close it, and so does a click on the dimmed window around it (see MainWindow.PasscodeBox.cs).
 /// </summary>
 public partial class PasscodeBoxWindow : Window
 {
     private readonly List<Ellipse> _dots = new();
+
+    /// <summary>The X was clicked.</summary>
+    public event Action? CloseRequested;
+
+    private void CloseBox_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
 
     public PasscodeBoxWindow(int length)
     {
@@ -32,7 +38,7 @@ public partial class PasscodeBoxWindow : Window
     /// <summary>The first <paramref name="filled"/> dots are filled.</summary>
     public void SetFilled(int filled)
     {
-        Hint.Text = "Backspace erases  ·  Esc closes";
+        Hint.Text = "Backspace erases  ·  Esc or a click outside closes";
         Hint.Foreground = Res("MutedBrush");
         for (int i = 0; i < _dots.Count; i++)
             _dots[i].Fill = i < filled ? Res("AccentBrush") : Res("SlateBrush");

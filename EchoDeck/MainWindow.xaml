@@ -679,6 +679,8 @@
                                     <Button Content="Play" Style="{StaticResource AccentButton}" Padding="18,7" Margin="0,0,6,0" Click="SelPlay_Click"/>
                                     <Button Content="Play next" Style="{StaticResource FlatButton}" Padding="14,7" Margin="0,0,6,0" Click="SelPlayNext_Click"/>
                                     <Button x:Name="SelAddToButton" Content="Add to" Style="{StaticResource FlatButton}" Padding="14,7" Margin="0,0,6,0" Click="SelAddTo_Click"/>
+                                    <Button x:Name="SelDeleteButton" Content="Delete" Style="{StaticResource FlatButton}" Padding="14,7" Margin="0,0,6,0"
+                                            Foreground="{DynamicResource DangerBrush}" Click="SelDelete_Click"/>
                                     <Button x:Name="SelMoreButton" Content="More ▾" Style="{StaticResource FlatButton}" Padding="14,7" Click="SelMore_Click"/>
                                 </StackPanel>
                             </Grid>
